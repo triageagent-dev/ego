@@ -49,7 +49,9 @@ export function useSelectedTenant(): string {
 export function withTenant(url: string): string {
   const t = selectedTenant();
   if (!t) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}tenant=${encodeURIComponent(t)}`;
+  // "<sender>/*" goes as "<sender>/": gateways refuse a "/*" in a query string, however it is encoded.
+  const wire = t.endsWith('/*') ? t.slice(0, -1) : t;
+  return `${url}${url.includes('?') ? '&' : '?'}tenant=${encodeURIComponent(wire)}`;
 }
 
 // Whether a session with these tenant keys belongs to the picked tenant.

@@ -8,10 +8,30 @@ import (
 
 // narrowTenants applies the tenant a user picked in the switcher (?tenant=) to what their role allows. No pick
 // leaves the role's tenants as they are. A pick the role does not cover leaves nothing: it never widens access.
+// A pick of "<sender>/*" means all of that sender's tenants the role covers. It travels as "<sender>/" because
+// gateways and WAFs refuse a "/*" in a query string as a comment signature.
 func narrowTenants(allowed []string, want string) []string {
 	want = strings.TrimSpace(want)
 	if want == "" || want == "*" {
 		return allowed
+	}
+	if strings.HasSuffix(want, "/") {
+		want += "*"
+	}
+	if prefix, ok := strings.CutSuffix(want, "*"); ok && strings.HasSuffix(prefix, "/") {
+		if allowed == nil {
+			return []string{want}
+		}
+		out := []string{}
+		for _, p := range allowed {
+			if p == "*" || p == want {
+				return []string{want}
+			}
+			if strings.HasPrefix(p, prefix) {
+				out = append(out, p)
+			}
+		}
+		return out
 	}
 	if allowed == nil {
 		return []string{want}

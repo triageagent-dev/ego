@@ -166,7 +166,8 @@ func TestSwitcherNarrowsButNeverWidens(t *testing.T) {
 		{[]string{"core/*"}, "core/acme", []string{"core/acme"}, false},
 		{[]string{"core/*"}, "core/*", []string{"core/*"}, false},
 		{[]string{"core/acme"}, "core/globex", []string{}, false},
-		{[]string{"core/acme"}, "core/*", []string{}, false},
+		{[]string{"core/acme"}, "core/*", []string{"core/acme"}, false},
+		{[]string{"rc/*"}, "core/*", []string{}, false},
 		{[]string{"core/acme", "rc/*"}, "rc/x", []string{"rc/x"}, false},
 	} {
 		got := narrowTenants(tc.allowed, tc.want)
@@ -486,6 +487,26 @@ func TestSameSessionNameForTwoTenantsOfOneSender(t *testing.T) {
 	for _, s := range list {
 		if len(s.Tenants) != 1 {
 			t.Errorf("%s mixes tenants %v", s.SessionID, s.Tenants)
+		}
+	}
+}
+
+func TestNarrowTenantsSenderWildcard(t *testing.T) {
+	for _, tc := range []struct {
+		allowed []string
+		want    string
+		out     string
+	}{
+		{nil, "core/", "core/*"},
+		{nil, "core/*", "core/*"},
+		{[]string{"*"}, "core/", "core/*"},
+		{[]string{"core/*"}, "core/", "core/*"},
+		{[]string{"core/acme", "core/globex", "rc/x"}, "core/", "core/acme,core/globex"},
+		{[]string{"rc/*"}, "core/", ""},
+	} {
+		got := narrowTenants(tc.allowed, tc.want)
+		if got == nil || strings.Join(got, ",") != tc.out {
+			t.Errorf("narrowTenants(%v, %q) = %v, want %q", tc.allowed, tc.want, got, tc.out)
 		}
 	}
 }
