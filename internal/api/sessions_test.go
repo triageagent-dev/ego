@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -319,5 +321,33 @@ func TestSpanWindowMs(t *testing.T) {
 	}
 	if got := spanWindowMs(spans); got != 600 {
 		t.Fatalf("got %d ms, want 600", got)
+	}
+}
+
+func TestSessionsHandler_ByID(t *testing.T) {
+	store := NewSessionStore(nil)
+	store.Ingest(sampleTracesBody("sess-by-id", "aaaa", "span-a"))
+	store.Ingest(sampleTracesBody("sess-other", "bbbb", "span-b"))
+
+	get := func(url string) []SessionSummary {
+		rec := httptest.NewRecorder()
+		sessionsHandler(store)(rec, httptest.NewRequest("GET", url, nil))
+		var body struct {
+			Data []SessionSummary `json:"data"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return body.Data
+	}
+
+	if got := get("/api/streaming/sessions?id=sess-by-id"); len(got) != 1 || got[0].SessionID != "sess-by-id" {
+		t.Errorf("by id = %+v, want only sess-by-id", got)
+	}
+	if got := get("/api/streaming/sessions?id=nope"); len(got) != 0 {
+		t.Errorf("unknown id = %+v, want empty", got)
+	}
+	if got := get("/api/streaming/sessions"); len(got) != 2 {
+		t.Errorf("no id = %d sessions, want 2", len(got))
 	}
 }

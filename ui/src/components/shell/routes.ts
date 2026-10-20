@@ -21,7 +21,22 @@ export function tabForView(view: ViewType): Tab | undefined {
   return TABS.find((t) => t.view === view || t.also?.includes(view));
 }
 
+// "#sessions?session=abc" -> { name: "sessions", params: session=abc }
+export function parseHash(hash: string): { name: string; params: URLSearchParams } {
+  const raw = hash.replace(/^#\/?/, '');
+  const q = raw.indexOf('?');
+  return {
+    name: q < 0 ? raw : raw.slice(0, q),
+    params: new URLSearchParams(q < 0 ? '' : raw.slice(q + 1)),
+  };
+}
+
 export function viewForHash(hash: string): ViewType | null {
-  const name = hash.replace(/^#\/?/, '');
+  const { name } = parseHash(hash);
   return TABS.find((t) => t.label === name)?.view ?? null;
+}
+
+/** A link target that opens the sessions tab on one session, expanded. */
+export function sessionLink(sessionId: string): string {
+  return `#sessions?session=${encodeURIComponent(sessionId)}`;
 }

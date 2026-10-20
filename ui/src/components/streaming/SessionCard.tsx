@@ -30,6 +30,8 @@ interface Invocation {
 }
 
 interface SessionCardProps {
+  /** Open expanded, for a session linked to directly. */
+  defaultExpanded?: boolean;
   session: {
     sessionId: string;
     traceId: string;
@@ -71,8 +73,8 @@ interface SessionCardProps {
   compareOption?: { checked: boolean; onToggle: () => void };
 }
 
-export function SessionCard({ session, isSelected, onSelect, onRemove, evaluationResult, annotationQueues, onAddToQueue, onCreateAndAddToQueue, queueNames, compareOption }: SessionCardProps) {
-  const [expanded, setExpanded] = useState(false);
+export function SessionCard({ defaultExpanded, session, isSelected, onSelect, onRemove, evaluationResult, annotationQueues, onAddToQueue, onCreateAndAddToQueue, queueNames, compareOption }: SessionCardProps) {
+  const [expanded, setExpanded] = useState(!!defaultExpanded);
   const [showQueuePicker, setShowQueuePicker] = useState(false);
   const [newQueueName, setNewQueueName] = useState('');
   const [showNewQueueInput, setShowNewQueueInput] = useState(false);

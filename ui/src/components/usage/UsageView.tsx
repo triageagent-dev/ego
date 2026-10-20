@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
+import { sessionLink } from '../shell/routes';
 import { pageStyle, headerStyle, titleStyle, subtitleStyle, refreshStyle, filterRowStyle, segmentStyle, segLabelStyle, segBtnStyle, segActiveStyle, errorStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle, tileSubStyle, cardStyle, cardTitleStyle } from '../ui/page';
 import { Bar } from 'react-chartjs-2';
 import {
@@ -278,7 +279,7 @@ export const UsageView: React.FC = () => {
             <div key={`${r.sessionId}|${r.model}`} css={burstLineStyle}>
               {r.calls.toLocaleString()} calls in {formatSpan(r.end - r.start)}, {formatTokens(r.inputTokens + r.outputTokens)} tokens
               {' · '}{r.kinds || NONE}{' · '}{r.tenants || NONE}{' · '}{r.model}{' · '}
-              <span css={monoStyle} title={r.sessionId}>{r.sessionId}</span>
+              <a css={[monoStyle, sessionLinkStyle]} href={sessionLink(r.sessionId)} title="Open this session">{r.sessionId}</a>
             </div>
           ))}
         </div>
@@ -437,7 +438,9 @@ export const UsageView: React.FC = () => {
                           <td css={numStyle}>{formatTokens(r.outputTokens)}</td>
                           <td css={numStyle}>{formatTokens(r.peakTokens)}</td>
                           <td css={numStyle}>{cost == null ? '–' : formatCostUsd(cost)}</td>
-                          <td css={monoStyle} title={r.sessionId}>{r.sessionId}</td>
+                          <td css={monoStyle}>
+                            <a css={sessionLinkStyle} href={sessionLink(r.sessionId)} title="Open this session">{r.sessionId}</a>
+                          </td>
                         </tr>
                       );
                     })}
@@ -571,4 +574,13 @@ const failTagStyle = css`
   border-radius: var(--radius);
   border: 1px solid var(--status-failure);
   color: var(--text-primary);
+`;
+
+const sessionLinkStyle = css`
+  color: var(--accent-primary);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
 `;

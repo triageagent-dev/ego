@@ -298,6 +298,15 @@ func otlpRequestBody(r *http.Request) (io.ReadCloser, int, error) {
 func sessionsHandler(store *SessionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		// ?id= returns just that session (an empty list when unknown), including one evicted from memory.
+		if id := r.URL.Query().Get("id"); id != "" {
+			one := []SessionSummary{}
+			if sum, ok := store.Summary(id); ok {
+				one = append(one, sum)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": one, "error": nil})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": store.List(), "error": nil})
 	}
 }

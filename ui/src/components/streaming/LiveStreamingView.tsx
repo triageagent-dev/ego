@@ -3,6 +3,7 @@ import { useTraceContext } from '../../context/TraceContext';
 import { SessionCard } from './SessionCard';
 import { config } from '../../config';
 import { onServerDown, onServerUp, setFeed } from '../../lib/connection';
+import { parseHash } from '../shell/routes';
 import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
 
 type TimeRangeKey = '1h' | '6h' | '12h' | 'day' | '7d' | 'all';
@@ -65,6 +66,9 @@ export function LiveStreamingView() {
   const setActiveSessions = actions.setStreamingSessions;
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  // A session linked to by id (#sessions?session=...): shown alone and opened.
+  const [focusId, setFocusId] = useState<string | null>(() => parseHash(location.hash).params.get('session'));
+  const loadSessionRef = useRef<(id: string) => void>(() => {});
   // Sessions whose trace made no LLM call (a server's per-request or
   // per-event trace) are hidden unless asked for; the choice is remembered
   // per browser.
@@ -142,9 +146,15 @@ export function LiveStreamingView() {
   useEffect(() => {
     mountedRef.current = true;
 
-    const fetchExistingSessions = async () => {
+    // With an id, fetches just that session (read back from the archive if it left memory) and shows it even
+    // if it was cleared or removed from this view before.
+    const fetchExistingSessions = async (onlyId?: string) => {
       try {
-        const res = await fetch(config.api.endpoints.streamingSessions);
+        const res = await fetch(
+          onlyId
+            ? `${config.api.endpoints.streamingSessions}?id=${encodeURIComponent(onlyId)}`
+            : config.api.endpoints.streamingSessions,
+        );
         if (!res.ok) return;
         const envelope = await res.json();
         const sessions: Array<{
@@ -188,8 +198,8 @@ export function LiveStreamingView() {
               }
               continue;
             }
-            if (removedIdsRef.current.has(s.sessionId)) continue;
-            if (s.isComplete && Date.parse(s.startedAt) < clearedBeforeRef.current) continue;
+            if (!onlyId && removedIdsRef.current.has(s.sessionId)) continue;
+            if (!onlyId && s.isComplete && Date.parse(s.startedAt) < clearedBeforeRef.current) continue;
             newMap.set(s.sessionId, {
               sessionId: s.sessionId,
               traceId: s.traceId,
@@ -219,6 +229,7 @@ export function LiveStreamingView() {
 
     // One re-fetch for a burst of resync signals or unknown-session events.
     let resyncTimer: ReturnType<typeof setTimeout> | null = null;
+    loadSessionRef.current = (id) => void fetchExistingSessions(id);
     const requestResync = () => {
       if (resyncTimer) return;
       resyncTimer = setTimeout(() => {
@@ -550,6 +561,19 @@ export function LiveStreamingView() {
     };
   }, []);
 
+  useEffect(() => {
+    const onHash = () => setFocusId(parseHash(location.hash).params.get('session'));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  // Declared after the feed effect above, so loadSessionRef is already set when this first runs.
+  useEffect(() => {
+    if (!focusId) return;
+    removedIdsRef.current.delete(focusId);
+    loadSessionRef.current(focusId);
+  }, [focusId]);
+
   const handleContinueToEvaluation = async () => {
     if (!selectedGoldenId) return;
 
@@ -707,9 +731,11 @@ export function LiveStreamingView() {
   const hasNoLLM = (s: LiveSession) =>
     !s.invocations?.length && (s.llmCalls ?? 0) === 0 &&
     (s.status === 'complete' || !!s.rootSpanName);
-  const matched = Array.from(activeSessions.values()).filter(withinRange).filter(matchesSearch);
-  const hiddenNoLLM = showNoLLM ? 0 : matched.filter(hasNoLLM).length;
-  const sessions = showNoLLM ? matched : matched.filter(s => !hasNoLLM(s));
+  // A linked session is shown alone, whatever the time range, search and non-LLM filter say.
+  const focused = focusId ? Array.from(activeSessions.values()).filter(s => s.sessionId === focusId) : null;
+  const matched = focused ?? Array.from(activeSessions.values()).filter(withinRange).filter(matchesSearch);
+  const hiddenNoLLM = focused || showNoLLM ? 0 : matched.filter(hasNoLLM).length;
+  const sessions = focused || showNoLLM ? matched : matched.filter(s => !hasNoLLM(s));
   const activeLiveSessions = sessions
     .filter(s => s.status === 'active')
     .sort(byStartedAtDesc);
@@ -839,6 +865,17 @@ export function LiveStreamingView() {
               color: 'var(--text-tertiary)',
             }}>
               {activeLiveSessions.length} live · {completedSessions.length} done
+              {focusId && (
+                <>
+                  {' · '}showing {focusId}{' '}
+                  <button
+                    onClick={() => { location.hash = '#sessions'; }}
+                    style={{ padding: 0, border: 'none', background: 'none', color: 'var(--accent-primary)', font: 'inherit', cursor: 'pointer' }}
+                  >
+                    show all
+                  </button>
+                </>
+              )}
             </span>
             {completedSessions.length > 0 && (
               <button
@@ -1026,6 +1063,7 @@ export function LiveStreamingView() {
                 {activeLiveSessions.map(session => (
                   <SessionCard
                     key={session.sessionId}
+                    defaultExpanded={focusId === session.sessionId}
                     session={session}
                     isSelected={selectedGoldenId === session.sessionId}
                     onSelect={() => setSelectedGoldenId(
@@ -1058,6 +1096,7 @@ export function LiveStreamingView() {
                 {completedSessions.map(session => (
                   <SessionCard
                     key={session.sessionId}
+                    defaultExpanded={focusId === session.sessionId}
                     session={session}
                     isSelected={selectedGoldenId === session.sessionId}
                     onSelect={() => setSelectedGoldenId(

@@ -910,6 +910,19 @@ func (s *SessionStore) List() []SessionSummary {
 	return summaries
 }
 
+// Summary returns one session's summary by ID, reading it back from the archive when it was evicted from
+// memory, so a link to an old session still opens.
+func (s *SessionStore) Summary(sessionID string) (SessionSummary, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.lookupLocked(sessionID)
+	if !ok {
+		return SessionSummary{}, false
+	}
+	return summarize(session), true
+}
+
 // Trace rebuilds the merged parent/child span tree across every span in
 // the named session, regardless of which OTLP trace ID it originally
 // arrived under (mirrors how a session can span multiple traces).
