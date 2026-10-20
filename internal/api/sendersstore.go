@@ -22,6 +22,10 @@ func ensureSendersSchema(db *sql.DB) error {
 			hash TEXT NOT NULL UNIQUE,
 			created_at TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS retired_senders (
+			id TEXT PRIMARY KEY,
+			retired_at TEXT NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS tenant_names (
 			key TEXT PRIMARY KEY,
 			name TEXT NOT NULL
@@ -67,6 +71,11 @@ func (s *SQLiteStore) deleteSender(id string) error {
 	if _, err := tx.Exec(`DELETE FROM senders WHERE id = ?`, id); err != nil {
 		return err
 	}
+	// The id stays taken: its sessions and any grants that name it outlive it, and a new sender under the same id
+	// would inherit both.
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO retired_senders (id, retired_at) VALUES (?, ?)`, id, nowRFC3339()); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -82,6 +91,23 @@ func (s *SQLiteStore) saveSenderToken(t senderTokenRecord) error {
 func (s *SQLiteStore) deleteSenderToken(id string) error {
 	_, err := s.db.Exec(`DELETE FROM sender_tokens WHERE id = ?`, id)
 	return err
+}
+
+func (s *SQLiteStore) loadRetiredSenders() (map[string]bool, error) {
+	rows, err := s.db.Query(`SELECT id FROM retired_senders`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }
 
 func (s *SQLiteStore) loadSenders() ([]Sender, []senderTokenRecord, error) {

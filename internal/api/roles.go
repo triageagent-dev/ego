@@ -435,7 +435,9 @@ func (s *RoleStore) EffectiveRole(username string, teams []string, teamsKnown bo
 	if slices.Contains(tenants, "*") {
 		tenants = nil // a grant on every tenant is no limit at all
 	}
-	return RoleInfo{Role: best, Agents: agents, Tenants: tenants, IsAdmin: best == RoleAdmin}
+	// A limit takes admin away: an admin bound to some tenants or agents manages nothing, since the admin
+	// endpoints list and change every sender, tenant and binding.
+	return RoleInfo{Role: best, Agents: agents, Tenants: tenants, IsAdmin: best == RoleAdmin && agents == nil && tenants == nil}
 }
 
 // unionScope unions one scope list (agents or tenants) over the bindings at the winning rank; if any of them has an
@@ -518,7 +520,7 @@ func roleInfoOrOpen(ctx context.Context) RoleInfo {
 // strongest matching role binding (see EffectiveRole); unknown team membership comes back Unresolved.
 func roleForIdentity(r *http.Request, roleStore *RoleStore, org string, ghTokens *githubTokenValidator, id identity) RoleInfo {
 	if id.Kind == tokenKindAPI {
-		info := RoleInfo{Role: id.Role, IsAdmin: id.Role == RoleAdmin}
+		info := RoleInfo{Role: id.Role, IsAdmin: id.Role == RoleAdmin && len(id.Tenants) == 0}
 		if len(id.Tenants) > 0 {
 			info.Tenants = id.Tenants
 		}

@@ -542,3 +542,120 @@ func TestUnlabelledSpansDoNotAddADefaultTenant(t *testing.T) {
 		}
 	}
 }
+
+func TestLimitedAdminIsNotAnAdmin(t *testing.T) {
+	s, err := NewRoleStore(nil, RoleNone, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range []RoleBinding{
+		{SubjectType: "user", Subject: "scoped", Role: RoleAdmin, Tenants: []string{"core/acme"}},
+		{SubjectType: "user", Subject: "agentbound", Role: RoleAdmin, Agents: []string{"a"}},
+		{SubjectType: "user", Subject: "root", Role: RoleAdmin},
+		{SubjectType: "user", Subject: "star", Role: RoleAdmin, Tenants: []string{"*"}},
+	} {
+		if _, err := s.Upsert(b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for user, want := range map[string]bool{"scoped": false, "agentbound": false, "root": true, "star": true} {
+		if got := s.EffectiveRole(user, nil, true).IsAdmin; got != want {
+			t.Errorf("%s: IsAdmin = %v, want %v", user, got, want)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	tokenInfo := func(tenants ...string) RoleInfo {
+		return roleForIdentity(req, nil, "", nil, identity{Kind: tokenKindAPI, Role: RoleAdmin, Tenants: tenants})
+	}
+	if tokenInfo("core/acme").IsAdmin {
+		t.Error("an admin token limited to a tenant is still an admin")
+	}
+	if !tokenInfo().IsAdmin {
+		t.Error("an unlimited admin token is not an admin")
+	}
+}
+
+func TestAnotherSendersSessionIsLeftUntouched(t *testing.T) {
+	store := NewSessionStore(nil)
+	store.IngestFor("core", labelledTracesBody("s1", "aaaa", "s1", ""))
+	id := "core:s1"
+	store.completeSession(id)
+	before, ok := store.Summary(id)
+	if !ok || !before.IsComplete {
+		t.Fatalf("setup: session %q complete = %v (found %v)", id, before.IsComplete, ok)
+	}
+
+	// The shared token has no sender, so it can name the session by its full id.
+	body := labelledTracesBody(id, "bbbb", "s2", "")
+	rs := body["resourceSpans"].([]any)[0].(map[string]any)
+	attrs := rs["resource"].(map[string]any)["attributes"].([]any)
+	rs["resource"].(map[string]any)["attributes"] = append(attrs, map[string]any{"key": evalSetIDAttr, "value": map[string]any{"stringValue": "forged"}})
+	store.IngestFor("", body)
+
+	after, _ := store.Summary(id)
+	if !after.IsComplete {
+		t.Error("a foreign push reopened the session")
+	}
+	if after.EvalSetID != nil {
+		t.Errorf("a foreign push set the eval set to %q", *after.EvalSetID)
+	}
+	if after.SpanCount != before.SpanCount {
+		t.Errorf("spans went from %d to %d", before.SpanCount, after.SpanCount)
+	}
+}
+
+func TestUsageRowTakesTheTenantOfItsTrace(t *testing.T) {
+	llm := &tracepkg.Span{SpanID: "x", TraceID: "t", Tags: map[string]any{
+		"gen_ai.request.model": "m", "gen_ai.usage.input_tokens": float64(5), "gen_ai.usage.output_tokens": float64(3),
+	}}
+	row, ok := usageRowFromSpan(llm, "s", DefaultTenantAttr, "rc", "acme")
+	if !ok || row.Tenant != "rc/acme" {
+		t.Fatalf("unlabelled span in a labelled trace: tenant = %q (row %v)", row.Tenant, ok)
+	}
+	llm.Tags[DefaultTenantAttr] = "globex"
+	if row, _ := usageRowFromSpan(llm, "s", DefaultTenantAttr, "rc", "acme"); row.Tenant != "rc/globex" {
+		t.Errorf("a span's own label must win, got %q", row.Tenant)
+	}
+	delete(llm.Tags, DefaultTenantAttr)
+	if row, _ := usageRowFromSpan(llm, "s", DefaultTenantAttr, "rc", ""); row.Tenant != "rc/default" {
+		t.Errorf("no label anywhere: tenant = %q, want rc/default", row.Tenant)
+	}
+}
+
+func TestDeletedSenderIdIsNotHandedOutAgain(t *testing.T) {
+	path := t.TempDir() + "/s.db"
+	archive, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	senders, err := NewSenderStore(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := senders.Create("core", "core"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := senders.Delete("core"); !ok || err != nil {
+		t.Fatalf("delete: %v %v", ok, err)
+	}
+	if _, err := senders.Create("core", "again"); err == nil {
+		t.Error("a deleted sender id was handed out again")
+	}
+	archive.Close()
+
+	again, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := NewSenderStore(again)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reloaded.Create("core", "again"); err == nil {
+		t.Error("after a restart a deleted sender id was handed out again")
+	}
+	if _, err := reloaded.Create("other", "fresh"); err != nil {
+		t.Errorf("a new id was refused: %v", err)
+	}
+}

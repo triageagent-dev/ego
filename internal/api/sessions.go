@@ -405,7 +405,7 @@ func (s *SessionStore) LoadPersisted() error {
 		var backfill []usageRow
 		if err := s.store.ForEachSnapshot(func(snap sessionSnapshot) {
 			for _, span := range snap.Spans {
-				if row, ok := usageRowFromSpan(span, snap.SessionID, s.usageTenantAttr, snap.Sender); ok {
+				if row, ok := usageRowFromSpan(span, snap.SessionID, s.usageTenantAttr, snap.Sender, traceTenantLabel(snap.Spans, s.usageTenantAttr)); ok {
 					backfill = append(backfill, row)
 				}
 			}
@@ -847,7 +847,7 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 				s.markChangedLocked(session)
 				ingested++
 				if s.store != nil {
-					if row, ok := usageRowFromSpan(span, session.ID, s.usageTenantAttr, session.Sender); ok {
+					if row, ok := usageRowFromSpan(span, session.ID, s.usageTenantAttr, session.Sender, traceTenantLabel(tr.AllSpans, s.usageTenantAttr)); ok {
 						if row.Kind == "" {
 							row.Kind = traceRootName(session.Spans, span.TraceID)
 						}
@@ -929,6 +929,11 @@ func (s *SessionStore) getOrCreateSession(name, traceID, evalSetID, sender strin
 		s.markChangedLocked(session)
 		isNew = true
 	} else {
+		// Another sender's session is handed back untouched: the caller refuses the spans, and nothing about the
+		// session (eval set, completion, trace ids) may change on a stranger's say-so.
+		if session.Sender != sender {
+			return session, false
+		}
 		if evalSetID != "" {
 			session.EvalSetID = evalSetID
 			s.markChangedLocked(session)

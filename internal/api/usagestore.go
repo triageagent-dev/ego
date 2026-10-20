@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -73,7 +74,10 @@ func ensureUsageSchema(db *sql.DB) error {
 // once that root is seen: FillUsageKinds. The tenant has no convention, so its
 // attribute key is deployment config (--usage-tenant-attr); empty leaves
 // the tenant blank.
-func usageRowFromSpan(span *tracepkg.Span, sessionID, tenantAttr, sender string) (usageRow, bool) {
+//
+// A span with no tenant label takes fallbackLabel, the label of the trace it belongs to, so a call made inside a
+// labelled operation is ledgered under that tenant, the same one the session reports.
+func usageRowFromSpan(span *tracepkg.Span, sessionID, tenantAttr, sender, fallbackLabel string) (usageRow, bool) {
 	if !adk.IsLLMSpan(span) {
 		return usageRow{}, false
 	}
@@ -88,7 +92,7 @@ func usageRowFromSpan(span *tracepkg.Span, sessionID, tenantAttr, sender string)
 		StartMs:      span.StartTime / 1000,
 		DurationMs:   span.Duration / 1000,
 		Service:      span.TagString(adk.OtelServiceName),
-		Tenant:       tenantKey(sender, tenantOf(span, tenantAttr)),
+		Tenant:       tenantKey(sender, cmp.Or(tenantOf(span, tenantAttr), fallbackLabel)),
 		Kind:         span.TagString(adk.GenAIAgentName),
 		Model:        model,
 		Name:         span.OperationName,

@@ -112,12 +112,13 @@ type SenderStore struct {
 	senders map[string]Sender
 	tokens  map[string]senderTokenRecord // by token id
 	byHash  map[string]string            // token hash -> token id
+	retired map[string]bool              // ids of deleted senders, never handed out again
 	archive *SQLiteStore
 }
 
 func NewSenderStore(archive *SQLiteStore) (*SenderStore, error) {
 	s := &SenderStore{
-		senders: map[string]Sender{}, tokens: map[string]senderTokenRecord{}, byHash: map[string]string{}, archive: archive,
+		senders: map[string]Sender{}, tokens: map[string]senderTokenRecord{}, byHash: map[string]string{}, retired: map[string]bool{}, archive: archive,
 	}
 	if archive == nil {
 		return s, nil
@@ -125,6 +126,9 @@ func NewSenderStore(archive *SQLiteStore) (*SenderStore, error) {
 	senders, tokens, err := archive.loadSenders()
 	if err != nil {
 		return nil, fmt.Errorf("loading senders: %w", err)
+	}
+	if s.retired, err = archive.loadRetiredSenders(); err != nil {
+		return nil, fmt.Errorf("loading retired senders: %w", err)
 	}
 	for _, t := range senders {
 		s.senders[t.ID] = t
@@ -195,6 +199,9 @@ func (s *SenderStore) Create(id, name string) (Sender, error) {
 	if _, ok := s.senders[id]; ok {
 		return Sender{}, fmt.Errorf("sender %q already exists", id)
 	}
+	if s.retired[id] {
+		return Sender{}, fmt.Errorf("sender id %q was used by a deleted sender; its sessions and grants still carry it, so pick a new id", id)
+	}
 	t := Sender{ID: id, Name: strings.TrimSpace(name), CreatedAt: nowRFC3339()}
 	if s.archive != nil {
 		if err := s.archive.saveSender(t); err != nil {
@@ -205,7 +212,7 @@ func (s *SenderStore) Create(id, name string) (Sender, error) {
 	return t, nil
 }
 
-// Delete removes a sender and its tokens. Its sessions stay, visible to unrestricted roles.
+// Delete removes a sender and its tokens. Its sessions stay, visible to unrestricted roles, and its id is retired.
 func (s *SenderStore) Delete(id string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -218,6 +225,7 @@ func (s *SenderStore) Delete(id string) (bool, error) {
 		}
 	}
 	delete(s.senders, id)
+	s.retired[id] = true
 	for tid, t := range s.tokens {
 		if t.Sender == id {
 			delete(s.byHash, t.hash)
