@@ -717,23 +717,32 @@ func (s *SessionStore) Close() error {
 // plus a session_started event on first sight of a session - is broadcast to connected /stream/ui-updates
 // clients.
 func (s *SessionStore) Ingest(body map[string]any) int {
+	// Decoding a large export is the expensive part and touches no store state, so it happens before the lock is
+	// taken: a big body must not stall every reader of the store while it is parsed.
+	type parsedResource struct {
+		resourceAttrs                          map[string]any
+		sessionName, conversationID, evalSetID string
+		traces                                 []*tracepkg.Trace
+	}
+	var parsed []parsedResource
+	for _, rs := range asSlice(body["resourceSpans"]) {
+		resource := asMap(asMap(rs)["resource"])
+		p := parsedResource{resourceAttrs: otlp.DecodeAttributes(asSlice(resource["attributes"]))}
+		p.sessionName, _ = p.resourceAttrs[sessionNameAttr].(string)
+		p.conversationID, _ = p.resourceAttrs[genAIConversationID].(string)
+		p.evalSetID, _ = p.resourceAttrs[evalSetIDAttr].(string)
+		p.traces = otlp.ParseExportRequest(map[string]any{"resourceSpans": []any{rs}})
+		parsed = append(parsed, p)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	ingested := 0
-	for _, rs := range asSlice(body["resourceSpans"]) {
-		resourceSpan := asMap(rs)
-		resource := asMap(resourceSpan["resource"])
-		resourceAttrs := otlp.DecodeAttributes(asSlice(resource["attributes"]))
+	for _, p := range parsed {
+		resourceAttrs, sessionName, conversationID, evalSetID := p.resourceAttrs, p.sessionName, p.conversationID, p.evalSetID
 
-		sessionName, _ := resourceAttrs[sessionNameAttr].(string)
-		conversationID, _ := resourceAttrs[genAIConversationID].(string)
-		evalSetID, _ := resourceAttrs[evalSetIDAttr].(string)
-
-		singleBody := map[string]any{"resourceSpans": []any{rs}}
-		traces := otlp.ParseExportRequest(singleBody)
-
-		for _, tr := range traces {
+		for _, tr := range p.traces {
 			name := sessionName
 			if name == "" {
 				name = conversationID
