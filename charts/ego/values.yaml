@@ -5,6 +5,9 @@
 # Set it to keep the names of an existing release: the selector is immutable.
 nameOverride: ""
 
+# Extra Service names that point at the same pods, for clients still configured with an earlier name.
+serviceAliases: []
+
 image:
   repository: ghcr.io/triageagent-dev/ego
   # -- Defaults to Chart.appVersion; `make deploy` sets it to the image it built.
