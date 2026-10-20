@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 )
 
 func scopedToTenants(tenants ...string) RoleInfo {
@@ -507,6 +509,36 @@ func TestNarrowTenantsSenderWildcard(t *testing.T) {
 		got := narrowTenants(tc.allowed, tc.want)
 		if got == nil || strings.Join(got, ",") != tc.out {
 			t.Errorf("narrowTenants(%v, %q) = %v, want %q", tc.allowed, tc.want, got, tc.out)
+		}
+	}
+}
+
+func TestUnlabelledSpansDoNotAddADefaultTenant(t *testing.T) {
+	spans := func(labels ...string) []*tracepkg.Span {
+		var out []*tracepkg.Span
+		for _, l := range labels {
+			sp := &tracepkg.Span{Tags: map[string]any{}}
+			if l != "" {
+				sp.Tags[DefaultTenantAttr] = l
+			}
+			out = append(out, sp)
+		}
+		return out
+	}
+	for name, tc := range map[string]struct {
+		sender string
+		spans  []*tracepkg.Span
+		want   string
+	}{
+		"labelled and unlabelled": {"rc", spans("ws-1", "", ""), "rc/ws-1"},
+		"two labels":              {"rc", spans("a", "", "b"), "rc/a,rc/b"},
+		"no label at all":         {"rc", spans("", ""), "rc/default"},
+		"shared sender, no label": {"", spans("", ""), ""},
+		"no spans":                {"rc", nil, ""},
+	} {
+		got := strings.Join(sessionTenants(&Session{Sender: tc.sender, Spans: tc.spans}), ",")
+		if got != tc.want {
+			t.Errorf("%s: tenants = %q, want %q", name, got, tc.want)
 		}
 	}
 }

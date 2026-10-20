@@ -145,7 +145,8 @@ func traceTenantLabel(spans []*tracepkg.Span, attr string) string {
 }
 
 // sessionTenants lists a session's tenant keys: the distinct labels on its spans, each keyed with the owning
-// sender. A named sender's session with no label belongs to that sender's default tenant.
+// sender. Spans without a label (an HTTP client span inside a labelled call, say) belong to the tenant of their
+// siblings and add nothing; a named sender's session with no label at all belongs to that sender's default tenant.
 func sessionTenants(s *Session) []string {
 	attr := s.tenantAttr
 	if attr == "" {
@@ -154,9 +155,18 @@ func sessionTenants(s *Session) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, sp := range s.Spans {
-		k := tenantKey(s.Sender, sp.TagString(attr))
+		label := sp.TagString(attr)
+		if label == "" {
+			continue
+		}
+		k := tenantKey(s.Sender, label)
 		if k != "" && !seen[k] && len(out) < maxIdentities {
 			seen[k] = true
+			out = append(out, k)
+		}
+	}
+	if len(out) == 0 && len(s.Spans) > 0 {
+		if k := tenantKey(s.Sender, ""); k != "" {
 			out = append(out, k)
 		}
 	}
