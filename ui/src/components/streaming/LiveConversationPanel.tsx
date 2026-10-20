@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, useMemo } from 'react';
 import { UserMessage, ToolCallMessage, ToolResultMessage, AgentMessage } from './LiveMessage';
 import type { ConversationElement } from '../../lib/types';
 import { formatSpanDuration, formatTurnTime } from '../../lib/trace-helpers';
+import { Pager, PAGE_SIZE, clampPage } from '../ui/Pager';
 
 export type { ConversationElement };
 
@@ -125,6 +126,18 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
   const turns = useMemo(() => groupIntoTurns(sortedElements), [sortedElements]);
   const lastTurnId = turns.length > 0 ? turns[turns.length - 1].invocationId : null;
 
+  // Long sessions are shown a page at a time. A live session follows its newest turns until the reader moves.
+  const [pickedPage, setPickedPage] = useState<number | null>(null);
+  const lastPage = clampPage(Number.MAX_SAFE_INTEGER, turns.length);
+  const page = clampPage(pickedPage ?? (isActive ? lastPage : 0), turns.length);
+  const pageStart = page * PAGE_SIZE;
+  const pageTurns = turns.slice(pageStart, pageStart + PAGE_SIZE);
+
+  // A new page starts at its first turn.
+  useEffect(() => {
+    if (containerRef.current) containerRef.current.scrollTop = 0;
+  }, [page]);
+
   useEffect(() => {
     if (autoScroll && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
@@ -209,6 +222,8 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
         </div>
       )}
 
+      <Pager total={turns.length} page={page} onChange={setPickedPage} />
+
       <div
         ref={containerRef}
         style={{
@@ -227,7 +242,8 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
           </div>
         )}
 
-        {turns.map((turn, i) => {
+        {pageTurns.map((turn, pageIdx) => {
+          const i = pageStart + pageIdx;
           const isLast = turn.invocationId === lastTurnId;
           const isExpanded = expandedOverrides[turn.invocationId] ?? false;
           const { preview, toolCount, toolErrorCount, toolLatencyMs, hasAgentResponse } = turnSummary(turn);
@@ -341,6 +357,7 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
           );
         })}
       </div>
+      <Pager total={turns.length} page={page} onChange={setPickedPage} />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { SessionCard } from './SessionCard';
 import { config } from '../../config';
 import { onServerDown, onServerUp, setFeed } from '../../lib/connection';
 import { parseHash } from '../shell/routes';
+import { Pager, PAGE_SIZE, clampPage } from '../ui/Pager';
 import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
 
 type TimeRangeKey = '1h' | '6h' | '12h' | 'day' | '7d' | 'all';
@@ -65,6 +66,7 @@ export function LiveStreamingView() {
   const activeSessions = state.streamingSessions;
   const setActiveSessions = actions.setStreamingSessions;
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('all');
+  const [donePage, setDonePage] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   // A session linked to by id (#sessions?session=...): shown alone and opened.
   const [focusId, setFocusId] = useState<string | null>(() => parseHash(location.hash).params.get('session'));
@@ -754,6 +756,9 @@ export function LiveStreamingView() {
     .filter(s => s.status === 'complete')
     .sort(byStartedAtDesc);
   const allSessions = [...activeLiveSessions, ...completedSessions];
+  // Finished sessions are shown a page at a time; live ones always are all shown.
+  const donePageIdx = clampPage(donePage, completedSessions.length);
+  const visibleCompleted = completedSessions.slice(donePageIdx * PAGE_SIZE, (donePageIdx + 1) * PAGE_SIZE);
 
   return (
     <div style={{
@@ -1104,7 +1109,7 @@ export function LiveStreamingView() {
                 done ({completedSessions.length})
               </h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px' }}>
-                {completedSessions.map(session => (
+                {visibleCompleted.map(session => (
                   <SessionCard
                     key={session.sessionId}
                     defaultExpanded={focusId === session.sessionId}
@@ -1136,6 +1141,7 @@ export function LiveStreamingView() {
                   />
                 ))}
               </div>
+              <Pager total={completedSessions.length} page={donePageIdx} onChange={setDonePage} />
             </div>
           )}
         </div>
