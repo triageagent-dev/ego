@@ -159,13 +159,13 @@ func TestAuthLoginHandler_RedirectsToGitHubWithStateCookie(t *testing.T) {
 }
 
 func TestAuthLogoutHandler_ClearsSessionCookieAndRedirects(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/auth/logout", nil)
+	req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
 	rec := httptest.NewRecorder()
 
 	authLogoutHandler()(rec, req)
 
-	if rec.Code != http.StatusFound {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusFound)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
 	}
 	if got := rec.Header().Get("Location"); got != "/evals" {
 		t.Errorf("Location = %q, want %q", got, "/evals")

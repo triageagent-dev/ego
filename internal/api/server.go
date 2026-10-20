@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -209,7 +210,13 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	go func() {
 		log.Printf("ego listening on %s", addr)
 		// No write timeout: the live feed, server-sent events and streaming evaluations are long-lived.
-		errCh <- newHTTPServer(addr, securityHeaders(topMux), 120*time.Second, 0).ListenAndServe()
+		publicHost := ""
+		if githubOAuth != nil {
+			if u, err := url.Parse(githubOAuth.PublicURL); err == nil {
+				publicHost = u.Host
+			}
+		}
+		errCh <- newHTTPServer(addr, securityHeaders(originGuard(publicHost, topMux)), 120*time.Second, 0).ListenAndServe()
 	}()
 
 	sigCh := make(chan os.Signal, 1)

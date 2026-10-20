@@ -212,10 +212,16 @@ func authCallbackHandler(cfg *GitHubOAuthConfig, roleStore *RoleStore) http.Hand
 	}
 }
 
+// authLogoutHandler ends the browser session. POST only: a GET could be triggered by any page that embeds a link
+// or image pointing here.
 func authLogoutHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		deleteCookie(w, sessionCookieName)
-		http.Redirect(w, r, "/evals", http.StatusFound)
+		http.Redirect(w, r, "/evals", http.StatusSeeOther)
 	}
 }
 

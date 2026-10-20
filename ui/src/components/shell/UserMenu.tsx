@@ -47,12 +47,13 @@ export function UserMenu() {
         <User size={14} />
         {me.username}
       </span>
-      {/* Real navigation, not a fetch: /auth/logout redirects back to /evals
-       * after clearing the session cookie, which a plain click handles
-       * cleanly without going through the global 401-redirect interceptor. */}
-      <a href="/auth/logout" css={logoutButtonStyle} title="Log out">
-        <LogOut size={13} />
-      </a>
+      {/* A form post, not a link: logout changes state, and the server accepts it only as POST. The 303
+       * redirect back to /evals is a plain navigation, so the global 401 interceptor is not involved. */}
+      <form method="post" action="/auth/logout" css={logoutFormStyle}>
+        <button type="submit" css={logoutButtonStyle} title="Log out" aria-label="Log out">
+          <LogOut size={13} />
+        </button>
+      </form>
     </div>
   );
 }
@@ -79,8 +80,16 @@ const usernameStyle = css`
   white-space: nowrap;
 `;
 
+const logoutFormStyle = css`
+  display: flex;
+  margin: 0;
+`;
+
 const logoutButtonStyle = css`
   display: flex;
+  padding: 0;
+  border: none;
+  background: none;
   align-items: center;
   color: var(--text-tertiary);
   cursor: pointer;

@@ -9,11 +9,8 @@ import (
 )
 
 var wsUpgrader = websocket.Upgrader{
-	// Origin isn't the access boundary here - requireSession's signed
-	// cookie check already gated this request before the upgrade handshake
-	// even reaches this handler; a same-origin-only CheckOrigin would just
-	// risk rejecting legitimate requests behind a gateway that doesn't
-	// preserve Origin cleanly.
+	// Cross-origin upgrades are refused by originGuard, which wraps every route on the main listener; a
+	// same-origin check here would only duplicate it and could reject requests behind a gateway that rewrites Host.
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
