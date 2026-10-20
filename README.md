@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/triageagent-dev/ego/main/install.sh
 gh release download --repo triageagent-dev/ego --pattern 'ego_*_linux_amd64.tar.gz'
 
 # container
-docker run -p 8001:8001 -p 4318:4318 ghcr.io/triageagent-dev/ego:latest
+docker run -p 8001:8001 -p 4318:4318 -e EGO_NO_AUTH=true ghcr.io/triageagent-dev/ego:latest
 
 # Kubernetes
 helm install ego oci://ghcr.io/triageagent-dev/charts/ego --version 0.1.0 -f values.yaml
@@ -227,7 +227,9 @@ curl -X POST "$EGO_SERVER_URL/api/admin/revocations" -H "Authorization: Bearer $
 
 ## Authentication and roles
 
-With no `--session-secret`, `serve` is open. With `--session-secret`, `--github-client-id`,
+By default `serve` listens on loopback only. Without `--session-secret` it refuses any other address, because
+everyone who could reach it would be an admin; `--no-auth` (`EGO_NO_AUTH=true`) says that is intended (the chart passes
+it when `auth.enabled` is false). A secret must be at least 32 bytes, and an empty one counts as none. With `--session-secret`, `--github-client-id`,
 `--github-client-secret`, `--github-org` and `--public-url` it requires GitHub OAuth, restricted to members of
 the org. `/api/health` is never gated.
 

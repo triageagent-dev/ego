@@ -48,6 +48,9 @@ spec:
             - --otlp-addr=:4318
             - --otlp-grpc-addr=:4317
             - --health-addr=:9090
+            {{- if not .Values.auth.enabled }}
+            - --no-auth
+            {{- end }}
             - --session-db=/data/{{ .Values.persistence.dbFile }}
             - --session-memory={{ .Values.persistence.memorySessions }}
             - --session-retention={{ .Values.persistence.retention }}

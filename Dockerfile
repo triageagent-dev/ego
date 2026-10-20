@@ -40,4 +40,4 @@ COPY --from=build /ego /usr/local/bin/ego
 EXPOSE 8001 4318
 
 ENTRYPOINT ["ego"]
-CMD ["serve", "--addr", ":8001", "--otlp-addr", ":4318"]
+CMD ["serve", "--addr", ":8001", "--otlp-addr", ":4318", "--otlp-grpc-addr", ":4317", "--health-addr", ":9090"]

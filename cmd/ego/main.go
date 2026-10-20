@@ -127,7 +127,7 @@ func usage() {
 
 Usage:
   ego run <trace-file>... --eval-set <path> -m <metric> [-m <metric>...] [flags]
-  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n]
+  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth]
                    [--admin-github-users user1,user2] [--default-role member]
   ego auth mint-token --name <label> [--ttl-days 90] [--secret ...]
   ego mcp [--server-url http://localhost:8001] [--session-token ...] [--trace-dir dir] [--admin-tools]
@@ -413,10 +413,10 @@ func printTextReport(reports []traceReport) {
 
 func serveCmd(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	addr := fs.String("addr", ":8001", "listen address for the REST API and UI (behind auth when --session-secret is set)")
-	otlpAddr := fs.String("otlp-addr", ":4318", "listen address for the OTLP/HTTP trace receiver (never gated)")
-	otlpGRPCAddr := fs.String("otlp-grpc-addr", ":4317", "listen address for the OTLP/gRPC trace receiver (never gated)")
-	healthAddr := fs.String("health-addr", ":9090", "listen address for GET /api/health (its own port, always unauthenticated - see internal/api/server.go's Serve doc comment for why)")
+	addr := fs.String("addr", "127.0.0.1:8001", "listen address for the REST API and UI (behind auth when --session-secret is set)")
+	otlpAddr := fs.String("otlp-addr", "127.0.0.1:4318", "listen address for the OTLP/HTTP trace receiver (never gated)")
+	otlpGRPCAddr := fs.String("otlp-grpc-addr", "127.0.0.1:4317", "listen address for the OTLP/gRPC trace receiver (never gated)")
+	healthAddr := fs.String("health-addr", "127.0.0.1:9090", "listen address for GET /api/health (its own port, always unauthenticated - see internal/api/server.go's Serve doc comment for why)")
 	sessionDB := fs.String("session-db", env("SESSION_DB_PATH"),
 		"SQLite file to persist streaming sessions across restarts (default: none, in-memory only); falls back to EGO_SESSION_DB_PATH")
 	sessionSecret := fs.String("session-secret", env("SESSION_SECRET"),
@@ -441,6 +441,8 @@ func serveCmd(args []string) error {
 		"span attribute the token usage view reads the tenant from (e.g. tenant.id); empty records no tenant; falls back to EGO_USAGE_TENANT_ATTR")
 	evalDailyTokens := fs.Int64("eval-daily-tokens", envInt64OrDefault("EVAL_DAILY_TOKENS", api.DefaultEvalDailyToks),
 		"judge tokens the interactive evaluation endpoints may use per UTC day, shared by all callers; 0 means unlimited; falls back to EGO_EVAL_DAILY_TOKENS")
+	noAuth := fs.Bool("no-auth", envBool("NO_AUTH"),
+		"serve on non-loopback addresses without a login. Without --session-secret, serve refuses to listen on anything but loopback unless this is set, because everyone who can reach it would be an admin; falls back to EGO_NO_AUTH=true")
 	otlpToken := fs.String("otlp-token", env("OTLP_TOKEN"),
 		"bearer token the OTLP/HTTP and OTLP/gRPC receivers require from senders (Authorization: Bearer ...); empty leaves them open; at least 32 bytes; falls back to EGO_OTLP_TOKEN")
 	onlineConfig := fs.String("online-config", env("ONLINE_CONFIG"),
@@ -452,6 +454,9 @@ func serveCmd(args []string) error {
 		return err
 	}
 	if err := checkSecret("OTLP token", *otlpToken); err != nil {
+		return err
+	}
+	if err := checkExposure(*sessionSecret, *noAuth, *addr, *otlpAddr, *otlpGRPCAddr, *healthAddr); err != nil {
 		return err
 	}
 	githubOAuth, err := api.GitHubOAuthConfigFromParams(*githubClientID, *githubClientSecret, *githubOrg, *sessionSecret, *publicURL)
