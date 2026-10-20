@@ -996,58 +996,29 @@ export function LiveStreamingView() {
 
 
       {allSessions.length === 0 ? (
-        <div style={{
-          padding: '80px 40px',
-          textAlign: 'center',
-          background: 'var(--card-bg)',
-          borderRadius: 'var(--radius)',
-          border: '2px dashed var(--border)',
-        }}>
-          <div style={{
-            fontSize: '48px',
-            marginBottom: '16px',
-            opacity: 0.6,
-          }}>
-            📡
-          </div>
-          <p style={{
-            fontSize: '18px',
-            fontWeight: 600,
-            color: 'var(--text-primary)',
-            marginBottom: '8px',
-          }}>
-            {timeRange === 'all' ? 'Waiting for agent sessions' : 'No sessions in this time range'}
-          </p>
-          <p style={{
-            fontSize: '14px',
-            color: 'var(--text-secondary)',
-            maxWidth: '400px',
-            margin: '0 auto',
-            lineHeight: '1.6',
-          }}>
-            {timeRange === 'all'
-              ? 'Run your agent with streaming enabled to see traces appear here in real-time'
-              : `No sessions started in the last ${TIME_RANGES.find(r => r.key === timeRange)?.label.toLowerCase()}. Try a wider range.`}
-          </p>
+        <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
+          {hiddenNoLLM > 0
+            ? `${hiddenNoLLM} hidden (no LLM call)`
+            : timeRange === 'all'
+              ? 'no sessions'
+              : 'no sessions in this range'}
           {timeRange !== 'all' && (
             <button
               onClick={() => setTimeRange('all')}
               style={{
-                marginTop: '16px',
-                padding: '8px 16px',
-                borderRadius: 'var(--radius)',
-                border: '1.5px solid var(--border)',
-                background: 'transparent',
+                marginLeft: '10px',
+                padding: 0,
+                border: 'none',
+                background: 'none',
                 color: 'var(--accent-primary)',
-                fontSize: '13px',
-                fontWeight: 600,
+                font: 'inherit',
                 cursor: 'pointer',
               }}
             >
-              Show all
+              show all
             </button>
           )}
-        </div>
+        </p>
       ) : (
         <div>
           {activeLiveSessions.length > 0 && (
