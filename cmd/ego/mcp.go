@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -49,6 +50,9 @@ func mcpCmd(args []string) error {
 		"ego server URL for list_sessions/summarize_session (default: http://localhost:8001); falls back to EGO_SERVER_URL")
 	sessionToken := fs.String("session-token", env("SESSION_TOKEN"),
 		"bearer token sent as an Authorization: Bearer header on every request to --server-url, for a GitHub-OAuth-gated deployment; falls back to EGO_SESSION_TOKEN, then to `gh auth token` if neither is set and gh is installed and logged in. Mint one with: ego auth mint-token --name <label>, or just use gh auth login instead.")
+	traceDir := fs.String("trace-dir", env("MCP_TRACE_DIR"),
+		"directory evaluate_traces may read trace, eval set and question files from (default: the current directory); paths outside it, including through symlinks, are refused; falls back to EGO_MCP_TRACE_DIR")
+	adminTools := fs.Bool("admin-tools", false, "register the role-binding tools (list_role_bindings, set_role_binding, delete_role_binding); off by default so a prompt-injected client cannot change access with your credential")
 	noGHAuth := fs.Bool("no-gh-auth", false, "disable the gh auth token fallback; fail with no credential instead of shelling out to gh")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -61,7 +65,24 @@ func mcpCmd(args []string) error {
 
 	token := *sessionToken
 	if token == "" && !*noGHAuth {
-		token = ghAuthToken()
+		if tokenSafeFor(url) {
+			token = ghAuthToken()
+		} else {
+			fmt.Fprintf(os.Stderr, "ego mcp: not sending the gh auth token to %s (it is neither https nor a loopback address); pass --session-token to authenticate there\n", url)
+		}
+	}
+
+	root := *traceDir
+	if root == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("resolving the trace directory: %w", err)
+		}
+		root = cwd
+	}
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return fmt.Errorf("resolving --trace-dir: %w", err)
 	}
 
 	backend := &mcpBackend{
@@ -70,7 +91,7 @@ func mcpCmd(args []string) error {
 		client:  &http.Client{Timeout: 60 * time.Second},
 	}
 
-	s := newMCPServer(backend)
+	s := newMCPServer(backend, mcpOptions{root: root, adminTools: *adminTools})
 	return server.ServeStdio(s)
 }
 
@@ -96,7 +117,14 @@ func ghAuthToken() string {
 // newMCPServer builds the FastMCP-equivalent server and registers all four
 // tools. Split out from mcpCmd so tests can call it directly without
 // spinning up stdio.
-func newMCPServer(backend *mcpBackend) *server.MCPServer {
+// mcpOptions are the choices that limit what an MCP client can reach. root confines the files evaluate_traces reads;
+// adminTools registers the role-binding tools, which act with the caller's own credential.
+type mcpOptions struct {
+	root       string
+	adminTools bool
+}
+
+func newMCPServer(backend *mcpBackend, opts mcpOptions) *server.MCPServer {
 	s := server.NewMCPServer("ego", mcpServerVersion, server.WithToolCapabilities(false))
 
 	s.AddTool(mcp.NewTool("list_metrics",
@@ -127,7 +155,7 @@ func newMCPServer(backend *mcpBackend) *server.MCPServer {
 			mcp.Items(map[string]any{"type": "string"})),
 		mcp.WithString("jev_questions_file",
 			mcp.Description("Absolute path to a custom question file for the Jev eval (each question runs as a jev:<key> metric). The jev_* metrics need JEV_API_KEY on this machine.")),
-	), evaluateTracesHandler())
+	), evaluateTracesHandler(opts.root))
 
 	s.AddTool(mcp.NewTool("list_sessions",
 		mcp.WithDescription("List recent streaming trace sessions, ordered most recent first. Use this to discover "+
@@ -164,6 +192,14 @@ func newMCPServer(backend *mcpBackend) *server.MCPServer {
 			mcp.Description("Run ID obtained from list_runs.")),
 	), getRunResultsHandler(backend))
 
+	if opts.adminTools {
+		addRoleTools(s, backend)
+	}
+
+	return s
+}
+
+func addRoleTools(s *server.MCPServer, backend *mcpBackend) {
 	s.AddTool(mcp.NewTool("list_role_bindings",
 		mcp.WithDescription("List all admin/member/viewer role bindings (multi-user RBAC). Requires the caller "+
 			"to be an admin, and the server to be running with --session-secret (GitHub OAuth) enabled."),
@@ -191,8 +227,6 @@ func newMCPServer(backend *mcpBackend) *server.MCPServer {
 		mcp.WithString("id", mcp.Required(),
 			mcp.Description("ID of the role binding to delete.")),
 	), deleteRoleBindingHandler(backend))
-
-	return s
 }
 
 // ---------------------------------------------------------------------------
@@ -345,7 +379,7 @@ type evaluateTracesResultMCP struct {
 	Errors []string       `json:"errors,omitempty"`
 }
 
-func evaluateTracesHandler() server.ToolHandlerFunc {
+func evaluateTracesHandler(root string) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		traceFiles := req.GetStringSlice("trace_files", nil)
 		if len(traceFiles) == 0 {
@@ -358,6 +392,21 @@ func evaluateTracesHandler() server.ToolHandlerFunc {
 		threshold := req.GetFloat("threshold", 0.5)
 		rubricTexts := req.GetStringSlice("rubrics", nil)
 		jevQuestionsFile := req.GetString("jev_questions_file", "")
+
+		var err error
+		for i, p := range traceFiles {
+			if traceFiles[i], err = confineToRoot(root, p); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+		}
+		for _, p := range []*string{&evalSetFile, &jevQuestionsFile} {
+			if *p == "" {
+				continue
+			}
+			if *p, err = confineToRoot(root, *p); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+		}
 
 		result, err := runEvaluateTraces(ctx, traceFiles, metrics, traceFormat, evalSetFile, judgeModelName, threshold, rubricTexts, jevQuestionsFile)
 		if err != nil {
@@ -918,4 +967,40 @@ func deleteRoleBindingHandler(backend *mcpBackend) server.ToolHandlerFunc {
 		}
 		return mcp.NewToolResultStructuredOnly(out), nil
 	}
+}
+
+// confineToRoot resolves p (symlinks included) and returns it only if it lies inside root, so an MCP client
+// cannot make evaluate_traces read, and send to a judge model, files elsewhere on the machine.
+func confineToRoot(root, p string) (string, error) {
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(root, p)
+	}
+	resolved, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return "", fmt.Errorf("cannot read %s: %v", p, err)
+	}
+	rel, err := filepath.Rel(root, resolved)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%s is outside the allowed directory %s (set --trace-dir to change it)", p, root)
+	}
+	return resolved, nil
+}
+
+// tokenSafeFor reports whether a credential may be sent to serverURL: https, or plain http to this machine.
+func tokenSafeFor(serverURL string) bool {
+	u, err := url.Parse(serverURL)
+	if err != nil {
+		return false
+	}
+	if u.Scheme == "https" {
+		return true
+	}
+	if u.Scheme != "http" {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }

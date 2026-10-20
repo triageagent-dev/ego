@@ -192,19 +192,20 @@ Cursor, GitHub Copilot CLI and others.
 | Tool | Needs `serve`? | Description |
 |---|---|---|
 | `list_metrics` | yes | Available metrics and their requirements. |
-| `evaluate_traces` | no | Evaluate local trace file(s) against selected metrics. |
+| `evaluate_traces` | no | Evaluate local trace file(s) against selected metrics. Reads only files under `--trace-dir` (default: the current directory). |
 | `list_sessions` | yes | Recent streaming sessions, newest first. |
 | `summarize_session` | yes | A session's invocations, tool calls and messages. |
 | `list_runs` | yes, `--session-db` | Past evaluation runs. |
 | `get_run_results` | yes, `--session-db` | One run's summary and per-case results. |
-| `list_role_bindings`, `set_role_binding`, `delete_role_binding` | yes, `--session-secret`, admin | Manage roles. |
+| `list_role_bindings`, `set_role_binding`, `delete_role_binding` | yes, `--session-secret`, admin | Manage roles. Registered only with `--admin-tools`. |
 
 ```bash
 EGO_SERVER_URL=https://ego.example.com ./bin/ego mcp
 ```
 
 If that server has GitHub OAuth on, `ego mcp` authenticates with `--session-token`/`EGO_SESSION_TOKEN`, or
-with `gh auth token` when you are logged in as a member of the deployment's GitHub org. To mint a long-lived
+with `gh auth token` when you are logged in as a member of the deployment's GitHub org (that token is sent only to an
+https server or to localhost; use `--session-token` for anything else, or `--no-gh-auth` to never use it). To mint a long-lived
 token for a client with no `gh`:
 
 ```bash

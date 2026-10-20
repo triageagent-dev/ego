@@ -42,7 +42,8 @@ What ego supports today, and what it does not.
 - `/api/health` is never gated. The OTLP receivers take an optional bearer token (`--otlp-token`) instead of the login.
 
 **MCP** (`ego mcp`, stdio): `list_metrics`, `evaluate_traces`, `list_sessions`, `summarize_session`,
-`list_runs`, `get_run_results`, `list_role_bindings`, `set_role_binding`, `delete_role_binding`.
+`list_runs`, `get_run_results`; with `--admin-tools` also `list_role_bindings`, `set_role_binding`, `delete_role_binding`.
+`evaluate_traces` reads only under `--trace-dir`; the `gh` token goes only to https or loopback servers.
 
 ## Not supported yet
 

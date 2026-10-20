@@ -130,7 +130,7 @@ Usage:
   ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n]
                    [--admin-github-users user1,user2] [--default-role member]
   ego auth mint-token --name <label> [--ttl-days 90] [--secret ...]
-  ego mcp [--server-url http://localhost:8001] [--session-token ...]
+  ego mcp [--server-url http://localhost:8001] [--session-token ...] [--trace-dir dir] [--admin-tools]
   ego version
 
 Run flags:
