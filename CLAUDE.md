@@ -61,7 +61,7 @@ streaming** path for the UI.
   - Auth (`oauth.go`, `sessionauth.go`, `githubtoken.go`) is active only with `--session-secret` /
     `EGO_SESSION_SECRET`: GitHub OAuth signed cookie, or bearer tokens (minted via `auth mint-token`,
     or a raw GitHub token validated against org membership). `server.go` wraps the main mux in
-    `requireSession` + `withRole`; OTLP receivers and `/api/health` are never gated.
+    `requireSession` + `withRole`; `/api/health` is never gated; OTLP receivers use the optional ingest token (`ingestauth.go`), not the session.
   - RBAC (`roles.go`, `roleshandlers.go`): `RoleStore` exists only when a session
     secret is set (otherwise `nil` and the feature is fully inert - preserve that). Roles admin > member >
     viewer; viewers get 403 on write endpoints. An agent-scoped role (`RoleInfo.Scoped`) fails closed:

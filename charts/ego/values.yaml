@@ -90,6 +90,13 @@ containerSecurityContext:
 
 automountServiceAccountToken: false
 
+# -- Bearer token the OTLP receivers (4317, 4318) require from senders. The Secret holds the token (at least 32
+# bytes) under OTLP_TOKEN; senders put it in their exporter headers as "Authorization: Bearer <token>".
+# Off leaves the receivers open, so restrict who can reach them with networkPolicy.
+otlpAuth:
+  enabled: false
+  secret: ego-otlp-token
+
 # -- NetworkPolicy for the pods. When enabled, only the ingress rules listed here are allowed (an empty list
 # denies all ingress, so list the UI/gateway on 8001 and every telemetry producer on 4317/4318). Rules are
 # standard NetworkPolicy ingress rules, for example:

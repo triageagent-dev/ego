@@ -37,7 +37,7 @@ What ego supports today, and what it does not.
 - Roles `admin`, `member`, `viewer`, optionally scoped to agent names (sessions, traces, runs and the live feed;
   Tokens, Quality and eval sets are closed to a scoped role); inert when no session secret is set. Unknown team
   membership is refused, never defaulted. A session with several agents is visible to a role scoped to any one.
-- OTLP receivers and `/api/health` are never gated.
+- `/api/health` is never gated. The OTLP receivers take an optional bearer token (`--otlp-token`) instead of the login.
 
 **MCP** (`ego mcp`, stdio): `list_metrics`, `evaluate_traces`, `list_sessions`, `summarize_session`,
 `list_runs`, `get_run_results`, `list_role_bindings`, `set_role_binding`, `delete_role_binding`.

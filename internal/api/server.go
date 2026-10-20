@@ -51,7 +51,7 @@ const persistInterval = 10 * time.Second
 // The UI is baked into the binary via the ui package's go:embed (see Makefile's build-ui - embedding reads
 // whatever was on disk in ui/dist at `go build` time). Blocks until any listener returns an error or the
 // process receives SIGINT/SIGTERM, in which case it flushes a final snapshot before returning.
-func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits, onlineConfigPath string) error {
+func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits, onlineConfigPath, otlpToken string) error {
 	hub := newSSEHub()
 
 	var store *SessionStore
@@ -143,7 +143,12 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	}
 
 	otlpMux := http.NewServeMux()
-	otlpMux.HandleFunc("/v1/traces", otlpTracesHandler(store))
+	otlpMux.Handle("/v1/traces", requireIngestToken(otlpToken, otlpTracesHandler(store)))
+	if otlpToken != "" {
+		log.Printf("OTLP ingest requires a bearer token (Authorization header / gRPC metadata)")
+	} else {
+		log.Printf("WARNING: OTLP ingest is unauthenticated; anyone who can reach %s and %s can create sessions (set --otlp-token)", otlpAddr, otlpGRPCAddr)
+	}
 
 	healthMux := http.NewServeMux()
 	healthMux.HandleFunc("/api/health", healthHandler)
@@ -168,7 +173,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 			return
 		}
 		log.Printf("ego OTLP/gRPC receiver listening on %s", otlpGRPCAddr)
-		errCh <- newOTLPGRPCServer(store).Serve(lis)
+		errCh <- newOTLPGRPCServer(store, otlpToken).Serve(lis)
 	}()
 	// /api/health and /auth/me stay reachable on addr itself, unwrapped by
 	// requireSession, alongside the dedicated health port: k8s probes hit

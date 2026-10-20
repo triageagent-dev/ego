@@ -61,6 +61,13 @@ spec:
             - --online-config=/etc/ego/online.json
             {{- end }}
           env:
+            {{- if .Values.otlpAuth.enabled }}
+            - name: EGO_OTLP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.otlpAuth.secret }}
+                  key: OTLP_TOKEN
+            {{- end }}
             {{- if .Values.auth.enabled }}
             - name: EGO_GITHUB_CLIENT_ID
               value: {{ .Values.auth.githubClientId | quote }}

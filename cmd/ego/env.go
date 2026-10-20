@@ -17,8 +17,13 @@ const minSecretLen = 32
 // checkSessionSecret rejects a secret that is set but too short. An empty secret is allowed here; it means
 // authentication is off.
 func checkSessionSecret(secret string) error {
+	return checkSecret("session secret", secret)
+}
+
+// checkSecret rejects a secret that is set but shorter than minSecretLen.
+func checkSecret(what, secret string) error {
 	if secret != "" && len(secret) < minSecretLen {
-		return fmt.Errorf("session secret is %d bytes, want at least %d (try: openssl rand -hex 32)", len(secret), minSecretLen)
+		return fmt.Errorf("%s is %d bytes, want at least %d (try: openssl rand -hex 32)", what, len(secret), minSecretLen)
 	}
 	return nil
 }

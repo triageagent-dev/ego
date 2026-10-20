@@ -215,7 +215,12 @@ token for a client with no `gh`:
 
 With no `--session-secret`, `serve` is open. With `--session-secret`, `--github-client-id`,
 `--github-client-secret`, `--github-org` and `--public-url` it requires GitHub OAuth, restricted to members of
-the org. OTLP receivers and `/api/health` are never gated.
+the org. `/api/health` is never gated.
+
+The OTLP receivers do not use the login. They are open unless `--otlp-token` (`EGO_OTLP_TOKEN`, at least 32 bytes) is
+set; then each sender must present it as `Authorization: Bearer <token>` (for the OTLP exporters:
+`OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"`). Without a token, restrict who can reach ports 4317 and
+4318 (the chart has `networkPolicy` and `otlpAuth`); anyone who can reach them can create sessions and append spans.
 
 Roles: `admin`, `member` (default, full read/write) and `viewer` (read-only), assigned to a GitHub user or team and
 optionally limited to certain agent names. A limited role sees only the sessions, traces and runs that involve one
