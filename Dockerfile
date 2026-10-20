@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-bookworm-slim AS ui
+# Build stages run on the builder's own platform and the Go binary is cross-compiled, so a multi-arch build
+# does not run npm and the Go compiler under emulation (the UI assets are the same for every platform).
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS ui
 WORKDIR /build/ui
 # UI_BASE_PATH: set when this image is served under a path prefix behind a
 # reverse proxy (e.g. "/ego/") instead of at domain root. Vite's --base
@@ -14,7 +16,7 @@ RUN npm ci
 COPY ui/ ./
 RUN VITE_API_BASE_URL="${UI_BASE_PATH%/}" npm run build -- --base="${UI_BASE_PATH}"
 
-FROM golang:1.27-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS build
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
@@ -29,7 +31,9 @@ COPY --from=ui /build/ui/dist ./ui/dist
 # CGO_ENABLED=0: modernc.org/sqlite is pure Go, so the binary stays fully
 # static - no libc dependency, safe on a distroless base.
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -trimpath \
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
     -ldflags "-s -w -X github.com/triageagent-dev/ego/internal/api.Version=${VERSION}" \
     -o /ego ./cmd/ego
 
