@@ -55,9 +55,9 @@ Answer with assertiveness:
 
 // formatFinalResponseMatchV2Prompt fills the prompt template.
 func formatFinalResponseMatchV2Prompt(actual, expected adk.Invocation) string {
-	userPrompt := expected.UserContent.Text()
-	response := actual.FinalResponse.Text()
-	reference := expected.FinalResponse.Text()
+	userPrompt := defang(expected.UserContent.Text())
+	response := defang(actual.FinalResponse.Text())
+	reference := defang(expected.FinalResponse.Text())
 	return fmt.Sprintf(finalResponseMatchV2Prompt, userPrompt, response, reference)
 }
 

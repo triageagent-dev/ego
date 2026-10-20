@@ -109,7 +109,7 @@ func parseHallucinationValidationResults(response string) []hallucinationValidat
 // could be scored, plus the per-sentence classifications (label + rationale + supporting/contradicting excerpt)
 // so callers can explain "why" the score came out the way it did.
 func evaluateHallucinationResponse(ctx context.Context, model Model, nlResponse, contextStr string) (*float64, []hallucinationValidationResult, error) {
-	segResp, err := model.Generate(ctx, fmt.Sprintf(hallucinationsSegmenterPrompt, nlResponse))
+	segResp, err := model.Generate(ctx, fmt.Sprintf(hallucinationsSegmenterPrompt, defang(nlResponse)))
 	if err != nil {
 		return nil, nil, fmt.Errorf("segmenter: %w", err)
 	}
@@ -124,11 +124,11 @@ func evaluateHallucinationResponse(ctx context.Context, model Model, nlResponse,
 			sentencesBuilder.WriteString("\n")
 		}
 		sentencesBuilder.WriteString("<sentence>")
-		sentencesBuilder.WriteString(s)
+		sentencesBuilder.WriteString(defang(s))
 		sentencesBuilder.WriteString("</sentence>")
 	}
 
-	valResp, err := model.Generate(ctx, fmt.Sprintf(hallucinationsValidatorPrompt, contextStr, sentencesBuilder.String()))
+	valResp, err := model.Generate(ctx, fmt.Sprintf(hallucinationsValidatorPrompt, defang(contextStr), sentencesBuilder.String()))
 	if err != nil {
 		return nil, nil, fmt.Errorf("validator: %w", err)
 	}
