@@ -12,7 +12,7 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
-    "antd": "^6.6.3",
+    "antd": "^6.6.6",
     "chart.js": "^4.5.1",
     "framer-motion": "^13.2.0",
     "lucide-react": "^1.44.0",
