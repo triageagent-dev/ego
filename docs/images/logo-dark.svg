@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 48" role="img" aria-label="ego">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#41D1FF"/>
+      <stop offset="1" stop-color="#BD34FE"/>
+    </linearGradient>
+  </defs>
+  <g transform="scale(0.75)">
+    <rect width="64" height="64" rx="16" fill="url(#g)"/>
+    <g fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round">
+      <path d="M18 32H46"/>
+      <path d="M46 32A14 14 0 1 0 41.9 41.9"/>
+    </g>
+  </g>
+  <text x="60" y="35" font-family="Archivo, Helvetica, Arial, sans-serif" font-size="32" font-weight="700" letter-spacing="1" fill="#e8eef3">ego</text>
+</svg>

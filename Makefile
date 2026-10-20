@@ -38,7 +38,7 @@ clean:
 #   KO_DOCKER_REPO = ghcr.io/your-org/ego
 #   KUBE_CONTEXT   = your-cluster-context
 -include deploy/local.mk
-BASE_VERSION  ?= 0.24
+BASE_VERSION  ?= 0.1
 VERSION       ?= $(BASE_VERSION).$(shell git rev-list --count HEAD)-$(shell git rev-parse --short HEAD)
 KO_DOCKER_REPO ?= ghcr.io/your-org/ego
 # UI path prefix baked into the build ("/" = unprefixed, what the routes expect).

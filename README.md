@@ -1,6 +1,11 @@
-# ego
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg">
+    <img alt="ego" src="docs/images/logo-light.svg" height="72">
+  </picture>
+</p>
 
-**Reality testing for AI agents.**
+<h3 align="center">Reality testing for AI agents</h3>
 
 In psychology, the ego is the part of the mind that tests reality: it tells what is imagined from what
 actually happened, and holds the self-image up against the world. An agent has the same split.
@@ -27,6 +32,27 @@ One static Go binary: REST API, web UI, OTLP receivers and an MCP server. No SDK
 
 > Work in progress. Interfaces can change between releases. [docs/STATUS.md](docs/STATUS.md) lists what is
 > supported, known simplifications and what is out of scope.
+
+## Install
+
+Each tagged release (`v*.*.*`) publishes a binary per platform (Linux, macOS, Windows; amd64 and arm64) with
+`checksums.txt`, a multi-arch container image and the Helm chart.
+
+```bash
+# binary: downloads the latest release, verifies its checksum
+curl -fsSL https://raw.githubusercontent.com/triageagent-dev/ego/main/install.sh | sh
+# a private repo has no anonymous downloads; use the GitHub CLI instead
+gh release download --repo triageagent-dev/ego --pattern 'ego_*_linux_amd64.tar.gz'
+
+# container
+docker run -p 8001:8001 -p 4318:4318 ghcr.io/triageagent-dev/ego:latest
+
+# Kubernetes
+helm install ego oci://ghcr.io/triageagent-dev/charts/ego --version 0.1.0 -f values.yaml
+```
+
+`ego version` prints the installed version. To cut a release, push a tag: `git tag v0.1.0 && git push origin v0.1.0`.
+Running the *Release* workflow by hand builds the binaries without publishing anything.
 
 ## Quick start
 

@@ -6,7 +6,7 @@
 nameOverride: ""
 
 image:
-  repository: ghcr.io/your-org/ego
+  repository: ghcr.io/triageagent-dev/ego
   # -- Defaults to Chart.appVersion; `make deploy` sets it to the image it built.
   tag: ""
   pullPolicy: IfNotPresent

@@ -104,6 +104,9 @@ func main() {
 		err = authCmd(os.Args[2:])
 	case "mcp":
 		err = mcpCmd(os.Args[2:])
+	case "version", "-v", "--version":
+		fmt.Println("ego", api.Version)
+		return
 	case "help", "-h", "--help":
 		usage()
 		return
@@ -128,6 +131,7 @@ Usage:
                    [--admin-github-users user1,user2] [--default-role member]
   ego auth mint-token --name <label> [--ttl-days 3650] [--secret ...]
   ego mcp [--server-url http://localhost:8001] [--session-token ...]
+  ego version
 
 Run flags:
   --eval-set string            golden eval set JSON (required for tool_trajectory_avg_score, response_match_score,

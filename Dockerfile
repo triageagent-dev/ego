@@ -28,7 +28,10 @@ COPY ui/embed.go ./ui/embed.go
 COPY --from=ui /build/ui/dist ./ui/dist
 # CGO_ENABLED=0: modernc.org/sqlite is pure Go, so the binary stays fully
 # static - no libc dependency, safe on a distroless base.
-RUN CGO_ENABLED=0 go build -trimpath -o /ego ./cmd/ego
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags "-s -w -X github.com/triageagent-dev/ego/internal/api.Version=${VERSION}" \
+    -o /ego ./cmd/ego
 
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
