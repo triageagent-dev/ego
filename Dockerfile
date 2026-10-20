@@ -2,7 +2,7 @@
 
 # Build stages run on the builder's own platform and the Go binary is cross-compiled, so a multi-arch build
 # does not run npm and the Go compiler under emulation (the UI assets are the same for every platform).
-FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS ui
+FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS ui
 WORKDIR /build/ui
 # UI_BASE_PATH: set when this image is served under a path prefix behind a
 # reverse proxy (e.g. "/ego/") instead of at domain root. Vite's --base
