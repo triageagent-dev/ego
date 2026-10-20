@@ -593,6 +593,8 @@ export interface LiveSession {
   errors?: number;
   // Distinct gen_ai.agent.name and model values on the session's spans, in the order first seen.
   agents?: string[];
+  // Tenants of the session: the sender's tenant, or the tenant attribute values on its spans.
+  tenants?: string[];
   models?: string[];
   // Span window (earliest span start to latest span end), not ingest time.
   durationMs?: number;

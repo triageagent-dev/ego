@@ -45,7 +45,7 @@ func TestParseToken_RejectsWrongSecretGarbageAndExpired(t *testing.T) {
 			t.Errorf("accepted %q", bad)
 		}
 	}
-	expired, _ := MintAPIToken("ci", "s", RoleMember, -time.Hour)
+	expired, _ := MintAPIToken("ci", "s", RoleMember, nil, -time.Hour)
 	if _, ok := readSessionCookie(expired, "s"); ok {
 		t.Error("accepted an expired token")
 	}
@@ -57,7 +57,7 @@ func TestParseToken_RejectsWrongSecretGarbageAndExpired(t *testing.T) {
 }
 
 func TestParseToken_UsernameMayContainSeparator(t *testing.T) {
-	tok, _ := MintAPIToken("team|ci", "s", RoleViewer, time.Hour)
+	tok, _ := MintAPIToken("team|ci", "s", RoleViewer, nil, time.Hour)
 	got, ok := parseToken(tok, "s")
 	if !ok || got.Username != "team|ci" || got.Role != RoleViewer {
 		t.Fatalf("parseToken = %+v, %v", got, ok)
@@ -103,7 +103,7 @@ func TestRequireSession_CookieAndTokenAreNotInterchangeable(t *testing.T) {
 	const secret = "kind-secret"
 	handler := requireSession(secret, nil, nil, okHandler())
 	cookie := mintSessionCookie("alice", secret)
-	token, _ := MintAPIToken("ci", secret, RoleMember, time.Hour)
+	token, _ := MintAPIToken("ci", secret, RoleMember, nil, time.Hour)
 
 	if code := serve(handler, func(r *http.Request) { r.AddCookie(&http.Cookie{Name: sessionCookieName, Value: cookie}) }); code != http.StatusOK {
 		t.Errorf("cookie as cookie = %d, want 200", code)
@@ -130,9 +130,9 @@ func TestRevocation_ByIDAndBySubject(t *testing.T) {
 		return func(r *http.Request) { r.Header.Set("Authorization", "Bearer "+tok) }
 	}
 
-	a, aID := MintAPIToken("ci", secret, RoleMember, time.Hour)
-	b, _ := MintAPIToken("ci", secret, RoleMember, time.Hour)
-	other, _ := MintAPIToken("other", secret, RoleMember, time.Hour)
+	a, aID := MintAPIToken("ci", secret, RoleMember, nil, time.Hour)
+	b, _ := MintAPIToken("ci", secret, RoleMember, nil, time.Hour)
+	other, _ := MintAPIToken("other", secret, RoleMember, nil, time.Hour)
 
 	if err := revoked.RevokeToken(aID, time.Now().Add(time.Hour).Unix()); err != nil {
 		t.Fatal(err)
@@ -216,5 +216,29 @@ func TestAPITokenRoleComesFromTheTokenNotFromBindings(t *testing.T) {
 	person := identity{Username: "octocat", Kind: tokenKindSession}
 	if info := roleForIdentity(req, store, "", nil, person); !info.IsAdmin {
 		t.Errorf("the user octocat got %+v, want admin from the binding", info)
+	}
+}
+
+func TestAPITokenCarriesItsTenants(t *testing.T) {
+	tok, _ := MintAPIToken("acme-ci", "s", RoleViewer, []string{"acme", "acme-eu"}, time.Hour)
+	got, ok := parseToken(tok, "s")
+	if !ok || len(got.Tenants) != 2 || got.Tenants[1] != "acme-eu" {
+		t.Fatalf("parseToken = %+v, %v", got, ok)
+	}
+	store, _ := NewRoleStore(nil, RoleMember, nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	info := roleForIdentity(req, store, "", nil, identity{Username: got.Username, Kind: tokenKindAPI, Role: got.Role, Tenants: got.Tenants})
+	if !info.TenantScoped() || info.AllowsAnyTenant([]string{"globex"}) || !info.AllowsAnyTenant([]string{"acme"}) {
+		t.Fatalf("a token minted for acme got %+v", info)
+	}
+	open, _ := MintAPIToken("ci", "s", RoleViewer, nil, time.Hour)
+	if p, _ := parseToken(open, "s"); len(p.Tenants) != 0 {
+		t.Fatalf("a token minted without tenants has %v", p.Tenants)
+	}
+	if _, err := ParseTenantList("acme,Bad Name"); err == nil {
+		t.Error("an invalid tenant name was accepted")
+	}
+	if l, err := ParseTenantList(" acme , globex ,"); err != nil || len(l) != 2 {
+		t.Errorf("ParseTenantList = %v, %v", l, err)
 	}
 }

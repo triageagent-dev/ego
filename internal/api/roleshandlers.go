@@ -21,6 +21,7 @@ type roleBindingRequest struct {
 	Subject     string   `json:"subject"`
 	Role        string   `json:"role"`
 	Agents      []string `json:"agents,omitempty"`
+	Tenants     []string `json:"tenants,omitempty"`
 }
 
 // writeRoleForbidden matches writeEvaluateError's envelope shape - kept
@@ -67,6 +68,7 @@ func adminRolesHandler(roleStore *RoleStore) http.HandlerFunc {
 				Subject:     req.Subject,
 				Role:        role,
 				Agents:      req.Agents,
+				Tenants:     req.Tenants,
 			})
 			if err != nil {
 				writeEvaluateError(w, http.StatusBadRequest, err.Error())

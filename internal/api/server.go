@@ -54,6 +54,9 @@ const persistInterval = 10 * time.Second
 // process receives SIGINT/SIGTERM, in which case it flushes a final snapshot before returning.
 func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits, onlineConfigPath, otlpToken string) error {
 	interactiveEval.setDailyCap(limits.EvalDailyTokens)
+	if limits.UsageTenantAttr == "" {
+		limits.UsageTenantAttr = DefaultTenantAttr
+	}
 	hub := newSSEHub()
 
 	var store *SessionStore
@@ -92,6 +95,11 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		onlineStop := make(chan struct{})
 		defer close(onlineStop)
 		onlineEngine.Start(onlineStop)
+	}
+
+	tenantStore, err := NewTenantStore(archive)
+	if err != nil {
+		return err
 	}
 
 	var revoked *revocations
@@ -139,6 +147,10 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/admin/roles", adminRolesHandler(roleStore))
 	mux.HandleFunc("/api/admin/roles/{id}", adminRoleByIDHandler(roleStore))
 	mux.HandleFunc("/api/admin/revocations", adminRevocationsHandler(revoked))
+	mux.HandleFunc("/api/admin/tenants", adminTenantsHandler(tenantStore))
+	mux.HandleFunc("/api/admin/tenants/{id}", adminTenantByIDHandler(tenantStore))
+	mux.HandleFunc("/api/admin/tenants/{id}/tokens", adminTenantTokensHandler(tenantStore))
+	mux.HandleFunc("/api/admin/tenants/{id}/tokens/{tokenId}", adminTenantTokenByIDHandler(tenantStore))
 
 	uiDist, err := fs.Sub(uiassets.DistFS, "dist")
 	if err != nil {
@@ -154,8 +166,9 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	}
 
 	otlpMux := http.NewServeMux()
-	otlpMux.Handle("/v1/traces", requireIngestToken(otlpToken, otlpTracesHandler(store)))
-	if otlpToken != "" {
+	ingest := &ingestAuth{globalToken: otlpToken, tenants: tenantStore}
+	otlpMux.Handle("/v1/traces", ingest.middleware(otlpTracesHandler(store)))
+	if ingest.required() {
 		log.Printf("OTLP ingest requires a bearer token (Authorization header / gRPC metadata)")
 	} else {
 		log.Printf("WARNING: OTLP ingest is unauthenticated; anyone who can reach %s and %s can create sessions (set --otlp-token)", otlpAddr, otlpGRPCAddr)
@@ -184,7 +197,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 			return
 		}
 		log.Printf("ego OTLP/gRPC receiver listening on %s", otlpGRPCAddr)
-		errCh <- newOTLPGRPCServer(store, otlpToken).Serve(lis)
+		errCh <- newOTLPGRPCServer(store, ingest).Serve(lis)
 	}()
 	// /api/health and /auth/me stay reachable on addr itself, unwrapped by
 	// requireSession, alongside the dedicated health port: k8s probes hit
@@ -293,7 +306,7 @@ func otlpTracesHandler(store *SessionStore) http.HandlerFunc {
 			}
 		}
 
-		store.Ingest(body)
+		store.IngestFor(ingestTenant(r.Context()), body)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -339,17 +352,17 @@ func sessionsHandler(store *SessionStore) http.HandlerFunc {
 		// memory.
 		if id := r.URL.Query().Get("id"); id != "" {
 			one := []SessionSummary{}
-			if sum, ok := store.Summary(id); ok && info.AllowsAnyAgent(sum.Agents) {
+			if sum, ok := store.Summary(id); ok && info.AllowsSession(sum.Agents, sum.Tenants) {
 				one = append(one, sum)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": one, "error": nil})
 			return
 		}
 		all := store.List()
-		if info.Scoped() {
+		if info.Scoped() || info.TenantScoped() {
 			visible := all[:0]
 			for _, sum := range all {
-				if info.AllowsAnyAgent(sum.Agents) {
+				if info.AllowsSession(sum.Agents, sum.Tenants) {
 					visible = append(visible, sum)
 				}
 			}
@@ -363,11 +376,11 @@ func sessionsHandler(store *SessionStore) http.HandlerFunc {
 // only when one of the session's agents is in scope. A session out of scope is answered like a missing one.
 func sessionInScope(store *SessionStore, r *http.Request, sessionID string) bool {
 	info := roleInfoOrOpen(r.Context())
-	if !info.Scoped() {
+	if !info.Scoped() && !info.TenantScoped() {
 		return true
 	}
 	sum, ok := store.Summary(sessionID)
-	return ok && info.AllowsAnyAgent(sum.Agents)
+	return ok && info.AllowsSession(sum.Agents, sum.Tenants)
 }
 
 // createEvalSetRequest is POST /api/streaming/create-eval-set's request body.

@@ -25,6 +25,7 @@ type identity struct {
 	Username string
 	Kind     string
 	Role     Role // API tokens: the role the token was minted with.
+	Tenants  []string
 	TokenID  string
 	Expiry   int64
 }
@@ -69,7 +70,7 @@ func authenticate(r *http.Request, secret string, ghTokens *githubTokenValidator
 		token := strings.TrimSpace(auth[7:])
 		if t, ok := parseToken(token, secret); ok {
 			if t.Kind == tokenKindAPI && !revoked.revoked(t) {
-				return identity{Username: t.Username, Kind: t.Kind, Role: t.Role, TokenID: t.ID, Expiry: t.Expiry}, true
+				return identity{Username: t.Username, Kind: t.Kind, Role: t.Role, Tenants: t.Tenants, TokenID: t.ID, Expiry: t.Expiry}, true
 			}
 			return identity{}, false
 		}

@@ -64,8 +64,11 @@ type RoleBinding struct {
 	Subject     string   `json:"subject"`     // GitHub login, or "org/team-slug"
 	Role        Role     `json:"role"`
 	Agents      []string `json:"agents,omitempty"`
-	CreatedAt   string   `json:"createdAt"`
-	UpdatedAt   string   `json:"updatedAt"`
+	// Tenants, when non-empty, limits what the subject can see to data of those tenants (a sender'"'"'s tenant, see
+	// tenants.go); empty means every tenant. Combined with Agents, both must allow.
+	Tenants   []string `json:"tenants,omitempty"`
+	CreatedAt string   `json:"createdAt"`
+	UpdatedAt string   `json:"updatedAt"`
 }
 
 // subjectKey is the lowercase "type:subject" form matched against a
@@ -248,7 +251,9 @@ type RoleInfo struct {
 	// Agents, when non-nil, is the exhaustive set of agent names this
 	// request may see - nil means unrestricted (every RoleAdmin request,
 	// or any request with no Agents-scoped binding at its winning rank).
-	Agents  []string
+	Agents []string
+	// Tenants, when non-nil, is the exhaustive set of tenants this request may see - nil means every tenant.
+	Tenants []string
 	IsAdmin bool
 	// Unresolved is set when the request's team membership is unknown and a team binding could have changed
 	// its role: the request is refused rather than given defaultRole.
@@ -259,12 +264,40 @@ type RoleInfo struct {
 // (POST /api/evaluate, /api/evaluate/stream, /api/evalsets); every role
 // except RoleViewer can.
 func (info RoleInfo) CanWrite() bool {
-	return info.Role != RoleViewer
+	// Runs and eval sets carry no tenant, so a tenant-scoped role cannot create them without leaking into other
+	// tenants'"'"' views.
+	return info.Role != RoleViewer && !info.TenantScoped()
 }
 
 // Scoped reports whether info is limited to a set of agents.
 func (info RoleInfo) Scoped() bool {
 	return info.Agents != nil
+}
+
+// TenantScoped reports whether info is limited to a set of tenants.
+func (info RoleInfo) TenantScoped() bool {
+	return info.Tenants != nil
+}
+
+// AllowsAnyTenant reports whether info may see data belonging to any one of tenants. For a tenant-scoped role data
+// with no tenant is not visible.
+func (info RoleInfo) AllowsAnyTenant(tenants []string) bool {
+	if !info.TenantScoped() {
+		return true
+	}
+	for _, t := range tenants {
+		for _, a := range info.Tenants {
+			if t != "" && t == a {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// AllowsSession reports whether info may see a session with these agents and tenants: both scopes must allow.
+func (info RoleInfo) AllowsSession(agents, tenants []string) bool {
+	return info.AllowsAnyAgent(agents) && info.AllowsAnyTenant(tenants)
 }
 
 // AllowsAgent reports whether info may see a result attributed to agentName. A scoped role never sees a
@@ -298,6 +331,9 @@ func (info RoleInfo) AllowsAnyAgent(agentNames []string) bool {
 // runVisibleForRole hides a run from a scoped role unless one of the run's agents is in scope; a run that is
 // still running (no Summary yet) or whose agent could not be resolved is hidden too.
 func runVisibleForRole(run runDTO, info RoleInfo) bool {
+	if info.TenantScoped() {
+		return false
+	}
 	if !info.Scoped() {
 		return true
 	}
@@ -310,6 +346,17 @@ func runVisibleForRole(run runDTO, info RoleInfo) bool {
 // denyScoped answers 403 and reports true for a scoped role on an endpoint whose data cannot be attributed to
 // an agent (usage totals, eval sets, online scores): showing it would show every agent's data.
 func denyScoped(w http.ResponseWriter, r *http.Request) bool {
+	info := roleInfoOrOpen(r.Context())
+	if !info.Scoped() && !info.TenantScoped() {
+		return false
+	}
+	writeEvaluateError(w, http.StatusForbidden, "this view is not available to an agent- or tenant-scoped role")
+	return true
+}
+
+// denyAgentScoped is denyScoped for views that tenants can be filtered on (usage, online scores): only a role
+// scoped to agents is refused, since those rows say nothing about agents.
+func denyAgentScoped(w http.ResponseWriter, r *http.Request) bool {
 	if !roleInfoOrOpen(r.Context()).Scoped() {
 		return false
 	}
@@ -349,7 +396,7 @@ func (s *RoleStore) EffectiveRole(username string, teams []string, teamsKnown bo
 	}
 	if len(matched) == 0 {
 		if !teamsKnown && hasTeamBinding(bindings) {
-			return RoleInfo{Role: RoleViewer, Agents: []string{}, Unresolved: true}
+			return RoleInfo{Role: RoleViewer, Agents: []string{}, Tenants: []string{}, Unresolved: true}
 		}
 		return RoleInfo{Role: s.defaultRole, Agents: nil, IsAdmin: s.defaultRole == RoleAdmin}
 	}
@@ -361,29 +408,33 @@ func (s *RoleStore) EffectiveRole(username string, teams []string, teamsKnown bo
 		}
 	}
 
-	unrestricted := false
-	agentSet := map[string]bool{}
+	agents := unionScope(matched, best, func(b RoleBinding) []string { return b.Agents })
+	tenants := unionScope(matched, best, func(b RoleBinding) []string { return b.Tenants })
+	return RoleInfo{Role: best, Agents: agents, Tenants: tenants, IsAdmin: best == RoleAdmin}
+}
+
+// unionScope unions one scope list (agents or tenants) over the bindings at the winning rank; if any of them has an
+// empty list it is unrestricted, so the result is nil.
+func unionScope(matched []RoleBinding, best Role, list func(RoleBinding) []string) []string {
+	set := map[string]bool{}
 	for _, b := range matched {
 		if b.Role != best {
 			continue
 		}
-		if len(b.Agents) == 0 {
-			unrestricted = true
-			continue
+		l := list(b)
+		if len(l) == 0 {
+			return nil
 		}
-		for _, a := range b.Agents {
-			agentSet[a] = true
+		for _, v := range l {
+			set[v] = true
 		}
 	}
-
-	var agents []string
-	if !unrestricted {
-		for a := range agentSet {
-			agents = append(agents, a)
-		}
-		sort.Strings(agents)
+	out := make([]string, 0, len(set))
+	for v := range set {
+		out = append(out, v)
 	}
-	return RoleInfo{Role: best, Agents: agents, IsAdmin: best == RoleAdmin}
+	sort.Strings(out)
+	return out
 }
 
 func hasTeamBinding(bindings []RoleBinding) bool {
@@ -442,7 +493,11 @@ func roleInfoOrOpen(ctx context.Context) RoleInfo {
 // strongest matching role binding (see EffectiveRole); unknown team membership comes back Unresolved.
 func roleForIdentity(r *http.Request, roleStore *RoleStore, org string, ghTokens *githubTokenValidator, id identity) RoleInfo {
 	if id.Kind == tokenKindAPI {
-		return RoleInfo{Role: id.Role, IsAdmin: id.Role == RoleAdmin}
+		info := RoleInfo{Role: id.Role, IsAdmin: id.Role == RoleAdmin}
+		if len(id.Tenants) > 0 {
+			info.Tenants = id.Tenants
+		}
+		return info
 	}
 	teams, known := resolveTeamsForRequest(r, roleStore, org, ghTokens, id)
 	return roleStore.EffectiveRole(id.Username, teams, known)

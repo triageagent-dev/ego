@@ -76,6 +76,10 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := ensureTenantsSchema(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if err := ensureRevocationsSchema(db); err != nil {
 		db.Close()
 		return nil, err
@@ -97,6 +101,7 @@ type sessionSnapshot struct {
 	TraceIDs    []string         `json:"trace_ids,omitempty"`
 	Spans       []*tracepkg.Span `json:"spans,omitempty"`
 	StartedAt   time.Time        `json:"started_at"`
+	Tenant      string           `json:"tenant,omitempty"`
 	HasRootSpan bool             `json:"has_root_span,omitempty"`
 	IsComplete  bool             `json:"is_complete,omitempty"`
 	CompletedAt *time.Time       `json:"completed_at,omitempty"`
@@ -119,6 +124,7 @@ func snapshotOf(s *Session) sessionSnapshot {
 	}
 	return sessionSnapshot{
 		SessionID:   s.ID,
+		Tenant:      s.Tenant,
 		TraceID:     s.PrimaryTraceID,
 		EvalSetID:   s.EvalSetID,
 		Metadata:    s.Metadata,

@@ -340,7 +340,7 @@ func evaluateHandler(store *SQLiteStore) http.HandlerFunc {
 			return
 		}
 		if !roleInfoOrOpen(r.Context()).CanWrite() {
-			writeEvaluateError(w, http.StatusForbidden, "viewer role cannot run evaluations")
+			writeEvaluateError(w, http.StatusForbidden, "this role cannot run evaluations")
 			return
 		}
 
@@ -400,7 +400,7 @@ func evaluateStreamHandler(store *SQLiteStore) http.HandlerFunc {
 			return
 		}
 		if !roleInfoOrOpen(r.Context()).CanWrite() {
-			writeEvaluateError(w, http.StatusForbidden, "viewer role cannot run evaluations")
+			writeEvaluateError(w, http.StatusForbidden, "this role cannot run evaluations")
 			return
 		}
 		flusher, ok := w.(http.Flusher)

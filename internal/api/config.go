@@ -124,6 +124,7 @@ func authMeHandler(sessionSecret string, ghTokens *githubTokenValidator, revoked
 			}
 			resp["role"] = string(info.Role)
 			resp["agents"] = info.Agents // nil (omitted as JSON null) means unrestricted.
+			resp["tenants"] = info.Tenants
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	}

@@ -45,7 +45,7 @@ func usageWindow(r *http.Request) (from, to time.Time, bucketMs int64) {
 // usageHandler implements GET /api/usage: token usage cells for the window.
 func usageHandler(store *SQLiteStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if denyScoped(w, r) {
+		if denyAgentScoped(w, r) {
 			return
 		}
 		if store == nil {
@@ -57,7 +57,7 @@ func usageHandler(store *SQLiteStore) http.HandlerFunc {
 			return
 		}
 		from, to, bucketMs := usageWindow(r)
-		buckets, err := store.UsageSeries(from, to, bucketMs)
+		buckets, err := store.UsageSeries(from, to, bucketMs, roleInfoOrOpen(r.Context()).Tenants)
 		if err != nil {
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to read usage: "+err.Error())
 			return
@@ -76,7 +76,7 @@ func usageHandler(store *SQLiteStore) http.HandlerFunc {
 // With group=session it ranks sessions instead (TopUsageSessions).
 func usageCallsHandler(store *SQLiteStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if denyScoped(w, r) {
+		if denyAgentScoped(w, r) {
 			return
 		}
 		if store == nil {
@@ -93,7 +93,7 @@ func usageCallsHandler(store *SQLiteStore) http.HandlerFunc {
 			limit = min(v, 500)
 		}
 		if r.URL.Query().Get("group") == "session" {
-			sessions, err := store.TopUsageSessions(from, to, limit)
+			sessions, err := store.TopUsageSessions(from, to, limit, roleInfoOrOpen(r.Context()).Tenants)
 			if err != nil {
 				writeEvaluateError(w, http.StatusInternalServerError, "failed to read usage sessions: "+err.Error())
 				return
@@ -101,7 +101,7 @@ func usageCallsHandler(store *SQLiteStore) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, map[string]any{"data": sessions, "error": nil})
 			return
 		}
-		calls, err := store.TopUsageCalls(from, to, limit)
+		calls, err := store.TopUsageCalls(from, to, limit, roleInfoOrOpen(r.Context()).Tenants)
 		if err != nil {
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to read usage calls: "+err.Error())
 			return

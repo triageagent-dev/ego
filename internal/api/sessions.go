@@ -40,6 +40,11 @@ type Session struct {
 	CompletedAt    *time.Time
 	Invocations    []InvocationDTO
 	extractor      *incremental.Extractor
+	// Tenant is set when the sender was authenticated as a tenant: the session belongs to it alone, and spans from
+	// any other sender are refused. Empty for sessions from the shared token or an open receiver, whose tenants (if
+	// any) are read from the spans' tenant attribute (tenantAttr).
+	Tenant     string
+	tenantAttr string
 
 	// changeSeq is this session's own stamp from SessionStore.changeSeq as
 	// of its last mutation - only ever set with SessionStore.mu held. A
@@ -72,7 +77,9 @@ type SessionSummary struct {
 	// Agents and Models are the distinct gen_ai.agent.name and model values on the session's spans, in the
 	// order first seen, so the list can say who ran and on what before the session completes.
 	Agents []string `json:"agents,omitempty"`
-	Models []string `json:"models,omitempty"`
+	// Tenants are the session's tenants: the sender's tenant, or the distinct tenant attribute values on its spans.
+	Tenants []string `json:"tenants,omitempty"`
+	Models  []string `json:"models,omitempty"`
 	// DurationMs is the session's span window: earliest span start to
 	// latest span end, in milliseconds. Not CompletedAt - StartedAt, which
 	// is ingest wall-clock and includes the completion grace.
@@ -99,8 +106,10 @@ func summarize(s *Session) SessionSummary {
 	}
 	rootName, llmCalls, errs := spanOutline(s.Spans)
 	agents, models := spanIdentities(s.Spans)
+	tenants := sessionTenants(s)
 	return SessionSummary{
 		Agents:       agents,
+		Tenants:      tenants,
 		Models:       models,
 		RootSpanName: rootName,
 		LLMCalls:     llmCalls,
@@ -122,6 +131,35 @@ const maxIdentities = 6
 
 // spanIdentities returns the distinct agent names (gen_ai.agent.name) and model names on spans, in the order
 // first seen, at most maxIdentities of each.
+// tenantAttrOrDefault is the span attribute tenants are carried in.
+func (s *SessionStore) tenantAttrOrDefault() string {
+	if s.usageTenantAttr == "" {
+		return DefaultTenantAttr
+	}
+	return s.usageTenantAttr
+}
+
+// sessionTenants lists a session's tenants: its owner when it has one, otherwise the distinct values of the tenant
+// attribute on its spans, in the order first seen.
+func sessionTenants(s *Session) []string {
+	if s.Tenant != "" {
+		return []string{s.Tenant}
+	}
+	attr := s.tenantAttr
+	if attr == "" {
+		attr = DefaultTenantAttr
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, sp := range s.Spans {
+		if v := sp.TagString(attr); v != "" && !seen[v] && len(out) < maxIdentities {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 func spanIdentities(spans []*tracepkg.Span) (agents, models []string) {
 	seenAgent, seenModel := map[string]bool{}, map[string]bool{}
 	add := func(list *[]string, seen map[string]bool, v string) {
@@ -303,6 +341,7 @@ func NewSessionStore(hub *sseHub) *SessionStore {
 		idleTimers:       map[string]*time.Timer{},
 		persistedSeq:     map[string]uint64{},
 		completionTimers: map[string]*time.Timer{},
+		usageTenantAttr:  DefaultTenantAttr,
 	}
 }
 
@@ -322,7 +361,9 @@ func NewSessionStoreWithArchive(hub *sseHub, store *SQLiteStore, limits SessionL
 	s.usageRetention = DefaultUsageRetention
 	s.maxMemory = limits.Memory
 	s.sessionRetention = limits.Retention
-	s.usageTenantAttr = limits.UsageTenantAttr
+	if limits.UsageTenantAttr != "" {
+		s.usageTenantAttr = limits.UsageTenantAttr
+	}
 	return s
 }
 
@@ -398,7 +439,7 @@ func (s *SessionStore) LoadPersisted() error {
 	defer s.mu.Unlock()
 	for _, snap := range snapshots {
 		id := snap.SessionID
-		s.sessions[id] = restoreSession(snap)
+		s.sessions[id] = restoreSession(snap, s.usageTenantAttr)
 		s.order = append(s.order, id)
 		if !snap.IsComplete {
 			s.resetIdleTimerLocked(id)
@@ -417,13 +458,15 @@ const restoreBudgetBytes = 16 << 20
 // restoreSession rebuilds a Session from its archived snapshot, with a
 // fresh extractor (see sessionSnapshot) and, for a completed session, its
 // invocations recomputed from the spans.
-func restoreSession(snap sessionSnapshot) *Session {
+func restoreSession(snap sessionSnapshot, tenantAttr string) *Session {
 	traceIDs := make(map[string]struct{}, len(snap.TraceIDs))
 	for _, tid := range snap.TraceIDs {
 		traceIDs[tid] = struct{}{}
 	}
 	sess := &Session{
 		ID:             snap.SessionID,
+		Tenant:         snap.Tenant,
+		tenantAttr:     tenantAttr,
 		PrimaryTraceID: snap.TraceID,
 		EvalSetID:      snap.EvalSetID,
 		Metadata:       snap.Metadata,
@@ -462,7 +505,7 @@ func (s *SessionStore) lookupLocked(sessionID string) (*Session, bool) {
 	if !ok {
 		return nil, false
 	}
-	return restoreSession(snap), true
+	return restoreSession(snap, s.usageTenantAttr), true
 }
 
 // StartPersistence begins a background loop snapshotting every session to
@@ -716,7 +759,15 @@ func (s *SessionStore) Close() error {
 // is also run through that session's incremental extractor, and every resulting update - plus the span itself,
 // plus a session_started event on first sight of a session - is broadcast to connected /stream/ui-updates
 // clients.
+// Ingest stores an export from an unauthenticated or shared-token sender (no tenant of its own).
 func (s *SessionStore) Ingest(body map[string]any) int {
+	return s.IngestFor("", body)
+}
+
+// IngestFor stores an export sent as tenant ("" for none). A tenant sender's spans get the tenant stamped on them,
+// overwriting whatever tenant attribute they carried, its sessions are named "<tenant>:<name>" so two tenants
+// cannot meet in one session, and spans for a session owned by a different tenant are dropped.
+func (s *SessionStore) IngestFor(tenant string, body map[string]any) int {
 	// Decoding a large export is the expensive part and touches no store state, so it happens before the lock is
 	// taken: a big body must not stall every reader of the store while it is parsed.
 	type parsedResource struct {
@@ -732,6 +783,16 @@ func (s *SessionStore) Ingest(body map[string]any) int {
 		p.conversationID, _ = p.resourceAttrs[genAIConversationID].(string)
 		p.evalSetID, _ = p.resourceAttrs[evalSetIDAttr].(string)
 		p.traces = otlp.ParseExportRequest(map[string]any{"resourceSpans": []any{rs}})
+		if tenant != "" {
+			for _, tr := range p.traces {
+				for _, sp := range tr.AllSpans {
+					if sp.Tags == nil {
+						sp.Tags = map[string]any{}
+					}
+					sp.Tags[s.tenantAttrOrDefault()] = tenant
+				}
+			}
+		}
 		parsed = append(parsed, p)
 	}
 
@@ -753,8 +814,15 @@ func (s *SessionStore) Ingest(body map[string]any) int {
 			if name == "" {
 				name = fmt.Sprintf("otlp-%s", shortID(tr.TraceID))
 			}
+			if tenant != "" {
+				name = tenant + ":" + name
+			}
 
-			session, isNew := s.getOrCreateSession(name, tr.TraceID, evalSetID, resourceAttrs)
+			session, isNew := s.getOrCreateSession(name, tr.TraceID, evalSetID, tenant, resourceAttrs)
+			if session.Tenant != tenant {
+				log.Printf("ingest: dropped spans for session %q: it belongs to another sender", name)
+				continue
+			}
 
 			// session_started must reach clients before any update event for this session, so the UI has a
 			// session to attach those events to (LiveStreamingView.tsx's user_input/etc. handlers no-op on an
@@ -804,15 +872,16 @@ func (s *SessionStore) Ingest(body map[string]any) int {
 
 			if s.hub != nil {
 				// Agents are read once per batch: a scoped client is only sent what its agents allow.
-				var agents []string
+				var agents, tenants []string
 				if s.hub.hasScoped() {
 					agents, _ = spanIdentities(session.Spans)
+					tenants = sessionTenants(session)
 				}
 				if isNew {
-					s.hub.broadcastSession(sessionStartedEvent{Type: "session_started", Session: summarize(session)}, session.ID, agents, true)
+					s.hub.broadcastSession(sessionStartedEvent{Type: "session_started", Session: summarize(session)}, session.ID, agents, tenants, true)
 				}
 				for _, u := range updates {
-					s.hub.broadcastSession(u, session.ID, agents, false)
+					s.hub.broadcastSession(u, session.ID, agents, tenants, false)
 				}
 			}
 		}
@@ -820,7 +889,7 @@ func (s *SessionStore) Ingest(body map[string]any) int {
 	return ingested
 }
 
-func (s *SessionStore) getOrCreateSession(name, traceID, evalSetID string, resourceAttrs map[string]any) (*Session, bool) {
+func (s *SessionStore) getOrCreateSession(name, traceID, evalSetID, tenant string, resourceAttrs map[string]any) (*Session, bool) {
 	session := s.sessions[name]
 	if session == nil {
 		// A span for a session evicted from memory: bring it back rather
@@ -836,6 +905,8 @@ func (s *SessionStore) getOrCreateSession(name, traceID, evalSetID string, resou
 	if session == nil {
 		session = &Session{
 			ID:             name,
+			Tenant:         tenant,
+			tenantAttr:     s.usageTenantAttr,
 			PrimaryTraceID: traceID,
 			EvalSetID:      evalSetID,
 			Metadata:       withoutSessionAttrs(resourceAttrs),
@@ -918,9 +989,10 @@ func (s *SessionStore) completeSession(sessionID string) {
 	invocations := session.Invocations
 	rootName, llmCalls, errs := spanOutline(session.Spans)
 	durationMs := spanWindowMs(session.Spans)
-	var agents []string
+	var agents, tenants []string
 	if s.hub != nil && s.hub.hasScoped() {
 		agents, _ = spanIdentities(session.Spans)
+		tenants = sessionTenants(session)
 	}
 	hub := s.hub
 	onComplete := s.onComplete
@@ -940,7 +1012,7 @@ func (s *SessionStore) completeSession(sessionID string) {
 			LLMCalls:     llmCalls,
 			Errors:       errs,
 			DurationMs:   durationMs,
-		}, sessionID, agents, false)
+		}, sessionID, agents, tenants, false)
 	}
 }
 

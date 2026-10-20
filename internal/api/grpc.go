@@ -27,23 +27,23 @@ func (s *traceServiceServer) Export(ctx context.Context, req *coltracepb.ExportT
 	if err != nil {
 		return nil, err
 	}
-	s.store.Ingest(body)
+	s.store.IngestFor(ingestTenant(ctx), body)
 	return &coltracepb.ExportTraceServiceResponse{}, nil
 }
 
 // newOTLPGRPCServer builds the gRPC server for the OTLP trace receiver.
 // Never gated by sessionSecret, matching otlpAddr's HTTP counterpart -
 // trace ingestion is a service-to-service push, not a UI/API call a signed
-// session cookie applies to. A non-empty token is required as a bearer credential.
-func newOTLPGRPCServer(store *SessionStore, token string) *grpc.Server {
+// session cookie applies to. Senders must present a bearer credential when ingest tokens are configured (see ingestAuth).
+func newOTLPGRPCServer(store *SessionStore, auth *ingestAuth) *grpc.Server {
 	opts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(maxOTLPBody),
 		grpc.MaxConcurrentStreams(64),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 30 * time.Second, PermitWithoutStream: false}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{MaxConnectionIdle: 5 * time.Minute, Time: 2 * time.Minute, Timeout: 20 * time.Second}),
 	}
-	if token != "" {
-		opts = append(opts, grpc.UnaryInterceptor(ingestTokenInterceptor(token)))
+	if auth != nil {
+		opts = append(opts, grpc.UnaryInterceptor(auth.interceptor()))
 	}
 	s := grpc.NewServer(opts...)
 	coltracepb.RegisterTraceServiceServer(s, &traceServiceServer{store: store})

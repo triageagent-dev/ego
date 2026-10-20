@@ -218,6 +218,9 @@ func addRoleTools(s *server.MCPServer, backend *mcpBackend) {
 		mcp.WithArray("agents",
 			mcp.Description("Optional agent-name allowlist scoping this binding to Runs for only those agents. Omit/empty for unrestricted."),
 			mcp.Items(map[string]any{"type": "string"})),
+		mcp.WithArray("tenants",
+			mcp.Description("Optional tenant allowlist: the subject sees only data of those tenants (senders with their own ingest token). Omit/empty for every tenant."),
+			mcp.Items(map[string]any{"type": "string"})),
 		mcp.WithString("id",
 			mcp.Description("ID of an existing role binding to update in place (from list_role_bindings). Omit to create a new binding.")),
 	), setRoleBindingHandler(backend))
@@ -881,6 +884,7 @@ type roleBindingMCP struct {
 	Subject     string   `json:"subject"`
 	Role        string   `json:"role"`
 	Agents      []string `json:"agents,omitempty"`
+	Tenants     []string `json:"tenants,omitempty"`
 	CreatedAt   string   `json:"created_at"`
 	UpdatedAt   string   `json:"updated_at"`
 }
@@ -893,6 +897,7 @@ type roleBindingRaw struct {
 	Subject     string   `json:"subject"`
 	Role        string   `json:"role"`
 	Agents      []string `json:"agents,omitempty"`
+	Tenants     []string `json:"tenants,omitempty"`
 	CreatedAt   string   `json:"createdAt"`
 	UpdatedAt   string   `json:"updatedAt"`
 }
@@ -900,7 +905,7 @@ type roleBindingRaw struct {
 func (r roleBindingRaw) toMCP() roleBindingMCP {
 	return roleBindingMCP{
 		ID: r.ID, SubjectType: r.SubjectType, Subject: r.Subject, Role: r.Role,
-		Agents: r.Agents, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		Agents: r.Agents, Tenants: r.Tenants, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }
 
@@ -933,6 +938,7 @@ func setRoleBindingHandler(backend *mcpBackend) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		agents := req.GetStringSlice("agents", nil)
+		tenants := req.GetStringSlice("tenants", nil)
 		id := req.GetString("id", "")
 
 		body := map[string]any{
@@ -942,6 +948,9 @@ func setRoleBindingHandler(backend *mcpBackend) server.ToolHandlerFunc {
 		}
 		if len(agents) > 0 {
 			body["agents"] = agents
+		}
+		if len(tenants) > 0 {
+			body["tenants"] = tenants
 		}
 		if id != "" {
 			body["id"] = id

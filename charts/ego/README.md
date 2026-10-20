@@ -57,6 +57,12 @@ kubectl create secret generic ego-github-oauth --from-literal=GITHUB_CLIENT_SECR
 
 An empty session secret is refused at start (the pod crash-loops) instead of silently serving without a login.
 
+## Tenants
+
+Admins create tenants and per-sender ingest tokens through the API (see the main README, "Tenants"); no chart value is
+needed. Once a tenant has a token, the OTLP receivers require one. The shared `otlpAuth` token keeps working for a
+trusted sender that labels its own tenants.
+
 ## Judges
 
 Judge metrics need a model. On GKE the default is Vertex AI through Workload Identity (`vertex.project`,

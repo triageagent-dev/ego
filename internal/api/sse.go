@@ -48,7 +48,7 @@ func (h *sseHub) register() chan any {
 // registerFor subscribes a client limited by info: a scoped role only receives events of sessions whose agents
 // it may see.
 func (h *sseHub) registerFor(info RoleInfo) chan any {
-	if !info.Scoped() {
+	if !info.Scoped() && !info.TenantScoped() {
 		return h.register()
 	}
 	return h.add(&hubClient{scoped: true, info: info, seen: map[string]bool{}})
@@ -73,19 +73,19 @@ func (h *sseHub) unregister(ch chan any) {
 // blocking the ingest path, since a slow UI client should never stall trace ingestion; it is marked for a
 // resync instead (takeResync).
 func (h *sseHub) broadcast(event any) {
-	h.broadcastSession(event, "", nil, false)
+	h.broadcastSession(event, "", nil, nil, false)
 }
 
-// broadcastSession sends an event about sessionID, whose agents are agents, to every client allowed to see
+// broadcastSession sends an event about sessionID, whose agents and tenants are given, to every client allowed to see
 // it. started marks the session_started event, the only one a scoped client may meet before it has heard of
 // the session; any other event for a session it has not seen yet turns into a resync, so the client reads the
 // list (filtered the same way) instead of building on a session it never received.
-func (h *sseHub) broadcastSession(event any, sessionID string, agents []string, started bool) {
+func (h *sseHub) broadcastSession(event any, sessionID string, agents, tenants []string, started bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for ch, c := range h.clients {
 		if c.scoped {
-			if sessionID == "" || !c.info.AllowsAnyAgent(agents) {
+			if sessionID == "" || !c.info.AllowsSession(agents, tenants) {
 				continue
 			}
 			if !c.seen[sessionID] {

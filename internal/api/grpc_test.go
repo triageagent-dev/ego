@@ -28,7 +28,7 @@ func TestOTLPGRPCReceiver_LiveRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listening: %v", err)
 	}
-	server := newOTLPGRPCServer(store, "")
+	server := newOTLPGRPCServer(store, nil)
 	go func() {
 		_ = server.Serve(lis)
 	}()

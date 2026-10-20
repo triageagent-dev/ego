@@ -48,6 +48,7 @@ interface SessionCardProps {
     };
     startedAt?: string;
     agents?: string[];
+    tenants?: string[];
     models?: string[];
     completedAt?: string | null;
     rootSpanName?: string;
@@ -120,6 +121,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
     '';
   const extraModels = Math.max((session.models?.length ?? 0) - 1, 0);
   const agentLabel = session.agents?.join(' · ') ?? '';
+  const tenantLabel = session.tenants?.join(' · ') ?? '';
 
   const providerName = session.invocations?.[0]?.modelInfo?.provider || null;
 
@@ -147,6 +149,22 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
       }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+            {tenantLabel && (
+              <span
+                title="tenant"
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: 'var(--accent-magenta)',
+                  background: 'rgba(255, 106, 198, 0.1)',
+                  padding: '1px 7px',
+                  borderRadius: 'var(--radius)',
+                }}
+              >
+                {tenantLabel}
+              </span>
+            )}
+
             {agentLabel && (
               <span
                 title="gen_ai.agent.name"

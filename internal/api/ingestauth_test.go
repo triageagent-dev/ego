@@ -18,38 +18,79 @@ import (
 
 const testIngestToken = "0123456789abcdef0123456789abcdef"
 
-func TestRequireIngestToken(t *testing.T) {
-	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+func newTestTenants(t *testing.T) (*TenantStore, string, string) {
+	t.Helper()
+	ts, err := NewTenantStore(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"acme", "globex"} {
+		if _, err := ts.Create(id, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	acme, _, err := ts.NewToken("acme", "ci")
+	if err != nil {
+		t.Fatal(err)
+	}
+	globex, _, err := ts.NewToken("globex", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ts, acme, globex
+}
+
+func TestIngestAuthMiddleware(t *testing.T) {
+	var gotTenant string
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTenant = ingestTenant(r.Context())
+		w.WriteHeader(http.StatusNoContent)
+	})
+	tenants, acme, _ := newTestTenants(t)
+	empty, _ := NewTenantStore(nil)
+
 	for name, tc := range map[string]struct {
-		token, header string
-		want          int
+		auth       *ingestAuth
+		header     string
+		want       int
+		wantTenant string
 	}{
-		"no token configured":     {"", "", http.StatusNoContent},
-		"missing header":          {testIngestToken, "", http.StatusUnauthorized},
-		"wrong token":             {testIngestToken, "Bearer nope", http.StatusUnauthorized},
-		"wrong scheme":            {testIngestToken, testIngestToken, http.StatusUnauthorized},
-		"right token":             {testIngestToken, "Bearer " + testIngestToken, http.StatusNoContent},
-		"scheme case-insensitive": {testIngestToken, "bearer " + testIngestToken, http.StatusNoContent},
+		"open receiver":             {&ingestAuth{tenants: empty}, "", http.StatusNoContent, ""},
+		"nil auth":                  {nil, "", http.StatusNoContent, ""},
+		"shared token missing":      {&ingestAuth{globalToken: testIngestToken, tenants: empty}, "", http.StatusUnauthorized, ""},
+		"shared token wrong":        {&ingestAuth{globalToken: testIngestToken, tenants: empty}, "Bearer nope", http.StatusUnauthorized, ""},
+		"shared token wrong scheme": {&ingestAuth{globalToken: testIngestToken, tenants: empty}, testIngestToken, http.StatusUnauthorized, ""},
+		"shared token":              {&ingestAuth{globalToken: testIngestToken, tenants: empty}, "Bearer " + testIngestToken, http.StatusNoContent, ""},
+		"scheme case-insensitive":   {&ingestAuth{globalToken: testIngestToken, tenants: empty}, "bearer " + testIngestToken, http.StatusNoContent, ""},
+		"tenant token only, none":   {&ingestAuth{tenants: tenants}, "", http.StatusUnauthorized, ""},
+		"tenant token":              {&ingestAuth{tenants: tenants}, "Bearer " + acme, http.StatusNoContent, "acme"},
+		"tenant token and shared":   {&ingestAuth{globalToken: testIngestToken, tenants: tenants}, "Bearer " + testIngestToken, http.StatusNoContent, ""},
+		"unknown tenant token":      {&ingestAuth{tenants: tenants}, "Bearer egt_unknown", http.StatusUnauthorized, ""},
 	} {
+		gotTenant = "unset"
 		req := httptest.NewRequest(http.MethodPost, "/v1/traces", nil)
 		if tc.header != "" {
 			req.Header.Set("Authorization", tc.header)
 		}
 		rec := httptest.NewRecorder()
-		requireIngestToken(tc.token, ok).ServeHTTP(rec, req)
+		tc.auth.middleware(next).ServeHTTP(rec, req)
 		if rec.Code != tc.want {
 			t.Errorf("%s: status %d, want %d", name, rec.Code, tc.want)
+		}
+		if tc.want == http.StatusNoContent && gotTenant != tc.wantTenant {
+			t.Errorf("%s: tenant %q, want %q", name, gotTenant, tc.wantTenant)
 		}
 	}
 }
 
 func TestOTLPGRPCRequiresIngestToken(t *testing.T) {
 	store := NewSessionStore(nil)
+	tenants, acme, _ := newTestTenants(t)
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := newOTLPGRPCServer(store, testIngestToken)
+	server := newOTLPGRPCServer(store, &ingestAuth{globalToken: testIngestToken, tenants: tenants})
 	go func() { _ = server.Serve(lis) }()
 	defer server.Stop()
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -64,8 +105,10 @@ func TestOTLPGRPCRequiresIngestToken(t *testing.T) {
 	if _, err := client.Export(ctx, &coltracepb.ExportTraceServiceRequest{}); status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("Export without a token = %v, want Unauthenticated", err)
 	}
-	authed := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+testIngestToken)
-	if _, err := client.Export(authed, &coltracepb.ExportTraceServiceRequest{}); err != nil {
-		t.Fatalf("Export with the token: %v", err)
+	for _, tok := range []string{testIngestToken, acme} {
+		authed := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tok)
+		if _, err := client.Export(authed, &coltracepb.ExportTraceServiceRequest{}); err != nil {
+			t.Fatalf("Export with a valid token: %v", err)
+		}
 	}
 }

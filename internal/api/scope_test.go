@@ -122,10 +122,10 @@ func TestHubScopedClientGetsOnlyItsAgents(t *testing.T) {
 	defer hub.unregister(scoped)
 	defer hub.unregister(all)
 
-	hub.broadcastSession("started-b", "sb", []string{"b"}, true)
-	hub.broadcastSession("started-a", "sa", []string{"a"}, true)
-	hub.broadcastSession("update-a", "sa", []string{"a"}, false)
-	hub.broadcastSession("update-none", "sn", nil, false)
+	hub.broadcastSession("started-b", "sb", []string{"b"}, nil, true)
+	hub.broadcastSession("started-a", "sa", []string{"a"}, nil, true)
+	hub.broadcastSession("update-a", "sa", []string{"a"}, nil, false)
+	hub.broadcastSession("update-none", "sn", nil, nil, false)
 	hub.broadcast("no-session")
 
 	var got []any
@@ -150,8 +150,8 @@ func TestHubScopedClientResyncsForSessionThatBecomesVisible(t *testing.T) {
 	scoped := hub.registerFor(scopedTo("a"))
 	defer hub.unregister(scoped)
 
-	hub.broadcastSession("started", "late", nil, true)
-	hub.broadcastSession("update", "late", []string{"a"}, false)
+	hub.broadcastSession("started", "late", nil, nil, true)
+	hub.broadcastSession("update", "late", []string{"a"}, nil, false)
 
 	if len(scoped) != 0 {
 		t.Fatalf("scoped client received %d events for an unannounced session, want none", len(scoped))

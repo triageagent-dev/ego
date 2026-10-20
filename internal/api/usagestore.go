@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/adk"
@@ -192,13 +193,30 @@ type usageBucketDTO struct {
 	DurationMs   int64  `json:"durationMs"`
 }
 
+// tenantClause limits a query on llm_calls to the given tenants; nil means no limit and an empty list matches
+// nothing (a role scoped to tenants that have no data).
+func tenantClause(tenants []string) (string, []any) {
+	if tenants == nil {
+		return "", nil
+	}
+	if len(tenants) == 0 {
+		return " AND 0", nil
+	}
+	args := make([]any, len(tenants))
+	for i, t := range tenants {
+		args[i] = t
+	}
+	return " AND tenant IN (" + strings.Repeat("?,", len(tenants)-1) + "?)", args
+}
+
 // UsageSeries aggregates rows in [from, to) into bucketMs-wide cells.
-func (s *SQLiteStore) UsageSeries(from, to time.Time, bucketMs int64) ([]usageBucketDTO, error) {
+func (s *SQLiteStore) UsageSeries(from, to time.Time, bucketMs int64, tenants []string) ([]usageBucketDTO, error) {
+	tc, targs := tenantClause(tenants)
 	rows, err := s.db.Query(`SELECT (start_ms / ?) * ? AS bucket, service, tenant, kind, model,
 			COUNT(*), SUM(is_error), SUM(input_tokens), SUM(output_tokens), SUM(duration_ms)
-		FROM llm_calls WHERE start_ms >= ? AND start_ms < ?
+		FROM llm_calls WHERE start_ms >= ? AND start_ms < ?`+tc+`
 		GROUP BY bucket, service, tenant, kind, model ORDER BY bucket`,
-		bucketMs, bucketMs, from.UnixMilli(), to.UnixMilli())
+		append([]any{bucketMs, bucketMs, from.UnixMilli(), to.UnixMilli()}, targs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -254,13 +272,15 @@ type usageSessionDTO struct {
 
 // TopUsageSessions returns the sessions (per model) that used the most
 // tokens in [from, to).
-func (s *SQLiteStore) TopUsageSessions(from, to time.Time, limit int) ([]usageSessionDTO, error) {
+func (s *SQLiteStore) TopUsageSessions(from, to time.Time, limit int, tenants []string) ([]usageSessionDTO, error) {
+	tc, targs := tenantClause(tenants)
 	rows, err := s.db.Query(`SELECT session_id, MIN(start_ms), MAX(start_ms), COUNT(*), SUM(is_error),
 			COALESCE(GROUP_CONCAT(DISTINCT NULLIF(kind, '')), ''), COALESCE(GROUP_CONCAT(DISTINCT NULLIF(tenant, '')), ''),
 			model, SUM(input_tokens), SUM(output_tokens), MAX(input_tokens + output_tokens), SUM(duration_ms)
-		FROM llm_calls WHERE start_ms >= ? AND start_ms < ?
+		FROM llm_calls WHERE start_ms >= ? AND start_ms < ?`+tc+`
 		GROUP BY session_id, model
-		ORDER BY SUM(input_tokens + output_tokens) DESC LIMIT ?`, from.UnixMilli(), to.UnixMilli(), limit)
+		ORDER BY SUM(input_tokens + output_tokens) DESC LIMIT ?`,
+		append(append([]any{from.UnixMilli(), to.UnixMilli()}, targs...), limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -278,11 +298,13 @@ func (s *SQLiteStore) TopUsageSessions(from, to time.Time, limit int) ([]usageSe
 }
 
 // TopUsageCalls returns the calls in [from, to) with the most total tokens.
-func (s *SQLiteStore) TopUsageCalls(from, to time.Time, limit int) ([]usageCallDTO, error) {
+func (s *SQLiteStore) TopUsageCalls(from, to time.Time, limit int, tenants []string) ([]usageCallDTO, error) {
+	tc, targs := tenantClause(tenants)
 	rows, err := s.db.Query(`SELECT span_id, trace_id, session_id, start_ms, duration_ms, service, tenant, kind, model,
 			name, input_tokens, output_tokens, is_error
-		FROM llm_calls WHERE start_ms >= ? AND start_ms < ?
-		ORDER BY input_tokens + output_tokens DESC LIMIT ?`, from.UnixMilli(), to.UnixMilli(), limit)
+		FROM llm_calls WHERE start_ms >= ? AND start_ms < ?`+tc+`
+		ORDER BY input_tokens + output_tokens DESC LIMIT ?`,
+		append(append([]any{from.UnixMilli(), to.UnixMilli()}, targs...), limit)...)
 	if err != nil {
 		return nil, err
 	}

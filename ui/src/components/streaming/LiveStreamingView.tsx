@@ -171,6 +171,7 @@ export function LiveStreamingView() {
           invocations?: StreamingInvocation[];
           rootSpanName?: string;
           agents?: string[];
+          tenants?: string[];
           models?: string[];
           llmCalls?: number;
           errors?: number;
@@ -183,8 +184,8 @@ export function LiveStreamingView() {
           for (const s of sessions) {
             const existing = newMap.get(s.sessionId);
             if (existing) {
-              if (s.agents?.join() !== existing.agents?.join() || s.models?.join() !== existing.models?.join()) {
-                newMap.set(s.sessionId, { ...existing, agents: s.agents, models: s.models });
+              if (s.agents?.join() !== existing.agents?.join() || s.models?.join() !== existing.models?.join() || s.tenants?.join() !== existing.tenants?.join()) {
+                newMap.set(s.sessionId, { ...existing, agents: s.agents, models: s.models, tenants: s.tenants });
               }
               // Events for this session may have been dropped: take the
               // server's completion rather than staying "active" forever.
@@ -193,6 +194,7 @@ export function LiveStreamingView() {
                   ...existing,
                   status: 'complete',
                   agents: s.agents,
+                  tenants: s.tenants,
                   models: s.models,
                   invocations: s.invocations,
                   liveElements: s.invocations?.length
@@ -225,6 +227,7 @@ export function LiveStreamingView() {
               completedAt: s.completedAt,
               rootSpanName: s.rootSpanName,
               agents: s.agents,
+              tenants: s.tenants,
               models: s.models,
               llmCalls: s.llmCalls,
               errors: s.errors,
@@ -314,6 +317,7 @@ export function LiveStreamingView() {
                 startedAt: data.session.startedAt,
                 rootSpanName: data.session.rootSpanName,
                 agents: data.session.agents,
+                tenants: data.session.tenants,
                 models: data.session.models,
                 llmCalls: data.session.llmCalls,
                 durationMs: data.session.durationMs,

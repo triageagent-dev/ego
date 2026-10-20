@@ -61,7 +61,7 @@ func TestUsageLedger_IngestFlushAndQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cells, err := archive.UsageSeries(time.Now().Add(-24*time.Hour), time.Now(), int64(24*time.Hour/time.Millisecond))
+	cells, err := archive.UsageSeries(time.Now().Add(-24*time.Hour), time.Now(), int64(24*time.Hour/time.Millisecond), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestUsageLedger_IngestFlushAndQuery(t *testing.T) {
 		t.Errorf("got calls=%d in=%d out=%d errors=%d, want 2/1500/150/1 (AGENT parent not counted, duplicate ignored)", calls, in, out, errs)
 	}
 
-	top, err := archive.TopUsageCalls(time.Now().Add(-24*time.Hour), time.Now(), 10)
+	top, err := archive.TopUsageCalls(time.Now().Add(-24*time.Hour), time.Now(), 10, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestUsageLedger_IngestFlushAndQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store2.Close()
-	top, _ = archive2.TopUsageCalls(time.Now().Add(-24*time.Hour), time.Now(), 10)
+	top, _ = archive2.TopUsageCalls(time.Now().Add(-24*time.Hour), time.Now(), 10, nil)
 	if len(top) != 2 {
 		t.Errorf("after restart got %d rows, want 2", len(top))
 	}
@@ -121,7 +121,7 @@ func TestUsageLedger_BackfillsArchiveWithoutLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer restored.Close()
-	top, _ := archive.TopUsageCalls(time.Now().Add(-24*time.Hour), time.Now(), 10)
+	top, _ := archive.TopUsageCalls(time.Now().Add(-24*time.Hour), time.Now(), 10, nil)
 	if len(top) != 1 || top[0].InputTokens != 10 {
 		t.Errorf("backfill rows = %+v, want one row with 10 input tokens", top)
 	}
@@ -216,7 +216,7 @@ func TestUsageLedger_KindFallsBackToTraceRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cells, err := archive.UsageSeries(time.Now().Add(-24*time.Hour), time.Now(), int64(24*time.Hour/time.Millisecond))
+	cells, err := archive.UsageSeries(time.Now().Add(-24*time.Hour), time.Now(), int64(24*time.Hour/time.Millisecond), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestUsageLedger_TopSessionsGroupsTurns(t *testing.T) {
 	if err := archive.InsertUsage(rows); err != nil {
 		t.Fatal(err)
 	}
-	got, err := archive.TopUsageSessions(time.Now().Add(-24*time.Hour), time.Now(), 10)
+	got, err := archive.TopUsageSessions(time.Now().Add(-24*time.Hour), time.Now(), 10, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

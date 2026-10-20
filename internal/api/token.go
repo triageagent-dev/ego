@@ -17,19 +17,20 @@ import (
 //     `ego auth mint-token`, accepted only as a bearer value), so a leaked cookie is not a bearer token;
 //   - an id, so one token can be revoked;
 //   - the time it was issued, so everything issued to a subject before a moment can be revoked at once;
-//   - for an API token, the role it acts with, so its name does not pick up the role of a GitHub user of the
-//     same name.
+//   - for an API token, the role it acts with and the tenants it is limited to, so its name does not pick up the
+//     role of a GitHub user of the same name.
 const (
 	tokenKindSession = "s"
 	tokenKindAPI     = "t"
-	tokenVersion     = "2"
+	tokenVersion     = "3"
 )
 
 type authToken struct {
 	Kind     string
 	ID       string
 	Username string
-	Role     Role // API tokens only.
+	Role     Role     // API tokens only.
+	Tenants  []string // API tokens only; empty means every tenant.
 	IssuedAt int64
 	Expiry   int64
 }
@@ -38,7 +39,7 @@ func (t authToken) encode(secret string) string {
 	payload := strings.Join([]string{
 		tokenVersion, t.Kind, t.ID,
 		strconv.FormatInt(t.IssuedAt, 10), strconv.FormatInt(t.Expiry, 10),
-		string(t.Role), t.Username,
+		string(t.Role), strings.Join(t.Tenants, ","), t.Username,
 	}, "|")
 	return base64.URLEncoding.EncodeToString([]byte(payload + "|" + signSessionPayload(secret, payload)))
 }
@@ -60,8 +61,8 @@ func parseToken(value, secret string) (authToken, bool) {
 		return authToken{}, false
 	}
 	// The username comes last, so it may itself contain the separator.
-	f := strings.SplitN(payload, "|", 7)
-	if len(f) != 7 || f[0] != tokenVersion || (f[1] != tokenKindSession && f[1] != tokenKindAPI) || f[2] == "" || f[6] == "" {
+	f := strings.SplitN(payload, "|", 8)
+	if len(f) != 8 || f[0] != tokenVersion || (f[1] != tokenKindSession && f[1] != tokenKindAPI) || f[2] == "" || f[7] == "" {
 		return authToken{}, false
 	}
 	issued, err1 := strconv.ParseInt(f[3], 10, 64)
@@ -69,22 +70,26 @@ func parseToken(value, secret string) (authToken, bool) {
 	if err1 != nil || err2 != nil || time.Now().Unix() > expiry {
 		return authToken{}, false
 	}
-	t := authToken{Kind: f[1], ID: f[2], IssuedAt: issued, Expiry: expiry, Role: Role(f[5]), Username: f[6]}
+	t := authToken{Kind: f[1], ID: f[2], IssuedAt: issued, Expiry: expiry, Role: Role(f[5]), Username: f[7]}
+	if f[6] != "" {
+		t.Tenants = strings.Split(f[6], ",")
+	}
 	if t.Kind == tokenKindAPI {
 		if _, err := ParseRole(f[5]); err != nil {
 			return authToken{}, false
 		}
-	} else if t.Role != "" {
+	} else if t.Role != "" || len(t.Tenants) > 0 {
 		return authToken{}, false
 	}
 	return t, true
 }
 
-// MintAPIToken signs an API token for a non-browser client, valid for ttl, acting with role. name is a label,
+// MintAPIToken signs an API token for a non-browser client, valid for ttl, acting with role and limited to tenants
+// (none: every tenant). name is a label,
 // logged wherever the token authenticates. The id is returned so the token can be revoked later.
-func MintAPIToken(name, secret string, role Role, ttl time.Duration) (token, id string) {
+func MintAPIToken(name, secret string, role Role, tenants []string, ttl time.Duration) (token, id string) {
 	now := time.Now()
-	t := authToken{Kind: tokenKindAPI, ID: newRandomID("tok"), Username: name, Role: role, IssuedAt: now.Unix(), Expiry: now.Add(ttl).Unix()}
+	t := authToken{Kind: tokenKindAPI, ID: newRandomID("tok"), Username: name, Role: role, Tenants: tenants, IssuedAt: now.Unix(), Expiry: now.Add(ttl).Unix()}
 	return t.encode(secret), t.ID
 }
 

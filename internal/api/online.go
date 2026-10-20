@@ -667,6 +667,20 @@ func writeOnlineUnavailable(w http.ResponseWriter) {
 	})
 }
 
+// filterByTenant keeps the items a tenant-scoped role may see; other roles see all.
+func filterByTenant[T any](items []T, info RoleInfo, tenantOf func(T) string) []T {
+	if !info.TenantScoped() {
+		return items
+	}
+	out := make([]T, 0, len(items))
+	for _, it := range items {
+		if info.AllowsAnyTenant([]string{tenantOf(it)}) {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
 // onlineStatusHandler implements GET /api/online/status.
 func onlineStatusHandler(e *OnlineEngine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -685,7 +699,7 @@ func onlineStatusHandler(e *OnlineEngine) http.HandlerFunc {
 // 168, at most 2160): hourly mean score per (tenant, kind, metric).
 func onlineSeriesHandler(e *OnlineEngine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if denyScoped(w, r) {
+		if denyAgentScoped(w, r) {
 			return
 		}
 		if e == nil {
@@ -701,14 +715,14 @@ func onlineSeriesHandler(e *OnlineEngine) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"data": nil, "error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": points, "error": nil})
+		writeJSON(w, http.StatusOK, map[string]any{"data": filterByTenant(points, roleInfoOrOpen(r.Context()), func(p onlineSeriesPoint) string { return p.Tenant }), "error": nil})
 	}
 }
 
 // onlineAlertsHandler implements GET /api/online/alerts?state=open|all.
 func onlineAlertsHandler(e *OnlineEngine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if denyScoped(w, r) {
+		if denyAgentScoped(w, r) {
 			return
 		}
 		if e == nil {
@@ -724,7 +738,7 @@ func onlineAlertsHandler(e *OnlineEngine) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"data": nil, "error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": alerts, "error": nil})
+		writeJSON(w, http.StatusOK, map[string]any{"data": filterByTenant(alerts, roleInfoOrOpen(r.Context()), func(a *online.Alert) string { return a.Key.Tenant }), "error": nil})
 	}
 }
 
