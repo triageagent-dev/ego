@@ -168,6 +168,8 @@ export function LiveStreamingView() {
           metadata: Record<string, unknown>;
           invocations?: StreamingInvocation[];
           rootSpanName?: string;
+          agents?: string[];
+          models?: string[];
           llmCalls?: number;
           errors?: number;
           durationMs?: number;
@@ -179,12 +181,17 @@ export function LiveStreamingView() {
           for (const s of sessions) {
             const existing = newMap.get(s.sessionId);
             if (existing) {
+              if (s.agents?.join() !== existing.agents?.join() || s.models?.join() !== existing.models?.join()) {
+                newMap.set(s.sessionId, { ...existing, agents: s.agents, models: s.models });
+              }
               // Events for this session may have been dropped: take the
               // server's completion rather than staying "active" forever.
               if (existing.status === 'active' && s.isComplete) {
                 newMap.set(s.sessionId, {
                   ...existing,
                   status: 'complete',
+                  agents: s.agents,
+                  models: s.models,
                   invocations: s.invocations,
                   liveElements: s.invocations?.length
                     ? invocationsToElements(s.invocations)
@@ -215,6 +222,8 @@ export function LiveStreamingView() {
               startedAt: s.startedAt,
               completedAt: s.completedAt,
               rootSpanName: s.rootSpanName,
+              agents: s.agents,
+              models: s.models,
               llmCalls: s.llmCalls,
               errors: s.errors,
               durationMs: s.durationMs,
@@ -302,6 +311,8 @@ export function LiveStreamingView() {
                 },
                 startedAt: data.session.startedAt,
                 rootSpanName: data.session.rootSpanName,
+                agents: data.session.agents,
+                models: data.session.models,
                 llmCalls: data.session.llmCalls,
                 durationMs: data.session.durationMs,
               });

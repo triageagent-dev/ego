@@ -47,6 +47,8 @@ interface SessionCardProps {
       model?: string;
     };
     startedAt?: string;
+    agents?: string[];
+    models?: string[];
     completedAt?: string | null;
     rootSpanName?: string;
     llmCalls?: number;
@@ -114,7 +116,10 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
   const modelName = session.metadata?.model ||
     session.liveStats?.model ||
     session.invocations?.[0]?.modelInfo?.models?.[0] ||
-    'Unknown';
+    session.models?.[0] ||
+    '';
+  const extraModels = Math.max((session.models?.length ?? 0) - 1, 0);
+  const agentLabel = session.agents?.join(' · ') ?? '';
 
   const providerName = session.invocations?.[0]?.modelInfo?.provider || null;
 
@@ -142,6 +147,23 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
       }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+            {agentLabel && (
+              <span
+                title="gen_ai.agent.name"
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: 'var(--accent-cyan)',
+                  background: 'rgba(103, 232, 249, 0.1)',
+                  padding: '1px 7px',
+                  borderRadius: 'var(--radius)',
+                }}
+              >
+                {agentLabel}
+              </span>
+            )}
+
+            {modelName && (
             <span style={{
               fontSize: '11px',
               fontWeight: 600,
@@ -152,8 +174,9 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
               textTransform: 'uppercase',
               letterSpacing: '0.5px',
             }}>
-              {modelName}
+              {modelName}{extraModels > 0 && ` +${extraModels}`}
             </span>
+            )}
 
             {providerName && (
               <span style={{

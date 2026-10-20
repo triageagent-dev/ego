@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -349,5 +350,22 @@ func TestSessionsHandler_ByID(t *testing.T) {
 	}
 	if got := get("/api/streaming/sessions"); len(got) != 2 {
 		t.Errorf("no id = %d sessions, want 2", len(got))
+	}
+}
+
+func TestSpanIdentities(t *testing.T) {
+	spans := []*tracepkg.Span{
+		{Tags: map[string]any{"gen_ai.agent.name": "planner", "gen_ai.request.model": "gemini-2.5-flash"}},
+		{Tags: map[string]any{"gen_ai.agent.name": "planner", "gen_ai.response.model": "gemini-2.5-pro"}},
+		{Tags: map[string]any{"gen_ai.agent.name": "writer", "gen_ai.request.model": "gemini-2.5-flash"}},
+		{Tags: map[string]any{"gen_ai.request.model": "unknown"}},
+		{},
+	}
+	agents, models := spanIdentities(spans)
+	if got, want := strings.Join(agents, ","), "planner,writer"; got != want {
+		t.Errorf("agents = %q, want %q", got, want)
+	}
+	if got, want := strings.Join(models, ","), "gemini-2.5-flash,gemini-2.5-pro"; got != want {
+		t.Errorf("models = %q, want %q", got, want)
 	}
 }

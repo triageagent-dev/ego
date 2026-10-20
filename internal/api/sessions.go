@@ -69,6 +69,10 @@ type SessionSummary struct {
 	LLMCalls     int             `json:"llmCalls"`
 	// Errors counts spans whose status is ERROR (otel.status_code).
 	Errors int `json:"errors"`
+	// Agents and Models are the distinct gen_ai.agent.name and model values on the session's spans, in the
+	// order first seen, so the list can say who ran and on what before the session completes.
+	Agents []string `json:"agents,omitempty"`
+	Models []string `json:"models,omitempty"`
 	// DurationMs is the session's span window: earliest span start to
 	// latest span end, in milliseconds. Not CompletedAt - StartedAt, which
 	// is ingest wall-clock and includes the completion grace.
@@ -94,7 +98,10 @@ func summarize(s *Session) SessionSummary {
 		invocations = s.Invocations
 	}
 	rootName, llmCalls, errs := spanOutline(s.Spans)
+	agents, models := spanIdentities(s.Spans)
 	return SessionSummary{
+		Agents:       agents,
+		Models:       models,
 		RootSpanName: rootName,
 		LLMCalls:     llmCalls,
 		Errors:       errs,
@@ -109,6 +116,30 @@ func summarize(s *Session) SessionSummary {
 		Metadata:     metadata,
 		Invocations:  invocations,
 	}
+}
+
+const maxIdentities = 6
+
+// spanIdentities returns the distinct agent names (gen_ai.agent.name) and model names on spans, in the order
+// first seen, at most maxIdentities of each.
+func spanIdentities(spans []*tracepkg.Span) (agents, models []string) {
+	seenAgent, seenModel := map[string]bool{}, map[string]bool{}
+	add := func(list *[]string, seen map[string]bool, v string) {
+		if v == "" || v == "unknown" || seen[v] || len(*list) >= maxIdentities {
+			return
+		}
+		seen[v] = true
+		*list = append(*list, v)
+	}
+	for _, sp := range spans {
+		add(&agents, seenAgent, sp.TagString(adk.GenAIAgentName))
+		model := sp.TagString(adk.GenAIRequestModel)
+		if model == "" {
+			model = sp.TagString("gen_ai.response.model")
+		}
+		add(&models, seenModel, model)
+	}
+	return agents, models
 }
 
 // spanOutline returns the earliest root span's name, the number of LLM

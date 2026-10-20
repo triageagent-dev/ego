@@ -591,6 +591,9 @@ export interface LiveSession {
   rootSpanName?: string;
   llmCalls?: number;
   errors?: number;
+  // Distinct gen_ai.agent.name and model values on the session's spans, in the order first seen.
+  agents?: string[];
+  models?: string[];
   // Span window (earliest span start to latest span end), not ingest time.
   durationMs?: number;
 }
