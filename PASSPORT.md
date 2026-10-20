@@ -13,7 +13,7 @@
 | License | Apache-2.0 |
 | Passport date | 2026-10-20 |
 | Source revision | 8cf4584 (main) |
-| Audit status | As of revision 3106cff: no Critical or High findings open; open items are listed in AUDIT.md (branch `audit/ego`) |
+| Audit status | As of revision 09c7345: no Critical or High findings open; the remaining Medium and Low items are hardening and are tracked in a findings report kept outside the public repository |
 | Code review | Last completed at revision 3106cff; the access-model changes after it (sender tokens, tenant scopes, token format v3, revocation store) are not yet reviewed |
 
 ## 2. Classification
