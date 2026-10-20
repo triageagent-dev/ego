@@ -1,11 +1,10 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg">
-    <img alt="ego" src="docs/images/logo-light.svg" height="72">
-  </picture>
+  <img src="docs/images/ego.svg" alt="ego logo" width="96" height="96">
 </p>
 
-<h3 align="center">Reality testing for AI agents</h3>
+<h1 align="center">ego</h1>
+
+<p align="center"><b>Reality testing for AI agents</b></p>
 
 In psychology, the ego is the part of the mind that tests reality: it tells what is imagined from what
 actually happened, and holds the self-image up against the world. An agent has the same split.
@@ -21,6 +20,8 @@ the right tools, are its claims backed by what the tools returned, did it resolv
 since last week. It never re-runs the agent; the traces it already emits are enough.
 
 One static Go binary: REST API, web UI, OTLP receivers and an MCP server. No SDK to add, no extra runtime.
+
+## What it does
 
 - **Test reality** (`hallucinations_v1`, `jev_grounded`): are the agent's claims backed by what its tools returned?
 - **Evaluate** a trace file against a golden eval set, from the CLI, the UI, the API or an MCP client.
