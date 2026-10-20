@@ -7,7 +7,7 @@ toolchain go1.27.2
 require (
 	cloud.google.com/go/auth v0.20.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/mark3labs/mcp-go v1.1.1
+	github.com/mark3labs/mcp-go v1.3.0
 	go.opentelemetry.io/proto/otlp v1.11.0
 	google.golang.org/genai v1.71.0
 	google.golang.org/grpc v1.84.0
