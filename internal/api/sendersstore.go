@@ -22,6 +22,10 @@ func ensureSendersSchema(db *sql.DB) error {
 			hash TEXT NOT NULL UNIQUE,
 			created_at TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS tenant_names (
+			key TEXT PRIMARY KEY,
+			name TEXT NOT NULL
+		)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("creating sender tables: %w", err)
@@ -109,4 +113,34 @@ func (s *SQLiteStore) loadSenders() ([]Sender, []senderTokenRecord, error) {
 		tokens = append(tokens, t)
 	}
 	return senders, tokens, trows.Err()
+}
+
+func (s *SQLiteStore) saveTenantName(key, name string) error {
+	_, err := s.db.Exec(`INSERT INTO tenant_names (key, name) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET name = excluded.name`, key, name)
+	if err != nil {
+		return fmt.Errorf("saving tenant name: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) deleteTenantName(key string) error {
+	_, err := s.db.Exec(`DELETE FROM tenant_names WHERE key = ?`, key)
+	return err
+}
+
+func (s *SQLiteStore) loadTenantNames() (map[string]string, error) {
+	rows, err := s.db.Query(`SELECT key, name FROM tenant_names`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var k, n string
+		if err := rows.Scan(&k, &n); err != nil {
+			return nil, err
+		}
+		out[k] = n
+	}
+	return out, rows.Err()
 }

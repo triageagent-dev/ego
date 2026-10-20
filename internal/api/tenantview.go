@@ -29,6 +29,7 @@ type tenantOption struct {
 	Key      string `json:"key"`
 	Sender   string `json:"sender,omitempty"`
 	Label    string `json:"label"`
+	Name     string `json:"name,omitempty"`
 	Sessions int    `json:"sessions"`
 }
 
@@ -43,7 +44,7 @@ func newTenantOption(key string, sessions int) tenantOption {
 // tenantsHandler implements GET /api/tenants: the tenants the caller may switch between. They come from the
 // sessions in memory, narrowed to the caller's grants, so a limited user is only ever offered their own. A tenant
 // that left only usage rows behind is not listed, and neither are senders with no data yet.
-func tenantsHandler(store *SessionStore) http.HandlerFunc {
+func tenantsHandler(store *SessionStore, names *TenantNames) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -64,7 +65,9 @@ func tenantsHandler(store *SessionStore) http.HandlerFunc {
 		}
 		out := make([]tenantOption, 0, len(counts))
 		for k, n := range counts {
-			out = append(out, newTenantOption(k, n))
+			o := newTenantOption(k, n)
+			o.Name = names.Name(k)
+			out = append(out, o)
 		}
 		sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 		writeJSON(w, http.StatusOK, map[string]any{"data": out, "error": nil})

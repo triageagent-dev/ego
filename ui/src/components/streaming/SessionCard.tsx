@@ -6,6 +6,7 @@ import type { ConversationElement } from './LiveConversationPanel';
 import { SessionMetadata } from './SessionMetadata';
 import { formatSpanDuration, formatTurnTime } from '../../lib/trace-helpers';
 import type { AnnotationQueue } from '../../lib/types';
+import { tenantName, useTenantNames } from '../../lib/tenant';
 
 interface Invocation {
   invocationId: string;
@@ -121,7 +122,8 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
     '';
   const extraModels = Math.max((session.models?.length ?? 0) - 1, 0);
   const agentLabel = session.agents?.join(' · ') ?? '';
-  const tenantLabel = session.tenants?.join(' · ') ?? '';
+  useTenantNames();
+  const tenantLabel = session.tenants?.map(tenantName).join(' · ') ?? '';
 
   const providerName = session.invocations?.[0]?.modelInfo?.provider || null;
 
@@ -140,7 +142,14 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
         boxShadow: 'none',
       }}
     >
-      <div style={{
+      <div
+        onDoubleClick={(e) => {
+          // A double-click on the header toggles the card; one on a control inside it does its own thing.
+          if ((e.target as HTMLElement).closest('button, a, input, select, textarea, label')) return;
+          window.getSelection()?.removeAllRanges();
+          setExpanded((v) => !v);
+        }}
+        style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',

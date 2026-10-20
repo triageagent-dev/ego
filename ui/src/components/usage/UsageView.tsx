@@ -13,7 +13,7 @@ import {
 } from 'chart.js';
 import { RefreshCw } from 'lucide-react';
 import { getUsage, getUsageSessions, StorageUnavailableError } from '../../api/client';
-import { useSelectedTenant } from '../../lib/tenant';
+import { tenantNames, useSelectedTenant, useTenantNames } from '../../lib/tenant';
 import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
 import type { UsageBucket, UsageSeries, UsageSession } from '../../lib/types';
 
@@ -145,6 +145,7 @@ export const UsageView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const tenant = useSelectedTenant();
+  useTenantNames();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -280,7 +281,7 @@ export const UsageView: React.FC = () => {
           {bursts.slice(0, 3).map(r => (
             <div key={`${r.sessionId}|${r.model}`} css={burstLineStyle}>
               {r.calls.toLocaleString()} calls in {formatSpan(r.end - r.start)}, {formatTokens(r.inputTokens + r.outputTokens)} tokens
-              {' · '}{r.kinds || NONE}{' · '}{r.tenants || NONE}{' · '}{r.model}{' · '}
+              {' · '}{r.kinds || NONE}{' · '}{r.tenants ? tenantNames(r.tenants) : NONE}{' · '}{r.model}{' · '}
               <a css={[monoStyle, sessionLinkStyle]} href={sessionLink(r.sessionId)} title="Open this session">{r.sessionId}</a>
             </div>
           ))}
@@ -433,7 +434,7 @@ export const UsageView: React.FC = () => {
                         <tr key={`${r.sessionId}|${r.model}`}>
                           <td css={monoStyle}>{new Date(r.end).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</td>
                           <td>{r.kinds || NONE}{r.errors > 0 && <span css={failTagStyle}>{r.errors} failed</span>}</td>
-                          <td>{r.tenants || NONE}</td>
+                          <td title={r.tenants}>{r.tenants ? tenantNames(r.tenants) : NONE}</td>
                           <td css={monoStyle}>{r.model}</td>
                           <td css={numStyle}>{isBurst(r) && <span css={failTagStyle} title={`${r.calls} calls in ${formatSpan(r.end - r.start)}`}>burst</span>}{r.calls.toLocaleString()}</td>
                           <td css={numStyle}>{formatTokens(r.inputTokens)}</td>

@@ -102,6 +102,11 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		return err
 	}
 
+	tenantNames, err := NewTenantNames(archive)
+	if err != nil {
+		return err
+	}
+
 	var revoked *revocations
 	if sessionSecret != "" {
 		var err error
@@ -131,7 +136,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/ws/ui-updates", wsUpdatesHandler(hub))
 	mux.HandleFunc("/api/config", configHandler)
 	mux.HandleFunc("/api/metrics", metricsHandler)
-	mux.HandleFunc("/api/tenants", tenantsHandler(store))
+	mux.HandleFunc("/api/tenants", tenantsHandler(store, tenantNames))
 	mux.HandleFunc("/api/usage", usageHandler(archive))
 	mux.HandleFunc("/api/usage/calls", usageCallsHandler(archive))
 	mux.HandleFunc("/api/runs", listRunsHandler(archive))
@@ -148,6 +153,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/admin/roles", adminRolesHandler(roleStore))
 	mux.HandleFunc("/api/admin/roles/{id}", adminRoleByIDHandler(roleStore))
 	mux.HandleFunc("/api/admin/revocations", adminRevocationsHandler(revoked))
+	mux.HandleFunc("/api/admin/tenant-names", adminTenantNamesHandler(tenantNames))
 	mux.HandleFunc("/api/admin/senders", adminSendersHandler(senderStore))
 	mux.HandleFunc("/api/admin/senders/{id}", adminSenderByIDHandler(senderStore))
 	mux.HandleFunc("/api/admin/senders/{id}/tokens", adminSenderTokensHandler(senderStore))

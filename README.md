@@ -288,8 +288,13 @@ ego separates what people see by **tenant**, and gives access by **GitHub team**
 - A signed-in user that **no grant covers sees nothing** (`--default-role none`; the default is still `member`, which
   sees every tenant). Teams are read at sign-in. The shared `--otlp-token` is a sender with no name: its tenants keep
   their bare label as the key.
+- A sender that labels tenants with ids can have each one **named**: an admin sets a display name per key, and the
+  switcher, session badges and usage table show it. The key stays the identity for grants and filters.
 
 ```bash
+# a display name for a tenant key (admin; an empty name clears it)
+curl -X POST   "$EGO/api/admin/tenant-names"             -H "Authorization: Bearer $ADMIN" -d '{"key":"core/0123-abcd","name":"Checkout"}'
+
 # senders and their tokens (admin)
 curl -X POST   "$EGO/api/admin/senders"                  -H "Authorization: Bearer $ADMIN" -d '{"id":"core","name":"production core"}'
 curl -X POST   "$EGO/api/admin/senders/core/tokens"      -H "Authorization: Bearer $ADMIN" -d '{"label":"exporter"}'   # the token is in the answer, once

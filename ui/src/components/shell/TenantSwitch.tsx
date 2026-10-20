@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { css } from '@emotion/react';
 import { fetchTenants, setSelectedTenant, useSelectedTenant, type TenantOption } from '../../lib/tenant';
 
+const shown = (o: TenantOption) => `${o.name || o.label}${o.sessions ? ` (${o.sessions})` : ''}`;
+
 const REFRESH_MS = 60_000;
 
 // Picks which tenant the sessions, usage and quality views show. Admins see every tenant and can switch between
@@ -45,12 +47,12 @@ export const TenantSwitch: React.FC = () => {
             <optgroup key={s} label={s}>
               <option value={`${s}/*`}>{s} · all</option>
               {options.filter((o) => o.sender === s).map((o) => (
-                <option key={o.key} value={o.key}>{o.label}{o.sessions ? ` (${o.sessions})` : ''}</option>
+                <option key={o.key} value={o.key} title={o.key}>{shown(o)}</option>
               ))}
             </optgroup>
           ) : (
             options.filter((o) => !o.sender).map((o) => (
-              <option key={o.key} value={o.key}>{o.label}{o.sessions ? ` (${o.sessions})` : ''}</option>
+              <option key={o.key} value={o.key} title={o.key}>{shown(o)}</option>
             ))
           ),
         )}
