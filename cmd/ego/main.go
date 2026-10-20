@@ -432,7 +432,7 @@ func serveCmd(args []string) error {
 	adminGitHubUsers := fs.String("admin-github-users", env("ADMIN_GITHUB_USERS"),
 		"comma-separated GitHub logins idempotently granted the admin role at startup (see internal/api/roles.go); falls back to EGO_ADMIN_GITHUB_USERS. Only takes effect when --session-secret is set. The only way to get a first admin into an otherwise-empty role store - after that, admins manage every role (including further admins) via GET/POST /api/admin/roles.")
 	defaultRole := fs.String("default-role", envOrDefault("DEFAULT_ROLE", "member"),
-		"role (admin | member | viewer) granted to any authenticated user with no matching role binding; falls back to EGO_DEFAULT_ROLE. \"member\" (the default) gives full read/write access to a deployment that never configures a role binding.")
+		"role (admin | member | viewer | none) granted to any authenticated user with no matching role binding; falls back to EGO_DEFAULT_ROLE. \"member\" (the default) gives full read/write access to a deployment that never configures a role binding; \"none\" gives no access, so only teams and users with a binding see anything.")
 	sessionMemory := fs.Int("session-memory", envIntOrDefault("SESSION_MEMORY", api.DefaultSessionMemory),
 		"completed sessions kept in memory with --session-db; older ones stay in the archive and load on demand (0 = no cap); falls back to EGO_SESSION_MEMORY")
 	sessionRetention := fs.Duration("session-retention", envDurationOrDefault("SESSION_RETENTION", api.DefaultSessionRetention),
