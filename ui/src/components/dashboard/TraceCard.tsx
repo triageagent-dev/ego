@@ -1,0 +1,274 @@
+import React from 'react';
+import { css } from '@emotion/react';
+import { motion } from 'framer-motion';
+import { ChevronRight, AlertTriangle, FileJson } from 'lucide-react';
+import { message, Button } from 'antd';
+import type { TraceResult } from '../../lib/types';
+import { truncateTraceId, getStatusColor, getStatusGlow, copyToClipboard } from '../../lib/utils';
+import { MetricScoreCard } from './MetricScoreCard';
+import { useTraceContext } from '../../context/TraceContext';
+import { generateEvalSet } from '../../lib/evalset-builder';
+
+interface TraceCardProps {
+  traceResult: TraceResult;
+  threshold: number;
+  onClick: () => void;
+}
+
+const cardStyle = css`
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 32px rgba(168, 85, 247, 0.15);
+    border-color: var(--accent-primary);
+  }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+
+  .trace-id {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+
+    &:hover {
+      color: var(--accent-primary);
+    }
+  }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    position: relative;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.6;
+    }
+  }
+
+  .metrics-section {
+    margin: 16px 0;
+  }
+
+  .metrics-title {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+  }
+
+  .metrics-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .metadata-section {
+    display: flex;
+    gap: 16px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-default);
+  }
+
+  .metadata-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .view-details {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--accent-primary);
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .actions-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+  }
+
+  .warnings {
+    margin-top: 12px;
+    padding: 12px;
+    background-color: rgba(255, 179, 71, 0.1);
+    border-left: 3px solid var(--status-warning);
+    border-radius: 4px;
+  }
+
+  .warning-text {
+    font-size: 12px;
+    color: var(--status-warning);
+  }
+`;
+
+export const TraceCard: React.FC<TraceCardProps> = ({ traceResult, threshold, onClick }) => {
+  const { traceId, numInvocations, metricResults, conversionWarnings } = traceResult;
+  const { state, actions } = useTraceContext();
+
+  const passedMetrics = metricResults.filter((m) => m.evalStatus === 'PASSED').length;
+  const failedMetrics = metricResults.filter((m) => m.evalStatus === 'FAILED').length;
+  // A metric can carry .error while its evalStatus is NOT_EVALUATED (an
+  // evaluator that was attempted and crashed, e.g. an ADK invocation-count
+  // mismatch) - that must not silently roll up to PASSED just because it
+  // isn't literally the FAILED status.
+  const erroredMetrics = metricResults.filter((m) => !!m.error && m.evalStatus !== 'FAILED').length;
+  const totalMetrics = metricResults.length;
+
+  const overallStatus =
+    failedMetrics > 0 ? (passedMetrics === 0 ? 'FAILED' : 'PARTIAL') :
+    erroredMetrics > 0 ? 'ERROR' :
+    'PASSED';
+
+  const statusColor = getStatusColor(overallStatus as any);
+  const statusGlow = getStatusGlow(overallStatus as any);
+
+  const handleCopyTraceId = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    copyToClipboard(traceId);
+  };
+
+  const handleCreateEvalSet = (e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    try {
+      const metadata = state.traceMetadata.get(traceId);
+      const invocations = metadata?.invocations || [];
+
+      if (invocations.length === 0) {
+        message.error('No invocations found for this trace');
+        return;
+      }
+
+      const filename = metadata?.sessionId || traceId.substring(0, 12);
+      const evalSet = generateEvalSet(
+        [{ traceId, invocations }],
+        filename
+      );
+      actions.setBuilderEvalSet(evalSet);
+      actions.setCurrentView('builder');
+      message.success('EvalSet created! Edit and save when ready.');
+    } catch (error) {
+      console.error('Failed to create evalset:', error);
+      message.error('Failed to create evalset from trace');
+    }
+  };
+
+  return (
+    <motion.div
+      css={cardStyle}
+      onClick={onClick}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <div className="card-header">
+        <div className="trace-id" onClick={handleCopyTraceId} title="Click to copy">
+          TRACE: {truncateTraceId(traceId)}
+        </div>
+        <div
+          className="status-badge"
+          style={{
+            backgroundColor: `${statusColor}20`,
+            border: `1px solid ${statusColor}60`,
+            boxShadow: statusGlow
+          }}
+        >
+          <div
+            className="status-dot"
+            style={{ backgroundColor: statusColor }}
+          />
+          <span style={{ color: statusColor }}>
+            {overallStatus} ({passedMetrics}/{totalMetrics})
+          </span>
+        </div>
+      </div>
+
+      <div className="metrics-section">
+        <div className="metrics-title">Metrics</div>
+        <div className="metrics-list">
+          {metricResults.map((metric) => (
+            <MetricScoreCard
+              key={metric.metricName}
+              metricResult={metric}
+              threshold={threshold}
+              compact
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="metadata-section">
+        <div className="metadata-item">
+          ⏱️ {numInvocations} invocation{numInvocations !== 1 ? 's' : ''}
+        </div>
+        {conversionWarnings.length > 0 && (
+          <div className="metadata-item">
+            <AlertTriangle size={14} />
+            {conversionWarnings.length} warning{conversionWarnings.length !== 1 ? 's' : ''}
+          </div>
+        )}
+      </div>
+
+      {conversionWarnings.length > 0 && (
+        <div className="warnings">
+          <div className="warning-text">
+            {conversionWarnings[0]}
+            {conversionWarnings.length > 1 && ` (+${conversionWarnings.length - 1} more)`}
+          </div>
+        </div>
+      )}
+
+      <div className="actions-section">
+        <Button
+          icon={<FileJson size={14} />}
+          onClick={handleCreateEvalSet}
+          size="small"
+        >
+          Create EvalSet
+        </Button>
+        <div className="view-details">
+          View Details <ChevronRight size={16} />
+        </div>
+      </div>
+    </motion.div>
+  );
+};

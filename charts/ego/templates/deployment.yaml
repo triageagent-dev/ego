@@ -1,0 +1,156 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ego.name" . }}
+  labels:
+    {{- include "ego.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # SQLite on a ReadWriteOnce volume: never two pods at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ include "ego.name" . }}
+  template:
+    metadata:
+      labels:
+        {{- include "ego.labels" . | nindent 8 }}
+      {{- if .Values.online.enabled }}
+      annotations:
+        # Restart on a profile change: the config is read once at startup.
+        checksum/online: {{ .Values.online.config | toJson | sha256sum }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ include "ego.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - serve
+            - --addr=:8001
+            - --otlp-addr=:4318
+            - --otlp-grpc-addr=:4317
+            - --health-addr=:9090
+            - --session-db=/data/{{ .Values.persistence.dbFile }}
+            - --session-memory={{ .Values.persistence.memorySessions }}
+            - --session-retention={{ .Values.persistence.retention }}
+            {{- with .Values.usageTenantAttr }}
+            - --usage-tenant-attr={{ . }}
+            {{- end }}
+            {{- with .Values.adminGithubUsers }}
+            - --admin-github-users={{ join "," . }}
+            {{- end }}
+            {{- if .Values.online.enabled }}
+            - --online-config=/etc/ego/online.json
+            {{- end }}
+          env:
+            {{- if .Values.auth.enabled }}
+            - name: EGO_GITHUB_CLIENT_ID
+              value: {{ .Values.auth.githubClientId | quote }}
+            - name: EGO_GITHUB_ORG
+              value: {{ .Values.auth.githubOrg | quote }}
+            - name: EGO_PUBLIC_URL
+              value: {{ .Values.auth.publicUrl | quote }}
+            - name: EGO_GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.githubClientSecret }}
+                  key: GITHUB_CLIENT_SECRET
+            - name: EGO_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.sessionSecret }}
+                  key: SESSION_SECRET
+            {{- end }}
+            {{- if .Values.vertex.enabled }}
+            - name: GOOGLE_GENAI_USE_VERTEXAI
+              value: "true"
+            - name: GOOGLE_CLOUD_PROJECT
+              value: {{ .Values.vertex.project | quote }}
+            - name: GOOGLE_CLOUD_LOCATION
+              value: {{ .Values.vertex.location | quote }}
+            {{- end }}
+            {{- with .Values.jevSecret }}
+            - name: JEV_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: JEV_API_KEY
+                  optional: true
+            {{- end }}
+            {{- if and .Values.online.enabled .Values.online.discordSecret }}
+            - name: EGO_DISCORD_WEBHOOK
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.online.discordSecret }}
+                  key: DISCORD_WEBHOOK_URL
+                  optional: true
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8001
+            - name: otlp-http
+              containerPort: 4318
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: health
+              containerPort: 9090
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: health
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: session-db
+              mountPath: /data
+            {{- if .Values.online.enabled }}
+            - name: online-config
+              mountPath: /etc/ego
+              readOnly: true
+            {{- if .Values.online.webhookToken.enabled }}
+            - name: webhook-token
+              mountPath: /var/run/secrets/ego/webhook
+              readOnly: true
+            {{- end }}
+            {{- end }}
+      volumes:
+        - name: session-db
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.claimName }}
+        {{- if .Values.online.enabled }}
+        - name: online-config
+          configMap:
+            name: {{ include "ego.name" . }}-online
+        {{- if .Values.online.webhookToken.enabled }}
+        # Projected service-account token for the webhook sink
+        # (bearerTokenFile: /var/run/secrets/ego/webhook/token); the
+        # kubelet rotates it and the sink reads it on every send.
+        - name: webhook-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: {{ required "online.webhookToken.audience is required" .Values.online.webhookToken.audience }}
+                  expirationSeconds: 3600
+        {{- end }}
+        {{- end }}

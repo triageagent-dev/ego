@@ -1,0 +1,10 @@
+{{- if .Values.online.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ego.name" . }}-online
+  labels:
+    {{- include "ego.labels" . | nindent 4 }}
+data:
+  online.json: {{ .Values.online.config | toJson | quote }}
+{{- end }}

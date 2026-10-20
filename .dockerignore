@@ -1,0 +1,9 @@
+.git
+.gitignore
+bin
+ui/node_modules
+ui/dist
+samples
+*.db
+*.db-wal
+*.db-shm

@@ -1,0 +1,143 @@
+# Deployment-specific values (project, hostname, client ID, registry) go in
+# a values file outside git - see deploy/values.example.yaml.
+
+# Name of the Deployment, Service, ConfigMap and pod selector (default "ego").
+# Set it to keep the names of an existing release: the selector is immutable.
+nameOverride: ""
+
+image:
+  repository: ghcr.io/your-org/ego
+  # -- Defaults to Chart.appVersion; `make deploy` sets it to the image it built.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+serviceAccount:
+  # -- Created by the chart. Keep the name stable: a GKE Workload Identity
+  # binding is made against namespace/name.
+  name: ego
+  annotations: {}
+  # e.g. iam.gke.io/gcp-service-account: <gsa>@<project>.iam.gserviceaccount.com
+
+# -- Session/run-history SQLite database on a PersistentVolumeClaim. The
+# claim is kept on `helm uninstall` (resource-policy: keep).
+persistence:
+  claimName: ego-session-db
+  size: 1Gi
+  storageClass: ""
+  dbFile: ego-sessions.db
+  # -- Completed sessions kept in memory; older ones stay in the database
+  # and load on demand (0 = no cap). Memory use grows with this.
+  memorySessions: 200
+  # -- Delete sessions not updated for this long, daily, then compact the
+  # file (Go duration; "0" = keep forever).
+  retention: 720h
+
+# -- Span attribute the token usage view reads the tenant from
+# (--usage-tenant-attr); empty records no tenant.
+usageTenantAttr: ""
+
+# -- GitHub logins that are always admin (--admin-github-users).
+adminGithubUsers: []
+
+auth:
+  # -- GitHub login gate. false drops the auth env, so the server runs open
+  # (no session cookie, every caller is admin).
+  enabled: true
+  githubClientId: ""
+  githubOrg: ""
+  publicUrl: ""
+  # -- Secret holding GITHUB_CLIENT_SECRET.
+  githubClientSecret: ego-github-oauth
+  # -- Secret holding SESSION_SECRET (enables auth when set).
+  sessionSecret: ego-session-secret
+
+vertex:
+  enabled: true
+  project: ""
+  location: europe-west4
+
+# -- Optional Secret holding JEV_API_KEY for the Jev judge models.
+jevSecret: ego-jev
+
+extraEnv: []
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    memory: 256Mi
+
+podSecurityContext:
+  fsGroup: 65532
+
+# -- Gateway API HTTPRoutes. The UI is built unprefixed, so its assets and
+# API live at root paths; rootPaths lists the ones claimed on the shared
+# host. A new endpoint under /api needs an entry here.
+httpRoute:
+  enabled: false
+  hostname: ""
+  parentRef:
+    name: ""
+    namespace: ""
+    sectionName: ""
+  # -- Route name for the UI prefix + root paths.
+  name: ego
+  prefix: /evals
+  # -- Optional second route claiming another prefix, e.g. a legacy path ("" to skip).
+  aliasName: ""
+  aliasPrefix: ""
+  rootPaths:
+    - /assets
+    - /logo.svg
+    - /favicon.svg
+    - /favicon.ico
+    - /ws
+    - /api/config
+    - /api/convert
+    - /api/debug
+    - /api/evaluate
+    - /api/evalsets
+    - /api/admin
+    - /api/health
+    - /api/metrics
+    - /api/runs
+    - /api/usage
+    - /api/online
+    - /api/streaming
+    - /api/validate
+    - /stream
+    - /auth
+
+# Online evaluation (docs/online-evaluation.md): samples completed sessions,
+# scores them per call kind, detects regressions and notifies. Needs
+# persistence. `config` is the --online-config document, written in YAML here
+# and rendered to JSON.
+online:
+  enabled: false
+  # Secret with key DISCORD_WEBHOOK_URL; a discord sink reads it with
+  # urlEnv: EGO_DISCORD_WEBHOOK.
+  discordSecret: ""
+  # A projected service-account token for a webhook or event sink whose
+  # receiver authenticates in-cluster callers by TokenReview; set
+  # bearerTokenFile: /var/run/secrets/ego/webhook/token on the sink.
+  webhookToken:
+    enabled: false
+    audience: ""
+  config:
+    budget:
+      judgeTokensPerDay: 2000000
+      jevCallsPerDay: 1000
+    sampling:
+      perKindPerHour: 6
+      boostPerKindPerHour: 6
+      afterChangeSessions: 20
+      dedupWindow: 6h
+    detector:
+      window: 6h
+      baseline: 168h
+      minSamples: 12
+      minDrop: 0.1
+    profiles: []
+    sinks: []

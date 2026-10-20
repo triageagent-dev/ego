@@ -1,0 +1,11 @@
+# ko build config: injects the release version into internal/api.Version
+# at link time, so GET /api/health reports the version actually running
+# instead of the "dev" placeholder a plain `go build` gets. Set the VERSION
+# env var to match the image tag before running `ko build`, e.g.:
+#   VERSION=0.7.0 ko build --platform=linux/amd64 --bare --tags=0.7.0 ./cmd/ego
+defaultBaseImage: cgr.dev/chainguard/static
+builds:
+  - id: ego
+    main: ./cmd/ego
+    ldflags:
+      - -X github.com/triageagent-dev/ego/internal/api.Version={{.Env.VERSION}}

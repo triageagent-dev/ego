@@ -1,0 +1,77 @@
+{{- if .Values.httpRoute.enabled }}
+{{- $r := .Values.httpRoute }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $r.name }}
+  labels:
+    {{- include "ego.labels" . | nindent 4 }}
+spec:
+  hostnames:
+    - {{ $r.hostname | quote }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $r.parentRef.name }}
+      namespace: {{ $r.parentRef.namespace }}
+      {{- with $r.parentRef.sectionName }}
+      sectionName: {{ . }}
+      {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $r.prefix }}
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: {{ include "ego.name" . }}
+          port: 8001
+    - matches:
+        {{- range $r.rootPaths }}
+        - path:
+            type: PathPrefix
+            value: {{ . }}
+        {{- end }}
+      backendRefs:
+        - name: {{ include "ego.name" . }}
+          port: 8001
+{{- if $r.aliasName }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $r.aliasName }}
+  labels:
+    {{- include "ego.labels" . | nindent 4 }}
+spec:
+  hostnames:
+    - {{ $r.hostname | quote }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $r.parentRef.name }}
+      namespace: {{ $r.parentRef.namespace }}
+      {{- with $r.parentRef.sectionName }}
+      sectionName: {{ . }}
+      {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $r.aliasPrefix }}
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: {{ include "ego.name" . }}
+          port: 8001
+{{- end }}
+{{- end }}
