@@ -93,13 +93,11 @@ httpRoute:
   aliasPrefix: ""
   rootPaths:
     - /assets
-    - /logo.svg
     - /favicon.svg
     - /favicon.ico
     - /ws
     - /api/config
     - /api/convert
-    - /api/debug
     - /api/evaluate
     - /api/evalsets
     - /api/admin

@@ -13,6 +13,8 @@ const WS_BASE_URL = import.meta.env.VITE_WS_URL ??
 // uiUpdatesWs below and LiveStreamingView.tsx's connectWS.
 const BASE_PATH = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL ?? '');
 
+export const REPO_URL = 'https://github.com/triageagent-dev/ego';
+
 export const config = {
   api: {
     baseUrl: API_BASE_URL,
@@ -31,8 +33,6 @@ export const config = {
       streamingSessionSpans: `${API_BASE_URL}/api/streaming/session-spans`,
       streamingSessions: `${API_BASE_URL}/api/streaming/sessions`,
       uiUpdatesStream: `${API_BASE_URL}/stream/ui-updates`,
-      debugBundle: `${API_BASE_URL}/api/debug/bundle`,
-      debugLoad: `${API_BASE_URL}/api/debug/load`,
       authMe: `${API_BASE_URL}/auth/me`,
       authLogin: `${API_BASE_URL}/auth/login`,
       authLogout: `${API_BASE_URL}/auth/logout`,

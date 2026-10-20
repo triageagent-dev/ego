@@ -98,8 +98,6 @@ Open <http://localhost:8001>.
 | **Quality** | Online evaluation: judge budget, what was sampled, open regressions, hourly scores. |
 | **Eval sets** | Build golden eval sets from traces and keep them. |
 
-The header's **Debug bundle** button packs sessions, logs and app state into a zip you can load back later.
-
 ## Metrics
 
 | Metric | Needs |

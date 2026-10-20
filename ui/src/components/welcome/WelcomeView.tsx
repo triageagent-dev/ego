@@ -22,7 +22,10 @@ export const WelcomeView: React.FC = () => {
     <div css={containerStyle}>
       <div css={contentStyle}>
         <div css={headerStyle}>
-          <img src="/logo.svg" alt="ego" css={logoStyle} />
+          <div css={brandStyle}>
+            <img src="/favicon.svg" alt="" css={brandMarkStyle} />
+            <span css={brandNameStyle}>ego</span>
+          </div>
           <p>Reality testing for AI agents</p>
         </div>
 
@@ -83,10 +86,23 @@ const headerStyle = css`
   }
 `;
 
-const logoStyle = css`
-  width: 240px;
-  height: auto;
-  margin-bottom: 16px;
+const brandStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+`;
+
+const brandMarkStyle = css`
+  width: 32px;
+  height: 32px;
+`;
+
+const brandNameStyle = css`
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: var(--text-primary);
 `;
 
 const optionsGridStyle = css`

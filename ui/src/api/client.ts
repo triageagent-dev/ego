@@ -336,62 +336,6 @@ export async function getConfig(): Promise<{ apiKeys: { google: boolean; anthrop
   return unwrap(response);
 }
 
-export async function generateBugReport(diagnostics: {
-  user_description: string;
-  browser_info: Record<string, unknown>;
-  console_logs: unknown[];
-  app_state: Record<string, unknown>;
-  network_errors: unknown[];
-}): Promise<Blob> {
-  const response = await fetch(config.api.endpoints.debugBundle, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(diagnostics),
-  });
-
-  if (!response.ok) {
-    let errorMessage = `Failed to generate debug bundle: ${response.statusText}`;
-    try {
-      const errorData = await response.json();
-      if (errorData.detail) {
-        errorMessage = errorData.detail;
-      }
-    } catch {
-      // Fallback to statusText
-    }
-    throw new Error(errorMessage);
-  }
-
-  return response.blob();
-}
-
-export async function loadBugReport(
-  file: File,
-): Promise<{ loadedSessions: string[]; count: number }> {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const response = await fetch(config.api.endpoints.debugLoad, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    let errorMessage = `Failed to load debug bundle: ${response.statusText}`;
-    try {
-      const errorData = await response.json();
-      if (errorData.detail) {
-        errorMessage = errorData.detail;
-      }
-    } catch {
-      // Fallback to statusText
-    }
-    throw new Error(errorMessage);
-  }
-
-  return unwrap<{ loadedSessions: string[]; count: number }>(response);
-}
-
 export async function healthCheck(): Promise<{ status: string; version: string }> {
   try {
     const response = await fetch(`${API_BASE_URL}/health`);
