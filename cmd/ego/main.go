@@ -127,7 +127,7 @@ func usage() {
 
 Usage:
   ego run <trace-file>... --eval-set <path> -m <metric> [-m <metric>...] [flags]
-  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token]
+  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n]
                    [--admin-github-users user1,user2] [--default-role member]
   ego auth mint-token --name <label> [--ttl-days 90] [--secret ...]
   ego mcp [--server-url http://localhost:8001] [--session-token ...]
@@ -439,6 +439,8 @@ func serveCmd(args []string) error {
 		"delete archived sessions not updated for this long, once a day, then compact the file (0 = keep forever); falls back to EGO_SESSION_RETENTION")
 	usageTenantAttr := fs.String("usage-tenant-attr", env("USAGE_TENANT_ATTR"),
 		"span attribute the token usage view reads the tenant from (e.g. tenant.id); empty records no tenant; falls back to EGO_USAGE_TENANT_ATTR")
+	evalDailyTokens := fs.Int64("eval-daily-tokens", envInt64OrDefault("EVAL_DAILY_TOKENS", api.DefaultEvalDailyToks),
+		"judge tokens the interactive evaluation endpoints may use per UTC day, shared by all callers; 0 means unlimited; falls back to EGO_EVAL_DAILY_TOKENS")
 	otlpToken := fs.String("otlp-token", env("OTLP_TOKEN"),
 		"bearer token the OTLP/HTTP and OTLP/gRPC receivers require from senders (Authorization: Bearer ...); empty leaves them open; at least 32 bytes; falls back to EGO_OTLP_TOKEN")
 	onlineConfig := fs.String("online-config", env("ONLINE_CONFIG"),
@@ -463,7 +465,7 @@ func serveCmd(args []string) error {
 		}
 	}
 	return api.Serve(*addr, *otlpAddr, *otlpGRPCAddr, *healthAddr, *sessionDB, *sessionSecret, githubOAuth, adminUsers, *defaultRole,
-		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, UsageTenantAttr: *usageTenantAttr}, *onlineConfig, *otlpToken)
+		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens}, *onlineConfig, *otlpToken)
 }
 
 // envIntOrDefault reads an integer env var, falling back to def when it is

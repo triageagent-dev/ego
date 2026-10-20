@@ -53,6 +53,7 @@ const persistInterval = 10 * time.Second
 // whatever was on disk in ui/dist at `go build` time). Blocks until any listener returns an error or the
 // process receives SIGINT/SIGTERM, in which case it flushes a final snapshot before returning.
 func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits, onlineConfigPath, otlpToken string) error {
+	interactiveEval.setDailyCap(limits.EvalDailyTokens)
 	hub := newSSEHub()
 
 	var store *SessionStore

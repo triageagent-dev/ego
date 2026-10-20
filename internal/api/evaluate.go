@@ -183,6 +183,9 @@ func parseEvaluateRequest(r *http.Request) (*evaluateRequest, int, string) {
 	if len(traceFileHeaders) == 0 {
 		return nil, http.StatusBadRequest, "No valid trace files provided"
 	}
+	if msg := validateEvalConfig(cfg, len(traceFileHeaders)); msg != "" {
+		return nil, http.StatusBadRequest, msg
+	}
 
 	var traces []*tracepkg.Trace
 	var loadErrors []string
@@ -239,6 +242,7 @@ func newJudgeModelGetter(ctx context.Context) func(string) (judge.Model, error) 
 		if err != nil {
 			return nil, fmt.Errorf("setting up judge model %s: %w", modelName, err)
 		}
+		m.WithUsageHook(interactiveEval.add)
 		judgeClients[modelName] = m
 		return m, nil
 	}
@@ -357,6 +361,13 @@ func evaluateHandler(store *SQLiteStore) http.HandlerFunc {
 			return
 		}
 
+		release, status, msg := interactiveEval.admit(time.Now())
+		if release == nil {
+			writeEvaluateError(w, status, msg)
+			return
+		}
+		defer release()
+
 		ctx := r.Context()
 		getJudgeModel := newJudgeModelGetter(ctx)
 		getVertexEvalClient := newVertexEvalClientGetter(ctx)
@@ -415,11 +426,19 @@ func evaluateStreamHandler(store *SQLiteStore) http.HandlerFunc {
 			return
 		}
 
+		release, _, admitMsg := interactiveEval.admit(time.Now())
+		if release == nil {
+			writeSSEData(w, map[string]any{"error": admitMsg})
+			flusher.Flush()
+			return
+		}
+
 		ctx := r.Context()
 		events := make(chan map[string]any, 16)
 
 		go func() {
 			defer close(events)
+			defer release()
 			// A client that has gone away must not leave this goroutine blocked on a full channel, holding the
 			// uploaded traces: sends give up when the request context ends.
 			send := func(ev map[string]any) {

@@ -290,6 +290,8 @@ type SessionLimits struct {
 	// UsageTenantAttr is the span attribute the usage ledger reads the
 	// tenant from; empty records no tenant.
 	UsageTenantAttr string
+	// EvalDailyTokens caps the judge tokens interactive evaluations may use per UTC day; 0 means unlimited.
+	EvalDailyTokens int64
 }
 
 func NewSessionStore(hub *sseHub) *SessionStore {

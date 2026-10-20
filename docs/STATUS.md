@@ -37,6 +37,7 @@ What ego supports today, and what it does not.
 - Roles `admin`, `member`, `viewer`, optionally scoped to agent names (sessions, traces, runs and the live feed;
   Tokens, Quality and eval sets are closed to a scoped role); inert when no session secret is set. Unknown team
   membership is refused, never defaulted. A session with several agents is visible to a role scoped to any one.
+- Interactive evaluation is bounded: at most 4 run at once, 50 trace files, 20 evaluators and 8 judge samples per request, one daily judge-token cap shared by all callers (429 when used up), 8192 output tokens per judge call. Vertex managed evaluation and Jev report no token counts and are limited by the concurrency and request caps only.
 - Cross-origin POST/PUT/DELETE and WebSocket upgrades from a browser are refused (`origin.go`); logout is POST-only. DNS rebinding of the no-login local mode is not checked.
 - `/api/health` is never gated. The OTLP receivers take an optional bearer token (`--otlp-token`) instead of the login.
 

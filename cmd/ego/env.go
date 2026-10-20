@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 // env reads a setting from EGO_<key>.
@@ -26,4 +27,12 @@ func checkSecret(what, secret string) error {
 		return fmt.Errorf("%s is %d bytes, want at least %d (try: openssl rand -hex 32)", what, len(secret), minSecretLen)
 	}
 	return nil
+}
+
+// envInt64OrDefault reads an integer env var, falling back to def when it is unset or not a number.
+func envInt64OrDefault(key string, def int64) int64 {
+	if v, err := strconv.ParseInt(env(key), 10, 64); err == nil {
+		return v
+	}
+	return def
 }

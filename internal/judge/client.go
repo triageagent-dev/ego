@@ -19,6 +19,10 @@ type Model interface {
 	Generate(ctx context.Context, prompt string) (string, error)
 }
 
+// maxJudgeOutputTokens caps one judge reply. A verdict is short, but a thinking model spends its reasoning inside
+// the same limit, so it is generous; the point is that no call can run unbounded.
+const maxJudgeOutputTokens = 8192
+
 // GenAIModel is a Model backed by the Gemini Developer API via google.golang.org/genai..
 type GenAIModel struct {
 	client *genai.Client
@@ -62,7 +66,7 @@ func NewGenAIModel(ctx context.Context, apiKey, model string) (*GenAIModel, erro
 func (m *GenAIModel) Generate(ctx context.Context, prompt string) (string, error) {
 	resp, err := m.client.Models.GenerateContent(ctx, m.model,
 		[]*genai.Content{genai.NewContentFromText(prompt, genai.RoleUser)},
-		nil,
+		&genai.GenerateContentConfig{MaxOutputTokens: maxJudgeOutputTokens},
 	)
 	if err != nil {
 		return "", fmt.Errorf("judge model %s: %w", m.model, err)

@@ -248,6 +248,8 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`:
 | `EGO_SESSION_SECRET` | `--session-secret` | Signs session cookies and tokens; enables auth |
 | `EGO_GITHUB_CLIENT_ID`, `EGO_GITHUB_CLIENT_SECRET`, `EGO_GITHUB_ORG`, `EGO_PUBLIC_URL` | `--github-*`, `--public-url` | GitHub OAuth |
 | `EGO_ADMIN_GITHUB_USERS`, `EGO_DEFAULT_ROLE` | `--admin-github-users`, `--default-role` | Roles |
+| `EGO_OTLP_TOKEN` | `--otlp-token` | Bearer token the OTLP receivers require (empty: open) |
+| `EGO_EVAL_DAILY_TOKENS` | `--eval-daily-tokens` | Judge tokens interactive evaluation may use per UTC day (default 5000000, 0: unlimited) |
 | `EGO_USAGE_TENANT_ATTR` | `--usage-tenant-attr` | Span attribute the Usage view reads the tenant from |
 | `EGO_ONLINE_CONFIG` | `--online-config` | Online evaluation config file |
 | `EGO_SERVER_URL`, `EGO_SESSION_TOKEN` | `--server-url`, `--session-token` | For `ego mcp` |
