@@ -1,0 +1,7 @@
+# The fake bearer tokens the ingest tests use are not secrets.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "fake tokens in the ingest tests"
+paths = ['''internal/api/ingestauth_test\.go''']

@@ -89,9 +89,9 @@ func TestIngestForKeysTenantsBySenderAndIsolatesSessions(t *testing.T) {
 	}
 
 	// The shared token has no sender: its labels are used as they are.
-	store.IngestFor("", labelledTracesBody("shared", "9999", "s7", "newron"))
-	if sum, _ := store.Summary("shared"); len(sum.Tenants) != 1 || sum.Tenants[0] != "newron" {
-		t.Fatalf("shared-token session tenants = %v, want [newron]", sum.Tenants)
+	store.IngestFor("", labelledTracesBody("shared", "9999", "s7", "acme"))
+	if sum, _ := store.Summary("shared"); len(sum.Tenants) != 1 || sum.Tenants[0] != "acme" {
+		t.Fatalf("shared-token session tenants = %v, want [acme]", sum.Tenants)
 	}
 }
 
