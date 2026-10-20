@@ -41,9 +41,9 @@ func newTenantOption(key string, sessions int) tenantOption {
 }
 
 // tenantsHandler implements GET /api/tenants: the tenants the caller may switch between. They come from the
-// sessions in memory and from the usage history, narrowed to the caller's grants, so a limited user is only ever
-// offered their own. The ids of senders with no data yet are not listed.
-func tenantsHandler(store *SessionStore, archive *SQLiteStore) http.HandlerFunc {
+// sessions in memory, narrowed to the caller's grants, so a limited user is only ever offered their own. A tenant
+// that left only usage rows behind is not listed, and neither are senders with no data yet.
+func tenantsHandler(store *SessionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -59,17 +59,6 @@ func tenantsHandler(store *SessionStore, archive *SQLiteStore) http.HandlerFunc 
 			for _, k := range s.Tenants {
 				if info.AllowsAnyTenant([]string{k}) {
 					counts[k]++
-				}
-			}
-		}
-		if archive != nil {
-			if keys, err := archive.UsageTenants(); err == nil {
-				for _, k := range keys {
-					if k != "" && info.AllowsAnyTenant([]string{k}) {
-						if _, ok := counts[k]; !ok {
-							counts[k] = 0
-						}
-					}
 				}
 			}
 		}

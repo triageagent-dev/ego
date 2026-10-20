@@ -346,21 +346,3 @@ func (s *SQLiteStore) UsageEmpty() (bool, error) {
 	}
 	return false, err
 }
-
-// UsageTenants lists the distinct tenant keys in the usage ledger.
-func (s *SQLiteStore) UsageTenants() ([]string, error) {
-	rows, err := s.db.Query(`SELECT DISTINCT tenant FROM llm_calls WHERE tenant != '' ORDER BY tenant`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() {
-		var t string
-		if err := rows.Scan(&t); err != nil {
-			return nil, err
-		}
-		out = append(out, t)
-	}
-	return out, rows.Err()
-}

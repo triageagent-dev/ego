@@ -183,7 +183,7 @@ func TestTenantsEndpointOffersOnlyWhatTheRoleCovers(t *testing.T) {
 	store.IngestFor("rc", labelledTracesBody("a", "cccc", "s3", "acme"))
 	keys := func(info RoleInfo) string {
 		rec := httptest.NewRecorder()
-		tenantsHandler(store, nil)(rec, withRoleInfoForTest(info)(httptest.NewRequest(http.MethodGet, "/api/tenants", nil)))
+		tenantsHandler(store)(rec, withRoleInfoForTest(info)(httptest.NewRequest(http.MethodGet, "/api/tenants", nil)))
 		var out struct{ Data []tenantOption }
 		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 			t.Fatal(err)
@@ -281,10 +281,6 @@ func TestUsageIsFilteredByTenantKeyAndSender(t *testing.T) {
 		if n := count(tc.tenants); n != tc.want {
 			t.Errorf("%s: %d rows, want %d", name, n, tc.want)
 		}
-	}
-	keys, _ := archive.UsageTenants()
-	if len(keys) != 4 {
-		t.Errorf("UsageTenants = %v", keys)
 	}
 }
 
