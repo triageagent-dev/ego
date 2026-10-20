@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -28,6 +29,9 @@ const (
 	RoleAdmin  Role = "admin"  // full read/write, plus manage role bindings themselves.
 	RoleMember Role = "member" // full read/write, subject to any Agents scope - the behavior of a deployment with no roles configured.
 	RoleViewer Role = "viewer" // read-only, subject to any Agents scope.
+	// RoleNone only exists as a default role: whoever no binding covers gets no access at all, the way a subject with no
+	// grant gets nothing in the core. It cannot be put in a binding.
+	RoleNone Role = "none"
 )
 
 // ParseRole validates a role string from a REST request body or a
@@ -39,6 +43,18 @@ func ParseRole(s string) (Role, error) {
 	default:
 		return "", fmt.Errorf("invalid role %q (must be %q, %q, or %q)", s, RoleAdmin, RoleMember, RoleViewer)
 	}
+}
+
+// ParseDefaultRole is ParseRole for --default-role, which also takes "none".
+func ParseDefaultRole(s string) (Role, error) {
+	if Role(s) == RoleNone {
+		return RoleNone, nil
+	}
+	r, err := ParseRole(s)
+	if err != nil {
+		return "", fmt.Errorf("invalid default role %q (must be admin, member, viewer or none)", s)
+	}
+	return r, nil
 }
 
 func (r Role) rank() int {
@@ -266,7 +282,7 @@ type RoleInfo struct {
 func (info RoleInfo) CanWrite() bool {
 	// Runs and eval sets carry no tenant, so a tenant-scoped role cannot create them without leaking into other
 	// tenants'"'"' views.
-	return info.Role != RoleViewer && !info.TenantScoped()
+	return (info.Role == RoleAdmin || info.Role == RoleMember) && !info.TenantScoped()
 }
 
 // Scoped reports whether info is limited to a set of agents.
@@ -285,9 +301,12 @@ func (info RoleInfo) AllowsAnyTenant(tenants []string) bool {
 	if !info.TenantScoped() {
 		return true
 	}
-	for _, t := range tenants {
-		for _, a := range info.Tenants {
-			if t != "" && t == a {
+	for _, k := range tenants {
+		if k == "" {
+			continue
+		}
+		for _, p := range info.Tenants {
+			if tenantPatternMatches(p, k) {
 				return true
 			}
 		}
@@ -398,6 +417,9 @@ func (s *RoleStore) EffectiveRole(username string, teams []string, teamsKnown bo
 		if !teamsKnown && hasTeamBinding(bindings) {
 			return RoleInfo{Role: RoleViewer, Agents: []string{}, Tenants: []string{}, Unresolved: true}
 		}
+		if s.defaultRole == RoleNone {
+			return RoleInfo{Role: RoleNone, Agents: []string{}, Tenants: []string{}}
+		}
 		return RoleInfo{Role: s.defaultRole, Agents: nil, IsAdmin: s.defaultRole == RoleAdmin}
 	}
 
@@ -410,6 +432,9 @@ func (s *RoleStore) EffectiveRole(username string, teams []string, teamsKnown bo
 
 	agents := unionScope(matched, best, func(b RoleBinding) []string { return b.Agents })
 	tenants := unionScope(matched, best, func(b RoleBinding) []string { return b.Tenants })
+	if slices.Contains(tenants, "*") {
+		tenants = nil // a grant on every tenant is no limit at all
+	}
 	return RoleInfo{Role: best, Agents: agents, Tenants: tenants, IsAdmin: best == RoleAdmin}
 }
 
@@ -517,6 +542,10 @@ func withRole(roleStore *RoleStore, org string, ghTokens *githubTokenValidator, 
 			info := roleForIdentity(r, roleStore, org, ghTokens, id)
 			if info.Unresolved {
 				writeTeamsUnresolved(w, r)
+				return
+			}
+			if info.Role == RoleNone {
+				writeJSON(w, http.StatusForbidden, map[string]any{"error": "no access: no role binding covers you; ask an admin to add your team", "role": "none"})
 				return
 			}
 			r = r.WithContext(withRoleInfo(r.Context(), info))

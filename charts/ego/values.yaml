@@ -50,6 +50,9 @@ auth:
   # (no session cookie, every caller is admin).
   enabled: true
   githubClientId: ""
+  # -- Role of a signed-in user no role binding covers: admin, member, viewer or none (no access). With none, give
+  # every team a binding (tenants: ["*"] for staff, "<sender>/*" or "<sender>/<tenant>" for customers).
+  defaultRole: member
   githubOrg: ""
   publicUrl: ""
   # -- Secret holding GITHUB_CLIENT_SECRET.
@@ -142,6 +145,7 @@ httpRoute:
     - /api/runs
     - /api/usage
     - /api/online
+    - /api/tenants
     - /api/streaming
     - /api/validate
     - /stream

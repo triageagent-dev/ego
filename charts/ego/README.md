@@ -57,11 +57,11 @@ kubectl create secret generic ego-github-oauth --from-literal=GITHUB_CLIENT_SECR
 
 An empty session secret is refused at start (the pod crash-loops) instead of silently serving without a login.
 
-## Tenants
+## Tenants and teams
 
-Admins create tenants and per-sender ingest tokens through the API (see the main README, "Tenants"); no chart value is
-needed. Once a tenant has a token, the OTLP receivers require one. The shared `otlpAuth` token keeps working for a
-trusted sender that labels its own tenants.
+Admins create senders (ingest tokens) and grant teams access to tenants through the API (see the main README, "Tenants
+and teams"); the chart needs `auth.defaultRole: none` to make people no grant covers see nothing. Once a sender has a
+token, the OTLP receivers require one. The shared `otlpAuth` token keeps working as a sender with no name.
 
 ## Judges
 

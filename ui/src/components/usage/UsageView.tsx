@@ -13,6 +13,7 @@ import {
 } from 'chart.js';
 import { RefreshCw } from 'lucide-react';
 import { getUsage, getUsageSessions, StorageUnavailableError } from '../../api/client';
+import { useSelectedTenant } from '../../lib/tenant';
 import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
 import type { UsageBucket, UsageSeries, UsageSession } from '../../lib/types';
 
@@ -143,6 +144,7 @@ export const UsageView: React.FC = () => {
   const [sessions, setSessions] = useState<UsageSession[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const tenant = useSelectedTenant();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -160,7 +162,7 @@ export const UsageView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [hours]);
+  }, [hours, tenant]);
 
   useEffect(() => {
     const first = setTimeout(load, 0);

@@ -3,6 +3,7 @@ import { css } from '@emotion/react';
 import { useTraceContext } from '../../context/TraceContext';
 import { UserMenu } from './UserMenu';
 import { ModeSwitch } from './ModeSwitch';
+import { TenantSwitch } from './TenantSwitch';
 import { VersionLink } from './VersionLink';
 import { ConnectionDot } from './ConnectionDot';
 import { TABS, tabForView } from './routes';
@@ -33,6 +34,7 @@ export const TabBar: React.FC = () => {
       </div>
 
       <div css={rightStyle}>
+        <TenantSwitch />
         <UserMenu />
         <ModeSwitch />
         <ConnectionDot />

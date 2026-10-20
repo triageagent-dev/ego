@@ -4,18 +4,18 @@ import (
 	"net/http"
 )
 
-// tenantRequest is POST /api/admin/tenants' body.
-type tenantRequest struct {
+// senderRequest is POST /api/admin/senders' body.
+type senderRequest struct {
 	ID   string `json:"id"`
 	Name string `json:"name,omitempty"`
 }
 
-type tenantTokenRequest struct {
+type senderTokenRequest struct {
 	Label string `json:"label,omitempty"`
 }
 
-// adminTenantsHandler implements GET (list) and POST (create) on /api/admin/tenants. Admin only.
-func adminTenantsHandler(tenants *TenantStore) http.HandlerFunc {
+// adminSendersHandler implements GET (list) and POST (create) on /api/admin/senders. Admin only.
+func adminSendersHandler(senders *SenderStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !roleInfoOrOpen(r.Context()).IsAdmin {
 			writeRoleForbidden(w)
@@ -23,14 +23,14 @@ func adminTenantsHandler(tenants *TenantStore) http.HandlerFunc {
 		}
 		switch r.Method {
 		case http.MethodGet:
-			writeJSON(w, http.StatusOK, map[string]any{"data": tenants.List(), "error": nil})
+			writeJSON(w, http.StatusOK, map[string]any{"data": senders.List(), "error": nil})
 		case http.MethodPost:
-			var req tenantRequest
+			var req senderRequest
 			if err := decodeJSON(w, r, &req); err != nil {
 				writeEvaluateError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 				return
 			}
-			t, err := tenants.Create(req.ID, req.Name)
+			t, err := senders.Create(req.ID, req.Name)
 			if err != nil {
 				writeEvaluateError(w, http.StatusBadRequest, err.Error())
 				return
@@ -42,8 +42,8 @@ func adminTenantsHandler(tenants *TenantStore) http.HandlerFunc {
 	}
 }
 
-// adminTenantByIDHandler implements DELETE /api/admin/tenants/{id}. Admin only.
-func adminTenantByIDHandler(tenants *TenantStore) http.HandlerFunc {
+// adminSenderByIDHandler implements DELETE /api/admin/senders/{id}. Admin only.
+func adminSenderByIDHandler(senders *SenderStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !roleInfoOrOpen(r.Context()).IsAdmin {
 			writeRoleForbidden(w)
@@ -53,44 +53,44 @@ func adminTenantByIDHandler(tenants *TenantStore) http.HandlerFunc {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		ok, err := tenants.Delete(r.PathValue("id"))
+		ok, err := senders.Delete(r.PathValue("id"))
 		if err != nil {
-			writeEvaluateError(w, http.StatusInternalServerError, "failed to delete tenant: "+err.Error())
+			writeEvaluateError(w, http.StatusInternalServerError, "failed to delete sender: "+err.Error())
 			return
 		}
 		if !ok {
-			writeEvaluateError(w, http.StatusNotFound, "tenant not found")
+			writeEvaluateError(w, http.StatusNotFound, "sender not found")
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]bool{"deleted": true}, "error": nil})
 	}
 }
 
-// adminTenantTokensHandler implements GET (list) and POST (mint) on /api/admin/tenants/{id}/tokens. The minted
+// adminSenderTokensHandler implements GET (list) and POST (mint) on /api/admin/senders/{id}/tokens. The minted
 // token is in the POST response only. Admin only.
-func adminTenantTokensHandler(tenants *TenantStore) http.HandlerFunc {
+func adminSenderTokensHandler(senders *SenderStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !roleInfoOrOpen(r.Context()).IsAdmin {
 			writeRoleForbidden(w)
 			return
 		}
 		id := r.PathValue("id")
-		if !tenants.Exists(id) {
-			writeEvaluateError(w, http.StatusNotFound, "tenant not found")
+		if !senders.Exists(id) {
+			writeEvaluateError(w, http.StatusNotFound, "sender not found")
 			return
 		}
 		switch r.Method {
 		case http.MethodGet:
-			writeJSON(w, http.StatusOK, map[string]any{"data": tenants.Tokens(id), "error": nil})
+			writeJSON(w, http.StatusOK, map[string]any{"data": senders.Tokens(id), "error": nil})
 		case http.MethodPost:
-			var req tenantTokenRequest
+			var req senderTokenRequest
 			if r.ContentLength != 0 {
 				if err := decodeJSON(w, r, &req); err != nil {
 					writeEvaluateError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 					return
 				}
 			}
-			token, meta, err := tenants.NewToken(id, req.Label)
+			token, meta, err := senders.NewToken(id, req.Label)
 			if err != nil {
 				writeEvaluateError(w, http.StatusInternalServerError, "failed to mint token: "+err.Error())
 				return
@@ -102,8 +102,8 @@ func adminTenantTokensHandler(tenants *TenantStore) http.HandlerFunc {
 	}
 }
 
-// adminTenantTokenByIDHandler implements DELETE /api/admin/tenants/{id}/tokens/{tokenId}. Admin only.
-func adminTenantTokenByIDHandler(tenants *TenantStore) http.HandlerFunc {
+// adminSenderTokenByIDHandler implements DELETE /api/admin/senders/{id}/tokens/{tokenId}. Admin only.
+func adminSenderTokenByIDHandler(senders *SenderStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !roleInfoOrOpen(r.Context()).IsAdmin {
 			writeRoleForbidden(w)
@@ -113,7 +113,7 @@ func adminTenantTokenByIDHandler(tenants *TenantStore) http.HandlerFunc {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		ok, err := tenants.RevokeToken(r.PathValue("id"), r.PathValue("tokenId"))
+		ok, err := senders.RevokeToken(r.PathValue("id"), r.PathValue("tokenId"))
 		if err != nil {
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to revoke token: "+err.Error())
 			return

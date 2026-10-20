@@ -57,7 +57,7 @@ func usageHandler(store *SQLiteStore) http.HandlerFunc {
 			return
 		}
 		from, to, bucketMs := usageWindow(r)
-		buckets, err := store.UsageSeries(from, to, bucketMs, roleInfoOrOpen(r.Context()).Tenants)
+		buckets, err := store.UsageSeries(from, to, bucketMs, narrowTenants(roleInfoOrOpen(r.Context()).Tenants, r.URL.Query().Get("tenant")))
 		if err != nil {
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to read usage: "+err.Error())
 			return
@@ -93,7 +93,7 @@ func usageCallsHandler(store *SQLiteStore) http.HandlerFunc {
 			limit = min(v, 500)
 		}
 		if r.URL.Query().Get("group") == "session" {
-			sessions, err := store.TopUsageSessions(from, to, limit, roleInfoOrOpen(r.Context()).Tenants)
+			sessions, err := store.TopUsageSessions(from, to, limit, narrowTenants(roleInfoOrOpen(r.Context()).Tenants, r.URL.Query().Get("tenant")))
 			if err != nil {
 				writeEvaluateError(w, http.StatusInternalServerError, "failed to read usage sessions: "+err.Error())
 				return
@@ -101,7 +101,7 @@ func usageCallsHandler(store *SQLiteStore) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, map[string]any{"data": sessions, "error": nil})
 			return
 		}
-		calls, err := store.TopUsageCalls(from, to, limit, roleInfoOrOpen(r.Context()).Tenants)
+		calls, err := store.TopUsageCalls(from, to, limit, narrowTenants(roleInfoOrOpen(r.Context()).Tenants, r.URL.Query().Get("tenant")))
 		if err != nil {
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to read usage calls: "+err.Error())
 			return

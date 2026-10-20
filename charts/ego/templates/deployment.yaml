@@ -48,6 +48,9 @@ spec:
             - --otlp-addr=:4318
             - --otlp-grpc-addr=:4317
             - --health-addr=:9090
+            {{- with .Values.auth.defaultRole }}
+            - --default-role={{ . }}
+            {{- end }}
             {{- if not .Values.auth.enabled }}
             - --no-auth
             {{- end }}

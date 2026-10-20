@@ -13,6 +13,7 @@ import {
 } from 'chart.js';
 import { RefreshCw } from 'lucide-react';
 import { getOnlineAlerts, getOnlineSeries, getOnlineStatus, StorageUnavailableError } from '../../api/client';
+import { useSelectedTenant } from '../../lib/tenant';
 import type { OnlineAlert, OnlineSeriesPoint, OnlineStatus } from '../../lib/types';
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
@@ -55,11 +56,17 @@ export const QualityView: React.FC = () => {
   const [scope, setScope] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const tenant = useSelectedTenant();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [st, se, al] = await Promise.all([getOnlineStatus(), getOnlineSeries(hours), getOnlineAlerts('all')]);
+      // The judge budget is not per tenant, so a tenant-limited user is refused it; the rest of the view still loads.
+      const [st, se, al] = await Promise.all([
+        getOnlineStatus().catch((e) => (e instanceof StorageUnavailableError ? Promise.reject(e) : null)),
+        getOnlineSeries(hours),
+        getOnlineAlerts('all'),
+      ]);
       setStatus(st);
       setSeries(se);
       setAlerts(al);
@@ -71,7 +78,7 @@ export const QualityView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [hours]);
+  }, [hours, tenant]);
 
   useEffect(() => {
     load();

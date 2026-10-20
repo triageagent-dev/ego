@@ -271,31 +271,42 @@ falling back to the default role.
 
 Admins manage bindings with `GET`/`POST /api/admin/roles`, `DELETE /api/admin/roles/{id}` or the MCP tools.
 
-## Tenants
+## Tenants and teams
 
-A tenant is a sender (or a group of senders) whose data only its own users, and admins, can see. Admins create tenants
-and mint an ingest token for each one; the sender puts the token in its exporter headers.
+ego separates what people see by **tenant**, and gives access by **GitHub team**, the way the core does.
+
+- A **sender** is whoever holds an ingest token: a core, an agent, a plain OpenTelemetry exporter. One token can send
+  many tenants; the sender names each tenant with a label on its spans (`ego.tenant`, or the attribute set with
+  `--usage-tenant-attr`, `triage.tenant` for core).
+- A tenant is identified by **sender and label**: the key is `<sender>/<tenant>`. Two senders that both send a tenant
+  called `acme` have two tenants, `core/acme` and `rc/acme`, and a sender can only create tenants inside its own
+  namespace. Sessions are named `<sender>:<tenant>:<name>` for the same reason.
+- A **grant** gives a team (or user) a role and the tenants it covers: `core/acme` (one), `core/*` (all of a sender's)
+  or `*` (every tenant, for staff and admins). People see only what their grants cover, in sessions, traces, usage,
+  quality scores and on the live feed. The tenant switcher in the header lets them pick one of their tenants (all of
+  them for admins) and narrows the sessions, Tokens and Quality views to it.
+- A signed-in user that **no grant covers sees nothing** (`--default-role none`; the default is still `member`, which
+  sees every tenant). Teams are read at sign-in. The shared `--otlp-token` is a sender with no name: its tenants keep
+  their bare label as the key.
 
 ```bash
-curl -X POST   "$EGO/api/admin/tenants"                  -H "Authorization: Bearer $ADMIN" -d '{"id":"acme","name":"Acme Ltd"}'
-curl -X POST   "$EGO/api/admin/tenants/acme/tokens"      -H "Authorization: Bearer $ADMIN" -d '{"label":"checkout-agent"}'   # the token is in the answer, once
-curl -X DELETE "$EGO/api/admin/tenants/acme/tokens/<id>" -H "Authorization: Bearer $ADMIN"                                   # revoke one token
-# sender side
-OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer egt_..." OTEL_EXPORTER_OTLP_ENDPOINT=https://ego.example.com:4318
+# senders and their tokens (admin)
+curl -X POST   "$EGO/api/admin/senders"                  -H "Authorization: Bearer $ADMIN" -d '{"id":"core","name":"production core"}'
+curl -X POST   "$EGO/api/admin/senders/core/tokens"      -H "Authorization: Bearer $ADMIN" -d '{"label":"exporter"}'   # the token is in the answer, once
+curl -X DELETE "$EGO/api/admin/senders/core/tokens/<id>" -H "Authorization: Bearer $ADMIN"                              # revoke one token
+OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer egs_..."                                                               # sender side
+
+# grants: teams to tenants
+curl -X POST "$EGO/api/admin/roles" -H "Authorization: Bearer $ADMIN" -d '{"subjectType":"team","subject":"my-org/staff","role":"member","tenants":["*"]}'
+curl -X POST "$EGO/api/admin/roles" -H "Authorization: Bearer $ADMIN" -d '{"subjectType":"team","subject":"my-org/acme","role":"viewer","tenants":["core/acme","rc/acme"]}'
 ```
 
-- Everything a tenant token sends belongs to that tenant. Ingest overwrites the span attribute `ego.tenant` (or the one
-  named by `--usage-tenant-attr`) with the tenant, so a sender cannot claim another tenant, and its sessions are named
-  `<tenant>:<name>` so two tenants can use the same session name. Spans for a session of another sender are dropped.
-- Once any tenant has a token, ingest requires a token. The shared `--otlp-token` still works for a trusted sender
-  (such as one core serving many tenants): its spans keep whatever tenant attribute they carry.
-- Users see only their tenants when their role binding lists them (`"tenants": ["acme"]` in `POST /api/admin/roles`, or
-  the `tenants` argument of the `set_role_binding` MCP tool), or when an API token was minted with
-  `ego auth mint-token --tenants acme`. A binding without tenants sees every tenant, as admins do. Agent and tenant
-  limits combine: both must allow.
-- A tenant-limited role sees only its tenants' sessions, traces, usage and quality scores, on the live feed too. It
-  cannot open run history, eval sets or the judge-budget status, and cannot start evaluations, because those carry no
-  tenant.
+The same `tenants` list is available on the `set_role_binding` MCP tool and, for API tokens, as
+`ego auth mint-token --tenants core/acme`. Agent and tenant limits combine: both must allow.
+
+- Once any sender has a token, ingest requires a token (the shared one works too).
+- A tenant-limited role sees only its tenants' data. It cannot open run history, eval sets or the judge-budget status,
+  and cannot start evaluations, because those carry no tenant.
 
 ## Configuration
 

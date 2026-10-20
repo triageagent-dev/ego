@@ -188,6 +188,9 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		e.count(online.SkipNoProfile)
 		return
 	}
+	// Profiles match on the label the sender wrote; scores, alerts and series are keyed with the sender too, so two
+	// senders that both send a tenant called "acme" stay apart.
+	f.Tenant = tenantKey(e.sessions.SenderOf(sessionID), f.Tenant)
 	now := e.now()
 	d := e.sampler.Decide(f, now)
 	if !d.Sample {
@@ -667,6 +670,14 @@ func writeOnlineUnavailable(w http.ResponseWriter) {
 	})
 }
 
+// narrowedInfo is the caller's role with the tenant picked in the switcher (?tenant=) applied. A pick narrows an
+// unrestricted role too, which then sees only the matching tenants.
+func narrowedInfo(r *http.Request) RoleInfo {
+	info := roleInfoOrOpen(r.Context())
+	info.Tenants = narrowTenants(info.Tenants, r.URL.Query().Get("tenant"))
+	return info
+}
+
 // filterByTenant keeps the items a tenant-scoped role may see; other roles see all.
 func filterByTenant[T any](items []T, info RoleInfo, tenantOf func(T) string) []T {
 	if !info.TenantScoped() {
@@ -715,7 +726,7 @@ func onlineSeriesHandler(e *OnlineEngine) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"data": nil, "error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": filterByTenant(points, roleInfoOrOpen(r.Context()), func(p onlineSeriesPoint) string { return p.Tenant }), "error": nil})
+		writeJSON(w, http.StatusOK, map[string]any{"data": filterByTenant(points, narrowedInfo(r), func(p onlineSeriesPoint) string { return p.Tenant }), "error": nil})
 	}
 }
 
@@ -738,7 +749,7 @@ func onlineAlertsHandler(e *OnlineEngine) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"data": nil, "error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": filterByTenant(alerts, roleInfoOrOpen(r.Context()), func(a *online.Alert) string { return a.Key.Tenant }), "error": nil})
+		writeJSON(w, http.StatusOK, map[string]any{"data": filterByTenant(alerts, narrowedInfo(r), func(a *online.Alert) string { return a.Key.Tenant }), "error": nil})
 	}
 }
 

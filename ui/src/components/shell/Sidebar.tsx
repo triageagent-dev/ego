@@ -5,6 +5,7 @@ import { useTraceContext } from '../../context/TraceContext';
 import type { ViewType } from '../../lib/types';
 import { UserMenu } from './UserMenu';
 import { ModeSwitch } from './ModeSwitch';
+import { TenantSwitch } from './TenantSwitch';
 import { VersionLink } from './VersionLink';
 import { ConnectionDot } from './ConnectionDot';
 import { TABS, tabForView } from './routes';
@@ -44,6 +45,7 @@ export const Sidebar: React.FC = () => {
       </div>
 
       <div css={footerStyle}>
+        <TenantSwitch />
         <UserMenu />
         <ModeSwitch />
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

@@ -97,7 +97,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		onlineEngine.Start(onlineStop)
 	}
 
-	tenantStore, err := NewTenantStore(archive)
+	senderStore, err := NewSenderStore(archive)
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 
 	var roleStore *RoleStore
 	if sessionSecret != "" {
-		role, err := ParseRole(defaultRole)
+		role, err := ParseDefaultRole(defaultRole)
 		if err != nil {
 			return fmt.Errorf("default role: %w", err)
 		}
@@ -131,6 +131,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/ws/ui-updates", wsUpdatesHandler(hub))
 	mux.HandleFunc("/api/config", configHandler)
 	mux.HandleFunc("/api/metrics", metricsHandler)
+	mux.HandleFunc("/api/tenants", tenantsHandler(store, archive))
 	mux.HandleFunc("/api/usage", usageHandler(archive))
 	mux.HandleFunc("/api/usage/calls", usageCallsHandler(archive))
 	mux.HandleFunc("/api/runs", listRunsHandler(archive))
@@ -147,10 +148,10 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/admin/roles", adminRolesHandler(roleStore))
 	mux.HandleFunc("/api/admin/roles/{id}", adminRoleByIDHandler(roleStore))
 	mux.HandleFunc("/api/admin/revocations", adminRevocationsHandler(revoked))
-	mux.HandleFunc("/api/admin/tenants", adminTenantsHandler(tenantStore))
-	mux.HandleFunc("/api/admin/tenants/{id}", adminTenantByIDHandler(tenantStore))
-	mux.HandleFunc("/api/admin/tenants/{id}/tokens", adminTenantTokensHandler(tenantStore))
-	mux.HandleFunc("/api/admin/tenants/{id}/tokens/{tokenId}", adminTenantTokenByIDHandler(tenantStore))
+	mux.HandleFunc("/api/admin/senders", adminSendersHandler(senderStore))
+	mux.HandleFunc("/api/admin/senders/{id}", adminSenderByIDHandler(senderStore))
+	mux.HandleFunc("/api/admin/senders/{id}/tokens", adminSenderTokensHandler(senderStore))
+	mux.HandleFunc("/api/admin/senders/{id}/tokens/{tokenId}", adminSenderTokenByIDHandler(senderStore))
 
 	uiDist, err := fs.Sub(uiassets.DistFS, "dist")
 	if err != nil {
@@ -166,7 +167,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	}
 
 	otlpMux := http.NewServeMux()
-	ingest := &ingestAuth{globalToken: normalizeIngestToken(otlpToken), tenants: tenantStore}
+	ingest := &ingestAuth{globalToken: normalizeIngestToken(otlpToken), senders: senderStore}
 	otlpMux.Handle("/v1/traces", ingest.middleware(otlpTracesHandler(store)))
 	if ingest.required() {
 		log.Printf("OTLP ingest requires a bearer token (Authorization header / gRPC metadata)")
@@ -306,7 +307,7 @@ func otlpTracesHandler(store *SessionStore) http.HandlerFunc {
 			}
 		}
 
-		store.IngestFor(ingestTenant(r.Context()), body)
+		store.IngestFor(ingestSender(r.Context()), body)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

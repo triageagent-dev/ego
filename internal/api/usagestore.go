@@ -73,7 +73,7 @@ func ensureUsageSchema(db *sql.DB) error {
 // once that root is seen: FillUsageKinds. The tenant has no convention, so its
 // attribute key is deployment config (--usage-tenant-attr); empty leaves
 // the tenant blank.
-func usageRowFromSpan(span *tracepkg.Span, sessionID, tenantAttr string) (usageRow, bool) {
+func usageRowFromSpan(span *tracepkg.Span, sessionID, tenantAttr, sender string) (usageRow, bool) {
 	if !adk.IsLLMSpan(span) {
 		return usageRow{}, false
 	}
@@ -88,7 +88,7 @@ func usageRowFromSpan(span *tracepkg.Span, sessionID, tenantAttr string) (usageR
 		StartMs:      span.StartTime / 1000,
 		DurationMs:   span.Duration / 1000,
 		Service:      span.TagString(adk.OtelServiceName),
-		Tenant:       tenantOf(span, tenantAttr),
+		Tenant:       tenantKey(sender, tenantOf(span, tenantAttr)),
 		Kind:         span.TagString(adk.GenAIAgentName),
 		Model:        model,
 		Name:         span.OperationName,
@@ -193,8 +193,8 @@ type usageBucketDTO struct {
 	DurationMs   int64  `json:"durationMs"`
 }
 
-// tenantClause limits a query on llm_calls to the given tenants; nil means no limit and an empty list matches
-// nothing (a role scoped to tenants that have no data).
+// tenantClause limits a query on llm_calls to the given tenant grants (keys, "<sender>/*" or "*"); nil means no limit
+// and an empty list matches nothing (a role scoped to tenants that have no data).
 func tenantClause(tenants []string) (string, []any) {
 	if tenants == nil {
 		return "", nil
@@ -202,11 +202,26 @@ func tenantClause(tenants []string) (string, []any) {
 	if len(tenants) == 0 {
 		return " AND 0", nil
 	}
-	args := make([]any, len(tenants))
-	for i, t := range tenants {
-		args[i] = t
+	var parts []string
+	var args []any
+	for _, p := range tenants {
+		switch {
+		case p == "*":
+			return "", nil
+		case strings.HasSuffix(p, "/*"):
+			// Every tenant of one sender: its keys start with "<sender>/".
+			parts = append(parts, `tenant LIKE ? ESCAPE '\'`)
+			args = append(args, likeEscape(strings.TrimSuffix(p, "*"))+"%")
+		default:
+			parts = append(parts, "tenant = ?")
+			args = append(args, p)
+		}
 	}
-	return " AND tenant IN (" + strings.Repeat("?,", len(tenants)-1) + "?)", args
+	return " AND (" + strings.Join(parts, " OR ") + ")", args
+}
+
+func likeEscape(s string) string {
+	return strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(s)
 }
 
 // UsageSeries aggregates rows in [from, to) into bucketMs-wide cells.
@@ -330,4 +345,22 @@ func (s *SQLiteStore) UsageEmpty() (bool, error) {
 		return true, nil
 	}
 	return false, err
+}
+
+// UsageTenants lists the distinct tenant keys in the usage ledger.
+func (s *SQLiteStore) UsageTenants() ([]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT tenant FROM llm_calls WHERE tenant != '' ORDER BY tenant`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }

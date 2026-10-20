@@ -18,9 +18,9 @@ import (
 
 const testIngestToken = "0123456789abcdef0123456789abcdef"
 
-func newTestTenants(t *testing.T) (*TenantStore, string, string) {
+func newTestSenders(t *testing.T) (*SenderStore, string, string) {
 	t.Helper()
-	ts, err := NewTenantStore(nil)
+	ts, err := NewSenderStore(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,33 +41,33 @@ func newTestTenants(t *testing.T) (*TenantStore, string, string) {
 }
 
 func TestIngestAuthMiddleware(t *testing.T) {
-	var gotTenant string
+	var gotSender string
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotTenant = ingestTenant(r.Context())
+		gotSender = ingestSender(r.Context())
 		w.WriteHeader(http.StatusNoContent)
 	})
-	tenants, acme, _ := newTestTenants(t)
-	empty, _ := NewTenantStore(nil)
+	senders, acme, _ := newTestSenders(t)
+	empty, _ := NewSenderStore(nil)
 
 	for name, tc := range map[string]struct {
 		auth       *ingestAuth
 		header     string
 		want       int
-		wantTenant string
+		wantSender string
 	}{
-		"open receiver":             {&ingestAuth{tenants: empty}, "", http.StatusNoContent, ""},
+		"open receiver":             {&ingestAuth{senders: empty}, "", http.StatusNoContent, ""},
 		"nil auth":                  {nil, "", http.StatusNoContent, ""},
-		"shared token missing":      {&ingestAuth{globalToken: testIngestToken, tenants: empty}, "", http.StatusUnauthorized, ""},
-		"shared token wrong":        {&ingestAuth{globalToken: testIngestToken, tenants: empty}, "Bearer nope", http.StatusUnauthorized, ""},
-		"shared token wrong scheme": {&ingestAuth{globalToken: testIngestToken, tenants: empty}, testIngestToken, http.StatusUnauthorized, ""},
-		"shared token":              {&ingestAuth{globalToken: testIngestToken, tenants: empty}, "Bearer " + testIngestToken, http.StatusNoContent, ""},
-		"scheme case-insensitive":   {&ingestAuth{globalToken: testIngestToken, tenants: empty}, "bearer " + testIngestToken, http.StatusNoContent, ""},
-		"tenant token only, none":   {&ingestAuth{tenants: tenants}, "", http.StatusUnauthorized, ""},
-		"tenant token":              {&ingestAuth{tenants: tenants}, "Bearer " + acme, http.StatusNoContent, "acme"},
-		"tenant token and shared":   {&ingestAuth{globalToken: testIngestToken, tenants: tenants}, "Bearer " + testIngestToken, http.StatusNoContent, ""},
-		"unknown tenant token":      {&ingestAuth{tenants: tenants}, "Bearer egt_unknown", http.StatusUnauthorized, ""},
+		"shared token missing":      {&ingestAuth{globalToken: testIngestToken, senders: empty}, "", http.StatusUnauthorized, ""},
+		"shared token wrong":        {&ingestAuth{globalToken: testIngestToken, senders: empty}, "Bearer nope", http.StatusUnauthorized, ""},
+		"shared token wrong scheme": {&ingestAuth{globalToken: testIngestToken, senders: empty}, testIngestToken, http.StatusUnauthorized, ""},
+		"shared token":              {&ingestAuth{globalToken: testIngestToken, senders: empty}, "Bearer " + testIngestToken, http.StatusNoContent, ""},
+		"scheme case-insensitive":   {&ingestAuth{globalToken: testIngestToken, senders: empty}, "bearer " + testIngestToken, http.StatusNoContent, ""},
+		"sender token only, none":   {&ingestAuth{senders: senders}, "", http.StatusUnauthorized, ""},
+		"sender token":              {&ingestAuth{senders: senders}, "Bearer " + acme, http.StatusNoContent, "acme"},
+		"sender token and shared":   {&ingestAuth{globalToken: testIngestToken, senders: senders}, "Bearer " + testIngestToken, http.StatusNoContent, ""},
+		"unknown sender token":      {&ingestAuth{senders: senders}, "Bearer egs_unknown", http.StatusUnauthorized, ""},
 	} {
-		gotTenant = "unset"
+		gotSender = "unset"
 		req := httptest.NewRequest(http.MethodPost, "/v1/traces", nil)
 		if tc.header != "" {
 			req.Header.Set("Authorization", tc.header)
@@ -77,20 +77,20 @@ func TestIngestAuthMiddleware(t *testing.T) {
 		if rec.Code != tc.want {
 			t.Errorf("%s: status %d, want %d", name, rec.Code, tc.want)
 		}
-		if tc.want == http.StatusNoContent && gotTenant != tc.wantTenant {
-			t.Errorf("%s: tenant %q, want %q", name, gotTenant, tc.wantTenant)
+		if tc.want == http.StatusNoContent && gotSender != tc.wantSender {
+			t.Errorf("%s: tenant %q, want %q", name, gotSender, tc.wantSender)
 		}
 	}
 }
 
 func TestOTLPGRPCRequiresIngestToken(t *testing.T) {
 	store := NewSessionStore(nil)
-	tenants, acme, _ := newTestTenants(t)
+	senders, acme, _ := newTestSenders(t)
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := newOTLPGRPCServer(store, &ingestAuth{globalToken: testIngestToken, tenants: tenants})
+	server := newOTLPGRPCServer(store, &ingestAuth{globalToken: testIngestToken, senders: senders})
 	go func() { _ = server.Serve(lis) }()
 	defer server.Stop()
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))

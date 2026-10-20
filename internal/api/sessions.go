@@ -40,10 +40,10 @@ type Session struct {
 	CompletedAt    *time.Time
 	Invocations    []InvocationDTO
 	extractor      *incremental.Extractor
-	// Tenant is set when the sender was authenticated as a tenant: the session belongs to it alone, and spans from
-	// any other sender are refused. Empty for sessions from the shared token or an open receiver, whose tenants (if
-	// any) are read from the spans' tenant attribute (tenantAttr).
-	Tenant     string
+	// Sender is the sender that owns the session: the one whose token sent it. Spans from any other sender are
+	// refused. Empty for sessions from the shared token or an open receiver. The session's tenants are read from the
+	// spans' tenant label (tenantAttr) and keyed with the sender, see tenantKey.
+	Sender     string
 	tenantAttr string
 
 	// changeSeq is this session's own stamp from SessionStore.changeSeq as
@@ -77,7 +77,7 @@ type SessionSummary struct {
 	// Agents and Models are the distinct gen_ai.agent.name and model values on the session's spans, in the
 	// order first seen, so the list can say who ran and on what before the session completes.
 	Agents []string `json:"agents,omitempty"`
-	// Tenants are the session's tenants: the sender's tenant, or the distinct tenant attribute values on its spans.
+	// Tenants are the session's tenant keys ("<sender>/<label>"), one per distinct label on its spans.
 	Tenants []string `json:"tenants,omitempty"`
 	Models  []string `json:"models,omitempty"`
 	// DurationMs is the session's span window: earliest span start to
@@ -131,20 +131,22 @@ const maxIdentities = 6
 
 // spanIdentities returns the distinct agent names (gen_ai.agent.name) and model names on spans, in the order
 // first seen, at most maxIdentities of each.
-// tenantAttrOrDefault is the span attribute tenants are carried in.
-func (s *SessionStore) tenantAttrOrDefault() string {
-	if s.usageTenantAttr == "" {
-		return DefaultTenantAttr
+// traceTenantLabel is the tenant label of a trace: the first non-empty value of attr on its spans.
+func traceTenantLabel(spans []*tracepkg.Span, attr string) string {
+	if attr == "" {
+		attr = DefaultTenantAttr
 	}
-	return s.usageTenantAttr
+	for _, sp := range spans {
+		if v := sp.TagString(attr); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
-// sessionTenants lists a session's tenants: its owner when it has one, otherwise the distinct values of the tenant
-// attribute on its spans, in the order first seen.
+// sessionTenants lists a session's tenant keys: the distinct labels on its spans, each keyed with the owning
+// sender. A named sender's session with no label belongs to that sender's default tenant.
 func sessionTenants(s *Session) []string {
-	if s.Tenant != "" {
-		return []string{s.Tenant}
-	}
 	attr := s.tenantAttr
 	if attr == "" {
 		attr = DefaultTenantAttr
@@ -152,9 +154,10 @@ func sessionTenants(s *Session) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, sp := range s.Spans {
-		if v := sp.TagString(attr); v != "" && !seen[v] && len(out) < maxIdentities {
-			seen[v] = true
-			out = append(out, v)
+		k := tenantKey(s.Sender, sp.TagString(attr))
+		if k != "" && !seen[k] && len(out) < maxIdentities {
+			seen[k] = true
+			out = append(out, k)
 		}
 	}
 	return out
@@ -392,7 +395,7 @@ func (s *SessionStore) LoadPersisted() error {
 		var backfill []usageRow
 		if err := s.store.ForEachSnapshot(func(snap sessionSnapshot) {
 			for _, span := range snap.Spans {
-				if row, ok := usageRowFromSpan(span, snap.SessionID, s.usageTenantAttr); ok {
+				if row, ok := usageRowFromSpan(span, snap.SessionID, s.usageTenantAttr, snap.Sender); ok {
 					backfill = append(backfill, row)
 				}
 			}
@@ -465,7 +468,7 @@ func restoreSession(snap sessionSnapshot, tenantAttr string) *Session {
 	}
 	sess := &Session{
 		ID:             snap.SessionID,
-		Tenant:         snap.Tenant,
+		Sender:         snap.Sender,
 		tenantAttr:     tenantAttr,
 		PrimaryTraceID: snap.TraceID,
 		EvalSetID:      snap.EvalSetID,
@@ -764,10 +767,11 @@ func (s *SessionStore) Ingest(body map[string]any) int {
 	return s.IngestFor("", body)
 }
 
-// IngestFor stores an export sent as tenant ("" for none). A tenant sender's spans get the tenant stamped on them,
-// overwriting whatever tenant attribute they carried, its sessions are named "<tenant>:<name>" so two tenants
-// cannot meet in one session, and spans for a session owned by a different tenant are dropped.
-func (s *SessionStore) IngestFor(tenant string, body map[string]any) int {
+// IngestFor stores an export sent by sender ("" for the shared token or an open receiver). A named sender's sessions
+// are called "<sender>:<tenant>:<name>" ("<sender>:<name>" without a label), so neither two senders nor two tenants
+// meet in one session, and spans for a session owned by another sender are dropped. The tenant label on the spans is the sender's own and is kept as sent: it only ever names a
+// tenant inside the sender's namespace.
+func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 	// Decoding a large export is the expensive part and touches no store state, so it happens before the lock is
 	// taken: a big body must not stall every reader of the store while it is parsed.
 	type parsedResource struct {
@@ -783,16 +787,6 @@ func (s *SessionStore) IngestFor(tenant string, body map[string]any) int {
 		p.conversationID, _ = p.resourceAttrs[genAIConversationID].(string)
 		p.evalSetID, _ = p.resourceAttrs[evalSetIDAttr].(string)
 		p.traces = otlp.ParseExportRequest(map[string]any{"resourceSpans": []any{rs}})
-		if tenant != "" {
-			for _, tr := range p.traces {
-				for _, sp := range tr.AllSpans {
-					if sp.Tags == nil {
-						sp.Tags = map[string]any{}
-					}
-					sp.Tags[s.tenantAttrOrDefault()] = tenant
-				}
-			}
-		}
 		parsed = append(parsed, p)
 	}
 
@@ -814,12 +808,18 @@ func (s *SessionStore) IngestFor(tenant string, body map[string]any) int {
 			if name == "" {
 				name = fmt.Sprintf("otlp-%s", shortID(tr.TraceID))
 			}
-			if tenant != "" {
-				name = tenant + ":" + name
+			if sender != "" {
+				// Sender and tenant label are part of the identity: the same session name from two senders, or for
+				// two tenants of one sender, is two sessions.
+				if label := traceTenantLabel(tr.AllSpans, s.usageTenantAttr); label != "" {
+					name = sender + ":" + label + ":" + name
+				} else {
+					name = sender + ":" + name
+				}
 			}
 
-			session, isNew := s.getOrCreateSession(name, tr.TraceID, evalSetID, tenant, resourceAttrs)
-			if session.Tenant != tenant {
+			session, isNew := s.getOrCreateSession(name, tr.TraceID, evalSetID, sender, resourceAttrs)
+			if session.Sender != sender {
 				log.Printf("ingest: dropped spans for session %q: it belongs to another sender", name)
 				continue
 			}
@@ -837,7 +837,7 @@ func (s *SessionStore) IngestFor(tenant string, body map[string]any) int {
 				s.markChangedLocked(session)
 				ingested++
 				if s.store != nil {
-					if row, ok := usageRowFromSpan(span, session.ID, s.usageTenantAttr); ok {
+					if row, ok := usageRowFromSpan(span, session.ID, s.usageTenantAttr, session.Sender); ok {
 						if row.Kind == "" {
 							row.Kind = traceRootName(session.Spans, span.TraceID)
 						}
@@ -889,7 +889,7 @@ func (s *SessionStore) IngestFor(tenant string, body map[string]any) int {
 	return ingested
 }
 
-func (s *SessionStore) getOrCreateSession(name, traceID, evalSetID, tenant string, resourceAttrs map[string]any) (*Session, bool) {
+func (s *SessionStore) getOrCreateSession(name, traceID, evalSetID, sender string, resourceAttrs map[string]any) (*Session, bool) {
 	session := s.sessions[name]
 	if session == nil {
 		// A span for a session evicted from memory: bring it back rather
@@ -905,7 +905,7 @@ func (s *SessionStore) getOrCreateSession(name, traceID, evalSetID, tenant strin
 	if session == nil {
 		session = &Session{
 			ID:             name,
-			Tenant:         tenant,
+			Sender:         sender,
 			tenantAttr:     s.usageTenantAttr,
 			PrimaryTraceID: traceID,
 			EvalSetID:      evalSetID,
@@ -1130,4 +1130,14 @@ func asMap(v any) map[string]any {
 func asSlice(v any) []any {
 	s, _ := v.([]any)
 	return s
+}
+
+// SenderOf returns the sender that owns a session ("" for the shared token, an open receiver or an unknown id).
+func (s *SessionStore) SenderOf(sessionID string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if session, ok := s.lookupLocked(sessionID); ok {
+		return session.Sender
+	}
+	return ""
 }

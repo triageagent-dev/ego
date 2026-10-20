@@ -18,6 +18,7 @@ import type {
   OnlineAlert,
 } from '../lib/types';
 import { config } from '../config';
+import { withTenant } from '../lib/tenant';
 import { evalSetFromWireFormat, evalSetToWireFormat } from '../lib/evalset-builder';
 
 export class StorageUnavailableError extends Error {
@@ -352,21 +353,21 @@ export async function healthCheck(): Promise<{ status: string; version: string }
 }
 
 export async function getUsage(hours: number): Promise<UsageSeries> {
-  const response = await fetch(`${config.api.endpoints.usage}?hours=${hours}`);
+  const response = await fetch(withTenant(`${config.api.endpoints.usage}?hours=${hours}`));
   if (response.status === 503) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load usage: ${httpStatusLabel(response)}`);
   return unwrap<UsageSeries>(response);
 }
 
 export async function getUsageSessions(hours: number, limit = 25): Promise<UsageSession[]> {
-  const response = await fetch(`${config.api.endpoints.usage}/calls?hours=${hours}&limit=${limit}&group=session`);
+  const response = await fetch(withTenant(`${config.api.endpoints.usage}/calls?hours=${hours}&limit=${limit}&group=session`));
   if (response.status === 503) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load top sessions: ${httpStatusLabel(response)}`);
   return unwrap<UsageSession[]>(response);
 }
 
 export async function getUsageCalls(hours: number, limit = 25): Promise<UsageCall[]> {
-  const response = await fetch(`${config.api.endpoints.usage}/calls?hours=${hours}&limit=${limit}`);
+  const response = await fetch(withTenant(`${config.api.endpoints.usage}/calls?hours=${hours}&limit=${limit}`));
   if (response.status === 503) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load top calls: ${httpStatusLabel(response)}`);
   return unwrap<UsageCall[]>(response);
@@ -380,14 +381,14 @@ export async function getOnlineStatus(): Promise<OnlineStatus> {
 }
 
 export async function getOnlineSeries(hours: number): Promise<OnlineSeriesPoint[]> {
-  const response = await fetch(`${config.api.endpoints.online}/series?hours=${hours}`);
+  const response = await fetch(withTenant(`${config.api.endpoints.online}/series?hours=${hours}`));
   if (response.status === 503) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load quality series: ${httpStatusLabel(response)}`);
   return unwrap<OnlineSeriesPoint[]>(response);
 }
 
 export async function getOnlineAlerts(state: 'open' | 'all' = 'open'): Promise<OnlineAlert[]> {
-  const response = await fetch(`${config.api.endpoints.online}/alerts?state=${state}`);
+  const response = await fetch(withTenant(`${config.api.endpoints.online}/alerts?state=${state}`));
   if (response.status === 503) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load quality alerts: ${httpStatusLabel(response)}`);
   return unwrap<OnlineAlert[]>(response);

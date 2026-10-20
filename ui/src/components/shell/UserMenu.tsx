@@ -8,6 +8,7 @@ interface MeState {
   // false when the server runs without auth: no login to offer.
   authEnabled?: boolean;
   username?: string;
+  role?: string;
 }
 
 export function UserMenu() {
@@ -47,6 +48,9 @@ export function UserMenu() {
         <User size={14} />
         {me.username}
       </span>
+      {me.role === 'none' && (
+        <span css={noAccessStyle} title="No role binding covers you: ask an admin to add your GitHub team">no access</span>
+      )}
       {/* A form post, not a link: logout changes state, and the server accepts it only as POST. The 303
        * redirect back to /evals is a plain navigation, so the global 401 interceptor is not involved. */}
       <form method="post" action="/auth/logout" css={logoutFormStyle}>
@@ -78,6 +82,11 @@ const usernameStyle = css`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+`;
+
+const noAccessStyle = css`
+  color: var(--status-failure);
+  font-size: 11.5px;
 `;
 
 const logoutFormStyle = css`

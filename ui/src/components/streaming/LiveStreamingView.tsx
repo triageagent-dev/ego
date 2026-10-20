@@ -5,6 +5,7 @@ import { config } from '../../config';
 import { onServerDown, onServerUp, setFeed } from '../../lib/connection';
 import { parseHash } from '../shell/routes';
 import { Pager, PAGE_SIZE, clampPage } from '../ui/Pager';
+import { inTenant, useSelectedTenant } from '../../lib/tenant';
 import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
 
 type TimeRangeKey = '1h' | '6h' | '12h' | 'day' | '7d' | 'all';
@@ -67,6 +68,7 @@ export function LiveStreamingView() {
   const setActiveSessions = actions.setStreamingSessions;
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('all');
   const [donePage, setDonePage] = useState(0);
+  const pickedTenant = useSelectedTenant();
   const [searchQuery, setSearchQuery] = useState('');
   // A session linked to by id (#sessions?session=...): shown alone and opened.
   const [focusId, setFocusId] = useState<string | null>(() => parseHash(location.hash).params.get('session'));
@@ -750,7 +752,7 @@ export function LiveStreamingView() {
     (s.status === 'complete' || !!s.rootSpanName);
   // A linked session is shown alone, whatever the time range, search and non-LLM filter say.
   const focused = focusId ? Array.from(activeSessions.values()).filter(s => s.sessionId === focusId) : null;
-  const matched = focused ?? Array.from(activeSessions.values()).filter(withinRange).filter(matchesSearch);
+  const matched = focused ?? Array.from(activeSessions.values()).filter(withinRange).filter(matchesSearch).filter(s => inTenant(s.tenants, pickedTenant));
   const hiddenNoLLM = focused || showNoLLM ? 0 : matched.filter(hasNoLLM).length;
   const sessions = focused || showNoLLM ? matched : matched.filter(s => !hasNoLLM(s));
   const activeLiveSessions = sessions
