@@ -1,0 +1,48 @@
+# Copy to deploy/values.yaml (gitignored) and fill in your deployment.
+image:
+  repository: ghcr.io/your-org/ego
+imagePullSecrets:
+  - name: ghcr-pull
+serviceAccount:
+  name: ego
+  annotations:
+    iam.gke.io/gcp-service-account: your-gsa@your-gcp-project.iam.gserviceaccount.com
+persistence:
+  claimName: ego-session-db
+  size: 1Gi
+  storageClass: standard
+adminGithubUsers:
+  - your-github-login
+auth:
+  githubClientId: YOUR_GITHUB_OAUTH_CLIENT_ID
+  githubOrg: your-github-org
+  publicUrl: https://your-public-hostname.example.com
+vertex:
+  project: your-gcp-project
+  location: europe-west4
+httpRoute:
+  enabled: true
+  hostname: your-public-hostname.example.com
+  parentRef:
+    name: your-gateway
+    namespace: your-gateway-namespace
+    sectionName: http
+# Online evaluation (docs/online-evaluation.md). Profiles map a call kind
+# (gen_ai.agent.name, else the trace root span name) to evaluators.
+online:
+  enabled: false
+  discordSecret: ego-discord   # key DISCORD_WEBHOOK_URL
+  config:
+    budget:
+      judgeTokensPerDay: 2000000
+      jevCallsPerDay: 1000
+    profiles:
+      - kind: your-agent-kind
+        evaluators:
+          - name: jev_task_resolved
+          - name: jev_grounded
+          - name: hallucinations_v1
+    sinks:
+      - type: discord
+        urlEnv: EGO_DISCORD_WEBHOOK
+        digest: true

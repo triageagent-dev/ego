@@ -1,0 +1,15 @@
+/bin/
+/ui/node_modules/
+/ui/dist/*
+!/ui/dist/.gitkeep
+*.db
+*.db-wal
+*.db-shm
+
+# Real deployment values: this deployment's actual GCP project, service
+# account, container registry, and public hostname - not meant for a public
+# repo. Copy deploy/values.example.yaml to deploy/values.yaml and fill in.
+/deploy/values.yaml
+/deploy/local.mk
+/deploy/k8s.yaml
+/ego

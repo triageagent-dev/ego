@@ -1,0 +1,18 @@
+{{- range .Values.serviceAliases }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ . }}
+  labels:
+    {{- include "ego.labels" $ | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ include "ego.name" $ }}
+  ports:
+    - {name: http, port: 8001, targetPort: http}
+    - {name: otlp-http, port: 4318, targetPort: otlp-http}
+    - {name: otlp-grpc, port: 4317, targetPort: otlp-grpc}
+    - {name: health, port: 9090, targetPort: health}
+{{- end }}

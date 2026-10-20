@@ -1,0 +1,190 @@
+# Deployment-specific values (project, hostname, client ID, registry) go in
+# a values file outside git - see deploy/values.example.yaml.
+
+# Name of the Deployment, Service, ConfigMap and pod selector (default "ego").
+# Set it to keep the names of an existing release: the selector is immutable.
+nameOverride: ""
+
+# Extra Service names that point at the same pods, for clients still configured with an earlier name.
+serviceAliases: []
+
+image:
+  repository: ghcr.io/triageagent-dev/ego
+  # -- Defaults to Chart.appVersion; `make deploy` sets it to the image it built.
+  tag: ""
+  # -- Pin by digest (sha256:...) instead of the mutable tag; takes precedence over tag when set.
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+serviceAccount:
+  # -- Created by the chart. Keep the name stable: a GKE Workload Identity
+  # binding is made against namespace/name.
+  name: ego
+  annotations: {}
+  # e.g. iam.gke.io/gcp-service-account: <gsa>@<project>.iam.gserviceaccount.com
+
+# -- Session/run-history SQLite database on a PersistentVolumeClaim. The
+# claim is kept on `helm uninstall` (resource-policy: keep).
+persistence:
+  claimName: ego-session-db
+  size: 1Gi
+  storageClass: ""
+  dbFile: ego-sessions.db
+  # -- Completed sessions kept in memory; older ones stay in the database
+  # and load on demand (0 = no cap). Memory use grows with this.
+  memorySessions: 200
+  # -- Delete sessions not updated for this long, daily, then compact the
+  # file (Go duration; "0" = keep forever).
+  retention: 720h
+
+# -- Span attribute the token usage view reads the tenant from
+# (--usage-tenant-attr); empty records no tenant.
+usageTenantAttr: ""
+
+# -- GitHub logins that are always admin (--admin-github-users).
+adminGithubUsers: []
+
+# -- Log threshold: debug, info, warn or error (--log-level).
+logLevel: info
+
+auth:
+  # -- GitHub login gate. false drops the auth env, so the server runs open
+  # (no session cookie, every caller is admin).
+  enabled: true
+  githubClientId: ""
+  # -- Role of a signed-in user no role binding covers: admin, member, viewer or none (no access). With none, give
+  # every team a binding (tenants: ["*"] for staff, "<sender>/*" or "<sender>/<tenant>" for customers).
+  defaultRole: member
+  # -- Log the GitHub user name of every sign-in and refused sign-in (--audit-log). Off: the log carries no user names.
+  auditLog: false
+  githubOrg: ""
+  publicUrl: ""
+  # -- Secret holding GITHUB_CLIENT_SECRET.
+  githubClientSecret: ego-github-oauth
+  # -- Secret holding SESSION_SECRET (enables auth when set).
+  sessionSecret: ego-session-secret
+
+vertex:
+  enabled: true
+  project: ""
+  location: europe-west4
+
+# -- Optional Secret holding JEV_API_KEY for the Jev judge models.
+jevSecret: ego-jev
+
+extraEnv: []
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+podSecurityContext:
+  fsGroup: 65532
+  runAsNonRoot: true
+  runAsUser: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+automountServiceAccountToken: false
+
+# -- A shared bearer token for the OTLP receivers (4317, 4318). The Secret holds the token (at least 32 bytes)
+# under OTLP_TOKEN; senders put it in their exporter headers as "Authorization: Bearer <token>". The receivers
+# always require a token: off, only the sender tokens an admin mints (POST /api/admin/senders) are accepted, and
+# with none minted every push is refused.
+otlpAuth:
+  enabled: false
+  secret: ego-otlp-token
+  # -- Key in the Secret. A value of the form "Bearer <token>" (an exporter header kept as-is) works too.
+  key: OTLP_TOKEN
+
+# -- NetworkPolicy for the pods. When enabled, only the ingress rules listed here are allowed (an empty list
+# denies all ingress, so list the UI/gateway on 8001 and every telemetry producer on 4317/4318). Rules are
+# standard NetworkPolicy ingress rules, for example:
+#   ingress:
+#     - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: my-producers}}}]
+#       ports: [{port: 4317}, {port: 4318}]
+networkPolicy:
+  enabled: false
+  ingress: []
+
+# -- Gateway API HTTPRoutes. The UI is built unprefixed, so its assets and
+# API live at root paths; rootPaths lists the ones claimed on the shared
+# host. A new endpoint under /api needs an entry here.
+httpRoute:
+  enabled: false
+  hostname: ""
+  parentRef:
+    name: ""
+    namespace: ""
+    sectionName: ""
+  # -- Route name for the UI prefix + root paths.
+  name: ego
+  prefix: /evals
+  # -- Send "/" on the host to the UI prefix, so the bare hostname opens the UI.
+  rootRedirect: true
+  # -- Optional second route claiming another prefix, e.g. a legacy path ("" to skip).
+  aliasName: ""
+  aliasPrefix: ""
+  rootPaths:
+    - /assets
+    - /favicon.svg
+    - /favicon.ico
+    - /ws
+    - /api/config
+    - /api/convert
+    - /api/evaluate
+    - /api/evalsets
+    - /api/admin
+    - /api/health
+    - /api/metrics
+    - /api/runs
+    - /api/usage
+    - /api/online
+    - /api/tenants
+    - /api/streaming
+    - /api/validate
+    - /stream
+    - /auth
+
+# Online evaluation (docs/online-evaluation.md): samples completed sessions,
+# scores them per call kind, detects regressions and notifies. Needs
+# persistence. `config` is the --online-config document, written in YAML here
+# and rendered to JSON.
+online:
+  enabled: false
+  # Secret with key DISCORD_WEBHOOK_URL; a discord sink reads it with
+  # urlEnv: EGO_DISCORD_WEBHOOK.
+  discordSecret: ""
+  # A projected service-account token for a webhook or event sink whose
+  # receiver authenticates in-cluster callers by TokenReview; set
+  # bearerTokenFile: /var/run/secrets/ego/webhook/token on the sink.
+  webhookToken:
+    enabled: false
+    audience: ""
+  config:
+    budget:
+      judgeTokensPerDay: 2000000
+      jevCallsPerDay: 1000
+    sampling:
+      perKindPerHour: 6
+      boostPerKindPerHour: 6
+      afterChangeSessions: 20
+      dedupWindow: 6h
+    detector:
+      window: 6h
+      baseline: 168h
+      minSamples: 12
+      minDrop: 0.1
+    profiles: []
+    sinks: []

@@ -1,0 +1,51 @@
+{
+  "eval_set_id": "helm_eval_set",
+  "name": "Helm Agent Eval Set",
+  "description": "Golden eval cases for the Helm agent trace samples.",
+  "eval_cases": [
+    {
+      "eval_id": "helm_list_releases",
+      "conversation": [
+        {
+          "invocation_id": "helm_list_releases_inv_1",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {"text": "list all Helm releases"}
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {"text": "There are two Helm releases installed in the cluster:\n\n1. Release name: agents\n   - Namespace: agents\n   - Revision: 2\n   - Status: deployed\n   - Chart: agents-0.7.14\n\n2. Release name: agents-crds\n   - Namespace: agents\n   - Revision: 1\n   - Status: deployed\n   - Chart: agents-crds-0.7.14"}
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "helm_list_releases",
+                "args": {},
+                "id": "call_expected_1"
+              }
+            ],
+            "tool_responses": [
+              {
+                "name": "helm_list_releases",
+                "response": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "NAME       \tNAMESPACE\tREVISION\tUPDATED\tSTATUS  \tCHART             \tAPP VERSION\nagents     \tagents   \t2       \t...\tdeployed\tagents-0.7.14     \t           \nagents-crds\tagents   \t1       \t...\tdeployed\tagents-crds-0.7.14\t           \n"
+                    }
+                  ],
+                  "isError": false
+                },
+                "id": "call_expected_1"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
