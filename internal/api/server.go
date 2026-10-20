@@ -166,7 +166,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	}
 
 	otlpMux := http.NewServeMux()
-	ingest := &ingestAuth{globalToken: otlpToken, tenants: tenantStore}
+	ingest := &ingestAuth{globalToken: normalizeIngestToken(otlpToken), tenants: tenantStore}
 	otlpMux.Handle("/v1/traces", ingest.middleware(otlpTracesHandler(store)))
 	if ingest.required() {
 		log.Printf("OTLP ingest requires a bearer token (Authorization header / gRPC metadata)")

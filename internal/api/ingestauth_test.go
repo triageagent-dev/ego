@@ -112,3 +112,17 @@ func TestOTLPGRPCRequiresIngestToken(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeIngestToken(t *testing.T) {
+	for in, want := range map[string]string{
+		testIngestToken:              testIngestToken,
+		"Bearer " + testIngestToken:  testIngestToken,
+		"bearer " + testIngestToken:  testIngestToken,
+		" " + testIngestToken + "\n": testIngestToken,
+		"":                           "",
+	} {
+		if got := normalizeIngestToken(in); got != want {
+			t.Errorf("normalizeIngestToken(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -97,3 +97,13 @@ func (a *ingestAuth) interceptor() grpc.UnaryServerInterceptor {
 		return handler(withIngestTenant(ctx, tenant), req)
 	}
 }
+
+// normalizeIngestToken accepts the shared token as a bare value or as the header value "Bearer <token>", which is
+// how it is usually kept when the same Secret feeds the senders' exporter headers.
+func normalizeIngestToken(s string) string {
+	s = strings.TrimSpace(s)
+	if t, ok := bearerToken(s); ok {
+		return t
+	}
+	return s
+}

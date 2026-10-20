@@ -96,6 +96,8 @@ automountServiceAccountToken: false
 otlpAuth:
   enabled: false
   secret: ego-otlp-token
+  # -- Key in the Secret. A value of the form "Bearer <token>" (an exporter header kept as-is) works too.
+  key: OTLP_TOKEN
 
 # -- NetworkPolicy for the pods. When enabled, only the ingress rules listed here are allowed (an empty list
 # denies all ingress, so list the UI/gateway on 8001 and every telemetry producer on 4317/4318). Rules are

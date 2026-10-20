@@ -69,7 +69,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.otlpAuth.secret }}
-                  key: OTLP_TOKEN
+                  key: {{ .Values.otlpAuth.key | default "OTLP_TOKEN" }}
             {{- end }}
             {{- if .Values.auth.enabled }}
             - name: EGO_GITHUB_CLIENT_ID
