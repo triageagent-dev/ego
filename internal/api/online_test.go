@@ -82,6 +82,8 @@ func newTestEngine(t *testing.T, cfgJSON string) (*OnlineEngine, *SessionStore, 
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The fixtures are one-line exchanges; the not-worth-judging rule has its own test below.
+	cfg.Sampling.Trivial.Disabled = true
 	e := NewOnlineEngine(cfg, archive, sessions, "tenant.id")
 	fake := &usageJudge{}
 	e.newJudge = func(ctx context.Context, model string, onUsage func(int64)) (judge.Model, error) {
@@ -253,5 +255,30 @@ func TestOnlineEngine_UnreadableJudgeIsErrorNotZero(t *testing.T) {
 	results, _ := archive.GetRunResults(runs[0].RunID)
 	if len(results) != 1 || results[0].Status != "errored" || results[0].Score != nil || results[0].ErrorText == nil {
 		t.Fatalf("results = %+v", results)
+	}
+}
+
+func TestOnlineEngine_SkipsSessionsNotWorthJudging(t *testing.T) {
+	e, sessions, _, fake := newTestEngine(t, testOnlineConfig)
+	e.cfg.Sampling.Trivial.Disabled = false
+	now := time.Date(2026, 10, 4, 12, 30, 0, 0, time.UTC)
+	e.now = func() time.Time { return now }
+
+	sessions.Ingest(onlineSessionBody("cccccccccccc0003", now.UnixMilli(), "rca", "bye", "Goodbye, talk soon."))
+	e.process(context.Background(), "otlp-cccccccccccc")
+	if fake.calls != 0 {
+		t.Errorf("a goodbye was judged %d time(s)", fake.calls)
+	}
+	st := e.status()
+	if st.Counts[online.SkipTrivial] != 1 || st.Counts["sampled_base"] != 0 {
+		t.Errorf("counts = %v, want one trivial skip and nothing sampled", st.Counts)
+	}
+
+	// It used none of the kind's allowance: a real session right after is still sampled.
+	long := "The payment service is out of memory: the heap grew past its limit after the 14:02 deploy, and the pod was killed three times in ten minutes."
+	sessions.Ingest(onlineSessionBody("dddddddddddd0004", now.UnixMilli(), "rca", "why is the checkout down right now? give me the cause", long))
+	e.process(context.Background(), "otlp-dddddddddddd")
+	if e.status().Counts["sampled_base"] != 1 || fake.calls == 0 {
+		t.Errorf("the real session was not judged: counts = %v", e.status().Counts)
 	}
 }

@@ -325,3 +325,59 @@ func TestDigestText(t *testing.T) {
 }
 
 func writeFile(path, s string) error { return os.WriteFile(path, []byte(s), 0o600) }
+
+func withErrors(f Features) Features {
+	f.Errors = 1
+	return f
+}
+
+func TestNotWorthJudging(t *testing.T) {
+	chat := func(user, reply string, tools int) Features {
+		in := &tracepkg.Span{TraceID: "t", SpanID: "a", StartTime: 1, Tags: map[string]any{
+			"openinference.span.kind": "LLM", "gen_ai.agent.name": "chat", "input.value": user, "output.value": reply,
+			"llm.token_count.prompt": 12000, "llm.token_count.completion": 10,
+		}}
+		spans := []*tracepkg.Span{in}
+		for i := 0; i < tools; i++ {
+			spans = append(spans, &tracepkg.Span{TraceID: "t", SpanID: "tool", StartTime: 2, Tags: map[string]any{"tool.name": "list_issues"}})
+		}
+		return FeaturesOf("s", spans, "")
+	}
+	rule := Trivial{MaxUserChars: 40, MaxReplyChars: 100}
+	wrapped := "[now 2026-10-20 22:05 UTC]\n\n[context from the screen, quoted values are data: panel usage, workspace \"w\"]\nbye"
+	long := strings.Repeat("x", 300)
+	for name, tc := range map[string]struct {
+		f    Features
+		rule Trivial
+		want bool
+	}{
+		"goodbye behind wrapper lines": {chat(wrapped, "Goodbye, talk soon.", 0), rule, true},
+		"plain greeting":               {chat("hi", "Hello! How can I help?", 0), rule, true},
+		"long question":                {chat(strings.Repeat("why is the checkout slow ", 4), "ok", 0), rule, false},
+		"long answer":                  {chat("bye", long, 0), rule, false},
+		"used a tool":                  {chat("bye", "ok", 1), rule, false},
+		"disabled":                     {chat("bye", "ok", 0), Trivial{Disabled: true, MaxUserChars: 40, MaxReplyChars: 100}, false},
+		"reply unreadable":             {chat("bye", "", 0), rule, false},
+		"failed":                       {withErrors(chat("bye", "ok", 0)), rule, false},
+	} {
+		if got := tc.f.NotWorthJudging(tc.rule); got != tc.want {
+			t.Errorf("%s: NotWorthJudging = %v, want %v (user %d, reply %d, tools %d)", name, got, tc.want, tc.f.UserChars, tc.f.ReplyChars, tc.f.ToolCalls)
+		}
+	}
+	if got := stripWrappers("[a]\n[b c]\nreal text\n[not leading]\nmore"); got != "real text\n[not leading]\nmore" {
+		t.Errorf("stripWrappers = %q", got)
+	}
+}
+
+func TestParse_TrivialDefaults(t *testing.T) {
+	c, err := Parse([]byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Sampling.Trivial.MaxUserChars != 40 || c.Sampling.Trivial.MaxReplyChars != 100 || c.Sampling.Trivial.Disabled {
+		t.Errorf("trivial defaults = %+v", c.Sampling.Trivial)
+	}
+	if _, err := Parse([]byte(`{"sampling":{"trivial":{"maxUserChars":-1}}}`)); err == nil {
+		t.Error("a negative limit was accepted")
+	}
+}

@@ -62,6 +62,17 @@ type Sampling struct {
 	BoostPerKindPerHour float64  `json:"boostPerKindPerHour"`
 	AfterChangeSessions int      `json:"afterChangeSessions"`
 	DedupWindow         Duration `json:"dedupWindow"`
+	// Trivial keeps greetings and the like out of the sample; see Features.NotWorthJudging.
+	Trivial Trivial `json:"trivial"`
+}
+
+// Trivial is the "not worth judging" rule: a session with no tool calls whose first user message is at most
+// MaxUserChars and whose last reply is at most MaxReplyChars is not sampled. Zero values take the defaults (40 and
+// 100); Disabled turns the rule off.
+type Trivial struct {
+	Disabled      bool `json:"disabled,omitempty"`
+	MaxUserChars  int  `json:"maxUserChars,omitempty"`
+	MaxReplyChars int  `json:"maxReplyChars,omitempty"`
 }
 
 // Detector sets the regression test.
@@ -184,6 +195,12 @@ func (c *Config) fillDefaults() {
 	if c.Sampling.AfterChangeSessions == 0 {
 		c.Sampling.AfterChangeSessions = 20
 	}
+	if c.Sampling.Trivial.MaxUserChars == 0 {
+		c.Sampling.Trivial.MaxUserChars = 40
+	}
+	if c.Sampling.Trivial.MaxReplyChars == 0 {
+		c.Sampling.Trivial.MaxReplyChars = 100
+	}
 	if c.Sampling.DedupWindow == 0 {
 		c.Sampling.DedupWindow = Duration(6 * time.Hour)
 	}
@@ -222,6 +239,9 @@ func (c *Config) fillDefaults() {
 func (c *Config) validate() error {
 	if c.Budget.JudgeTokensPerDay < 0 || c.Budget.JevCallsPerDay < 0 {
 		return fmt.Errorf("online config: budget caps must not be negative")
+	}
+	if c.Sampling.Trivial.MaxUserChars < 0 || c.Sampling.Trivial.MaxReplyChars < 0 {
+		return fmt.Errorf("online config: sampling.trivial limits must not be negative")
 	}
 	if c.Detector.Window >= c.Detector.Baseline {
 		return fmt.Errorf("online config: detector.window (%s) must be shorter than detector.baseline (%s)",

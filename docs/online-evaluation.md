@@ -28,13 +28,21 @@ A session is scored only when a profile matches its kind (section 2). Then:
    - `change`: a `service.version` or model not seen for this kind in the last
      24h starts a burst. The next `afterChangeSessions` sessions of the kind are
      boosted, because quality shifts happen at changes.
-2. **Dedup**: a fingerprint already scored inside `dedupWindow` and without an
+2. **Not worth judging**: a session with no tool calls whose first user message
+   (leading `[...]` note lines such as a timestamp or screen context are
+   ignored) is at most `sampling.trivial.maxUserChars` (40) and whose last reply
+   is at most `maxReplyChars` (100) is skipped, counted as `trivial` in
+   `/api/online/status`. A greeting or goodbye costs judge tokens and teaches
+   nothing, and it is skipped before the rate buckets, so it neither uses a
+   kind's allowance nor moves its baselines. A session whose text cannot be read
+   is never skipped this way, and neither is one with error spans. `"trivial": {"disabled": true}` turns it off.
+3. **Dedup**: a fingerprint already scored inside `dedupWindow` and without an
    interest reason is skipped. Novelty is not a boost reason: a producer whose
    prompts carry event text makes almost every session novel.
-3. **Rate**: two token buckets per (tenant, kind). The base lane takes
+4. **Rate**: two token buckets per (tenant, kind). The base lane takes
    `perKindPerHour`, the boost lane `boostPerKindPerHour`. Rare kinds are not
    crowded out by frequent ones.
-4. **Budget**: a daily cap on judge tokens (Gemini, metered from the response's
+5. **Budget**: a daily cap on judge tokens (Gemini, metered from the response's
    usage metadata) and on Jev calls (one per scored invocation). The scheduler
    reserves an estimate before scoring (an EWMA of the profile's actual cost)
    and books the actual cost after. When the cap is reached, scoring stops until
@@ -54,7 +62,8 @@ a ConfigMap rendered from Helm values):
 {
   "budget": {"judgeTokensPerDay": 2000000, "jevCallsPerDay": 1000},
   "sampling": {"perKindPerHour": 6, "boostPerKindPerHour": 6,
-               "afterChangeSessions": 20, "dedupWindow": "6h"},
+               "afterChangeSessions": 20, "dedupWindow": "6h",
+               "trivial": {"maxUserChars": 40, "maxReplyChars": 100}},
   "profiles": [
     {"kind": "rca", "maxInvocations": 3,
      "evaluators": [{"name": "jev_grounded"}, {"name": "hallucinations_v1", "numSamples": 1}]}

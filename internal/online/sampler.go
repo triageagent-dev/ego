@@ -21,6 +21,7 @@ const (
 	SkipNoInvocs    = "no_invocations"
 	SkipAlreadySeen = "already_seen"
 	SkipQueueFull   = "queue_full"
+	SkipTrivial     = "trivial"
 )
 
 // Decision is the sampler's answer for one session.

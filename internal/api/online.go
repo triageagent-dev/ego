@@ -188,6 +188,11 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		e.count(online.SkipNoProfile)
 		return
 	}
+	// Before the sampler sees it, so a greeting neither uses up the kind's allowance nor shifts its baselines.
+	if f.NotWorthJudging(e.cfg.Sampling.Trivial) {
+		e.count(online.SkipTrivial)
+		return
+	}
 	// Profiles match on the label the sender wrote; scores, alerts and series are keyed with the sender too, so two
 	// senders that both send a tenant called "acme" stay apart.
 	f.Tenant = tenantKey(e.sessions.SenderOf(sessionID), f.Tenant)
