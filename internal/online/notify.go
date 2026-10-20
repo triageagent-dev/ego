@@ -103,29 +103,55 @@ func EventOf(p AlertPayload) GenericEvent {
 	return e
 }
 
+// chatText makes a value that came from span attributes safe to put in a chat message: control characters and line
+// breaks become spaces, characters that start formatting, links or mentions are dropped, and it is cut to 80 runes.
+func chatText(s string) string {
+	var b strings.Builder
+	n := 0
+	for _, r := range s {
+		switch {
+		case r < 0x20 || r == 0x7f:
+			r = ' '
+		case strings.ContainsRune("`*~|>[]<@\\", r):
+			continue
+		}
+		if n++; n > 80 {
+			b.WriteString("…")
+			break
+		}
+		b.WriteRune(r)
+	}
+	return strings.TrimSpace(b.String())
+}
+
 // DiscordText renders an alert event as one Discord message.
 func DiscordText(p AlertPayload) string {
-	scope := p.Kind
-	if p.Tenant != "" {
-		scope = p.Tenant + " · " + p.Kind
+	kind, metric, tenant, suspect := chatText(p.Kind), chatText(p.Metric), chatText(p.Tenant), chatText(p.Suspect)
+	scope := kind
+	if tenant != "" {
+		scope = tenant + " · " + kind
 	}
 	var b strings.Builder
 	switch p.Event {
 	case EventOpen:
-		fmt.Fprintf(&b, "**Quality drop** · %s · `%s`\n", scope, p.Metric)
+		fmt.Fprintf(&b, "**Quality drop** · %s · `%s`\n", scope, metric)
 	case EventUpdated:
-		fmt.Fprintf(&b, "**Quality drop, worse** · %s · `%s`\n", scope, p.Metric)
+		fmt.Fprintf(&b, "**Quality drop, worse** · %s · `%s`\n", scope, metric)
 	case EventResolved:
-		fmt.Fprintf(&b, "**Quality recovered** · %s · `%s`\n", scope, p.Metric)
+		fmt.Fprintf(&b, "**Quality recovered** · %s · `%s`\n", scope, metric)
 	}
 	fmt.Fprintf(&b, "%.2f → %.2f (last %s, n=%d; baseline %s, n=%d)",
 		p.Baseline.Mean, p.Current.Mean, p.Current.Span, p.Current.N, p.Baseline.Span, p.Baseline.N)
 	if p.Event != EventResolved {
-		if p.Suspect != "" {
-			fmt.Fprintf(&b, "\nSince %s", p.Suspect)
+		if suspect != "" {
+			fmt.Fprintf(&b, "\nSince %s", suspect)
 		}
 		if len(p.Sessions) > 0 {
-			fmt.Fprintf(&b, "\nLowest: `%s`", strings.Join(p.Sessions, "`, `"))
+			ids := make([]string, len(p.Sessions))
+			for i, s := range p.Sessions {
+				ids[i] = chatText(s)
+			}
+			fmt.Fprintf(&b, "\nLowest: `%s`", strings.Join(ids, "`, `"))
 		}
 	}
 	if p.Link != "" {
@@ -160,15 +186,15 @@ func DigestText(rows []DigestRow, budget BudgetStatus, open int, link string) st
 		b.WriteString("No sessions scored.\n")
 	}
 	for _, r := range rows {
-		scope := r.Key.Kind
+		scope := chatText(r.Key.Kind)
 		if r.Key.Tenant != "" {
-			scope = r.Key.Tenant + " · " + r.Key.Kind
+			scope = chatText(r.Key.Tenant) + " · " + scope
 		}
 		delta := ""
 		if r.PrevN > 0 {
 			delta = fmt.Sprintf(" (%+.2f)", r.Mean-r.Prev)
 		}
-		fmt.Fprintf(&b, "%s · `%s` %.2f%s, n=%d\n", scope, r.Key.Metric, r.Mean, delta, r.N)
+		fmt.Fprintf(&b, "%s · `%s` %.2f%s, n=%d\n", scope, chatText(r.Key.Metric), r.Mean, delta, r.N)
 	}
 	fmt.Fprintf(&b, "Judge spend today: %s tokens", humanInt(budget.Spent.JudgeTokens))
 	if budget.Caps.JudgeTokensPerDay > 0 {
