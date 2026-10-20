@@ -36,25 +36,43 @@ One static Go binary: REST API, web UI, OTLP receivers and an MCP server. No SDK
 
 ## Install
 
-Each tagged release (`v*.*.*`) publishes a binary per platform (Linux, macOS, Windows; amd64 and arm64) with
-`checksums.txt`, a multi-arch container image and the Helm chart.
+ego is meant to run in Kubernetes. Each tagged release (`v*.*.*`) publishes a multi-arch container image
+(`ghcr.io/triageagent-dev/ego`, linux/amd64 and linux/arm64) and the Helm chart
+(`oci://ghcr.io/triageagent-dev/charts/ego`), plus command-line binaries for Linux and macOS (amd64 and arm64).
 
 ```bash
-# binary: downloads the latest release, verifies its checksum
-curl -fsSL https://raw.githubusercontent.com/triageagent-dev/ego/main/install.sh | sh
-# a private repo has no anonymous downloads; use the GitHub CLI instead
-gh release download --repo triageagent-dev/ego --pattern 'ego_*_linux_amd64.tar.gz'
+# Kubernetes: try it without a login, then see charts/ego/README.md for production values
+helm install ego oci://ghcr.io/triageagent-dev/charts/ego --version 0.1.35 \
+  --set auth.enabled=false --set vertex.enabled=false
+kubectl port-forward svc/ego 8001:8001
 
 # container
 docker run -p 8001:8001 -p 4318:4318 -e EGO_NO_AUTH=true ghcr.io/triageagent-dev/ego:latest
-
-# Kubernetes
-helm install ego oci://ghcr.io/triageagent-dev/charts/ego --version 0.1.0 -f values.yaml
 ```
 
-`ego version` prints the installed version. To cut a release, push a tag: `git tag v0.1.0 && git push origin v0.1.0`.
-Running the *Release* workflow by hand builds the binaries without publishing anything.
-The publishing jobs run in the `release` environment: add required reviewers (and a tag rule) to it under Settings > Environments so a tag alone cannot publish. The checksums file and the image are signed keyless with cosign (the Sigstore identity is this workflow), so `cosign verify-blob --bundle checksums.txt.bundle --certificate-identity-regexp "https://github.com/triageagent-dev/ego/" --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt` and `cosign verify` on the image check where they came from. The chart is not signed yet.
+The chart README covers GitHub sign-in, the OTLP token, the NetworkPolicy and the Gateway API route.
+
+**Binary** (`ego run` scores trace files offline; `ego serve` runs the server; `ego mcp` is the MCP server):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/triageagent-dev/ego/main/install.sh | sh
+```
+
+The binaries are not code-signed or notarized with an Apple certificate, so a macOS download from a browser is
+quarantined by Gatekeeper. Clear it once with `xattr -d com.apple.quarantine ego` (or right-click, Open).
+Downloading with `curl` or `gh release download` does not set the flag. Verify a download against `checksums.txt`
+(`install.sh` does this); the checksums file carries a cosign signature.
+
+`ego version` prints the installed version.
+
+**Releasing:** push a tag, `git tag v0.1.36 && git push origin v0.1.36`. Running the *Release* workflow by hand builds
+the binaries without publishing anything. The publishing jobs run in the `release` environment: add required reviewers
+(and a tag rule) to it under Settings > Environments so a tag alone cannot publish. The checksums file and the image are
+signed keyless with cosign (the Sigstore identity is the workflow): `cosign verify-blob --bundle checksums.txt.bundle
+--certificate-identity-regexp "https://github.com/triageagent-dev/ego/" --certificate-oidc-issuer
+https://token.actions.githubusercontent.com checksums.txt`, and `cosign verify` on the image. The chart is not signed.
+New GHCR packages are private until their visibility is changed under the package settings, which has to be done once
+for the image and once for the chart before the repository is opened up.
 
 ## Quick start
 

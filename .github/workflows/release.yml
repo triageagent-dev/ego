@@ -45,7 +45,6 @@ jobs:
           - {goos: linux, goarch: arm64}
           - {goos: darwin, goarch: amd64}
           - {goos: darwin, goarch: arm64}
-          - {goos: windows, goarch: amd64}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -66,14 +65,14 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           name="ego_${VERSION#v}_${GOOS}_${GOARCH}"
-          bin=ego; [ "$GOOS" = windows ] && bin=ego.exe
+          bin=ego
           mkdir -p "dist/$name"
           go build -trimpath \
             -ldflags "-s -w -X github.com/triageagent-dev/ego/internal/api.Version=${VERSION#v}" \
             -o "dist/$name/$bin" ./cmd/ego
           cp LICENSE README.md "dist/$name/"
           cd dist
-          if [ "$GOOS" = windows ]; then zip -qr "$name.zip" "$name"; else tar -czf "$name.tar.gz" "$name"; fi
+          tar -czf "$name.tar.gz" "$name"
           rm -rf "$name"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

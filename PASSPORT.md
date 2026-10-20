@@ -39,7 +39,7 @@
 | Form | Container image (Dockerfile and ko), release binaries, Helm chart |
 | Language | Go 1.26 (go.mod, `toolchain go1.27.2`); TypeScript/React UI (Vite, Ant Design) embedded with `go:embed` |
 | Build tool | `go build`; Docker multi-stage; `ko` (Makefile `image`); GitHub Actions release workflow |
-| Release platforms | linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64 (binaries); linux/amd64 + linux/arm64 (image via Actions); linux/amd64 (ko) |
+| Release platforms | linux/amd64, linux/arm64, darwin/amd64, darwin/arm64 (binaries); linux/amd64 + linux/arm64 (image via Actions); linux/amd64 (ko) |
 | Base image (Dockerfile) | gcr.io/distroless/static-debian12:nonroot (tag, no digest); build stages node:22-bookworm-slim, golang:1.27-bookworm (tags, no digest) |
 | Base image (ko) | cgr.dev/chainguard/static (tag, no digest) |
 | Runtime user | `USER 65532:65532`; pod `runAsNonRoot`, `runAsUser: 65532`, `fsGroup: 65532`, seccomp `RuntimeDefault` |
