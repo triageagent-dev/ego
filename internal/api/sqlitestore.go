@@ -76,6 +76,10 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := ensureRevocationsSchema(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if err := ensureOnlineSchema(db); err != nil {
 		db.Close()
 		return nil, err

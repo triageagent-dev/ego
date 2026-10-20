@@ -99,7 +99,7 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 
 // Session validity is checked here directly rather than via requireSession, since this route must be reachable
 // (and answer honestly) precisely when there is no valid session.
-func authMeHandler(sessionSecret string, ghTokens *githubTokenValidator, roleStore *RoleStore, org string) http.HandlerFunc {
+func authMeHandler(sessionSecret string, ghTokens *githubTokenValidator, revoked *revocations, roleStore *RoleStore, org string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if sessionSecret == "" {
@@ -109,16 +109,15 @@ func authMeHandler(sessionSecret string, ghTokens *githubTokenValidator, roleSto
 			_ = json.NewEncoder(w).Encode(map[string]any{"authenticated": false, "authEnabled": false})
 			return
 		}
-		username, ok := extractSessionUsername(r, sessionSecret, ghTokens)
+		id, ok := authenticate(r, sessionSecret, ghTokens, revoked)
 		if !ok {
 			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(map[string]bool{"authenticated": false})
 			return
 		}
-		resp := map[string]any{"authenticated": true, "username": username}
+		resp := map[string]any{"authenticated": true, "username": id.Username}
 		if roleStore != nil {
-			teams, known := resolveTeamsForRequest(r, roleStore, org, sessionSecret, ghTokens, username)
-			info := roleStore.EffectiveRole(username, teams, known)
+			info := roleForIdentity(r, roleStore, org, ghTokens, id)
 			if info.Unresolved {
 				writeTeamsUnresolved(w, r)
 				return

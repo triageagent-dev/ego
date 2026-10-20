@@ -40,7 +40,7 @@ func TestOriginGuard(t *testing.T) {
 }
 
 func TestLogoutIsPostOnly(t *testing.T) {
-	h := authLogoutHandler()
+	h := authLogoutHandler("test-secret", nil)
 	rec := httptest.NewRecorder()
 	h(rec, httptest.NewRequest(http.MethodGet, "/auth/logout", nil))
 	if rec.Code != http.StatusMethodNotAllowed || len(rec.Result().Cookies()) != 0 {

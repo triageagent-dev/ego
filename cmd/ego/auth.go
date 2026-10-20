@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/api"
@@ -11,7 +12,7 @@ import (
 // authCmd dispatches `ego auth <subcommand>`.
 func authCmd(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: ego auth mint-token --name <label> [--ttl-days 90] [--secret ...]")
+		return fmt.Errorf("usage: ego auth mint-token --name <label> [--role member] [--ttl-days 90] [--secret ...]")
 	}
 	switch args[0] {
 	case "mint-token":
@@ -26,7 +27,8 @@ func authCmd(args []string) error {
 func authMintTokenCmd(args []string) error {
 	fs := flag.NewFlagSet("auth mint-token", flag.ExitOnError)
 	name := fs.String("name", "", "label for the token (e.g. 'triage-core-otlp' or 'claude-code-mcp'), embedded as the token's subject and logged wherever it authenticates - not a GitHub username, since non-browser clients have no GitHub identity of their own (required)")
-	ttlDays := fs.Int("ttl-days", 90, "token lifetime in days (default 90); machine clients have no login flow to refresh it, so mint a new one before it ends - rotate --secret/EGO_SESSION_SECRET to invalidate every minted token at once")
+	role := fs.String("role", "member", "role the token acts with: admin, member or viewer. It is not looked up from role bindings, so a label equal to a GitHub login does not inherit that user's role")
+	ttlDays := fs.Int("ttl-days", 90, "token lifetime in days (default 90); machine clients have no login flow to refresh it, so mint a new one before it ends - revoke one with POST /api/admin/revocations (the id is printed on stderr), or rotate --secret/EGO_SESSION_SECRET to invalidate every token and cookie at once")
 	secret := fs.String("secret", env("SESSION_SECRET"), "signing secret; falls back to EGO_SESSION_SECRET so this can run against the same secret the deployed server uses without pasting it into a flag")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -45,7 +47,12 @@ func authMintTokenCmd(args []string) error {
 		return fmt.Errorf("--ttl-days must be at least 1")
 	}
 
-	token := api.MintSessionToken(*name, *secret, time.Duration(*ttlDays)*24*time.Hour)
+	tokenRole, err := api.ParseRole(*role)
+	if err != nil {
+		return err
+	}
+	token, id := api.MintAPIToken(*name, *secret, tokenRole, time.Duration(*ttlDays)*24*time.Hour)
+	fmt.Fprintf(os.Stderr, "token id: %s (role %s, valid %d days)\n", id, tokenRole, *ttlDays)
 	fmt.Println(token)
 	return nil
 }

@@ -103,7 +103,7 @@ func TestGitHubTokenValidator_CachesResult(t *testing.T) {
 	}
 }
 
-// TestExtractSessionUsername_GitHubTokenFallback exercises the full path
+// TestAuthenticate_GitHubTokenFallback exercises the full path
 // used by requireSession: a bearer value that isn't a valid signed
 // session token but is a valid GitHub token for an org member still
 // authenticates.
@@ -114,9 +114,9 @@ func TestExtractSessionUsername_GitHubTokenFallback(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/runs", nil)
 	req.Header.Set("Authorization", "Bearer ghp_validtoken0123456789abcdefghij")
 
-	username, ok := extractSessionUsername(req, "session-secret", ghTokens)
-	if !ok || username != "octocat" {
-		t.Fatalf("extractSessionUsername() = (%q, %v), want (\"octocat\", true)", username, ok)
+	id, ok := authenticate(req, "session-secret", ghTokens, nil)
+	if !ok || id.Username != "octocat" || id.Kind != identityGitHub {
+		t.Fatalf("authenticate() = (%+v, %v), want octocat via GitHub", id, ok)
 	}
 }
 
@@ -129,7 +129,7 @@ func TestRequireSession_AcceptsGitHubTokenBearer(t *testing.T) {
 		sawUsername, _ = authenticatedUsername(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
-	handler := requireSession("session-secret", ghTokens, inner)
+	handler := requireSession("session-secret", ghTokens, nil, inner)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/runs", nil)
 	req.Header.Set("Authorization", "Bearer ghp_validtoken0123456789abcdefghij")
@@ -147,7 +147,7 @@ func TestRequireSession_AcceptsGitHubTokenBearer(t *testing.T) {
 func TestRequireSession_RejectsInvalidGitHubToken(t *testing.T) {
 	githubAPIStub(t, "octocat", true)
 	ghTokens := newGitHubTokenValidator(&GitHubOAuthConfig{Org: "triageagent-dev"})
-	handler := requireSession("session-secret", ghTokens, okHandler())
+	handler := requireSession("session-secret", ghTokens, nil, okHandler())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/runs", nil)
 	req.Header.Set("Authorization", "Bearer ghp_notarealtoken0123456789abcdefgh")

@@ -94,6 +94,14 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		onlineEngine.Start(onlineStop)
 	}
 
+	var revoked *revocations
+	if sessionSecret != "" {
+		var err error
+		if revoked, err = newRevocations(archive); err != nil {
+			return err
+		}
+	}
+
 	var roleStore *RoleStore
 	if sessionSecret != "" {
 		role, err := ParseRole(defaultRole)
@@ -130,6 +138,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/online/alerts", onlineAlertsHandler(onlineEngine))
 	mux.HandleFunc("/api/admin/roles", adminRolesHandler(roleStore))
 	mux.HandleFunc("/api/admin/roles/{id}", adminRoleByIDHandler(roleStore))
+	mux.HandleFunc("/api/admin/revocations", adminRevocationsHandler(revoked))
 
 	uiDist, err := fs.Sub(uiassets.DistFS, "dist")
 	if err != nil {
@@ -196,17 +205,17 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		roleOrg = githubOAuth.Org
 	}
 	topMux.HandleFunc("/api/health", healthHandler)
-	topMux.HandleFunc("/auth/me", authMeHandler(sessionSecret, ghTokens, roleStore, roleOrg))
+	topMux.HandleFunc("/auth/me", authMeHandler(sessionSecret, ghTokens, revoked, roleStore, roleOrg))
 	if githubOAuth != nil {
 		topMux.HandleFunc("/auth/login", authLoginHandler(githubOAuth))
 		topMux.HandleFunc("/auth/callback", authCallbackHandler(githubOAuth, roleStore))
-		topMux.HandleFunc("/auth/logout", authLogoutHandler())
+		topMux.HandleFunc("/auth/logout", authLogoutHandler(sessionSecret, revoked))
 		log.Printf("independent GitHub OAuth enabled for %s: org=%q, callback=%q", addr, githubOAuth.Org, githubOAuth.callbackURL())
 	}
 	if roleStore != nil {
 		log.Printf("multi-user RBAC enabled for %s: default role=%q, %d role binding(s) loaded", addr, defaultRole, len(roleStore.List()))
 	}
-	topMux.Handle("/", requireSession(sessionSecret, ghTokens, withRole(roleStore, roleOrg, sessionSecret, ghTokens, mux.ServeHTTP)))
+	topMux.Handle("/", requireSession(sessionSecret, ghTokens, revoked, withRole(roleStore, roleOrg, ghTokens, mux.ServeHTTP)))
 
 	go func() {
 		log.Printf("ego listening on %s", addr)

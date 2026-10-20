@@ -39,6 +39,7 @@ What ego supports today, and what it does not.
   membership is refused, never defaulted. A session with several agents is visible to a role scoped to any one.
 - Interactive evaluation is bounded: at most 4 run at once, 50 trace files, 20 evaluators and 8 judge samples per request, one daily judge-token cap shared by all callers (429 when used up), 8192 output tokens per judge call. Vertex managed evaluation and Jev report no token counts and are limited by the concurrency and request caps only.
 - Judge prompts: quoted trace text is fenced (block markers in it are defanged) and every call starts with a notice that quoted text is data. This lowers prompt-injection risk, it does not remove it; Jev (decision) prompts are not covered. Chat notifications strip markup and mentions from span-derived names.
+- Tokens (`token.go`): cookies and API tokens are different kinds, each with an id and issue time; API tokens carry the role they were minted with; an admin can revoke one token or everything issued to a subject (`/api/admin/revocations`), and logout revokes its cookie. The format changed in this release: older cookies and minted tokens stop working and must be re-minted. A GitHub org member removed from the org keeps a cookie for up to 12 h.
 - Cross-origin POST/PUT/DELETE and WebSocket upgrades from a browser are refused (`origin.go`); logout is POST-only. DNS rebinding of the no-login local mode is not checked.
 - `/api/health` is never gated. The OTLP receivers take an optional bearer token (`--otlp-token`) instead of the login.
 

@@ -174,7 +174,7 @@ func TestRunsHandler_WithStoreListsRuns(t *testing.T) {
 }
 
 func TestAuthMeHandler_NoSession(t *testing.T) {
-	handler := authMeHandler("some-secret", nil, nil, "")
+	handler := authMeHandler("some-secret", nil, nil, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -195,7 +195,7 @@ func TestAuthMeHandler_NoSession(t *testing.T) {
 
 func TestAuthMeHandler_ValidSession(t *testing.T) {
 	const secret = "auth-me-secret"
-	handler := authMeHandler(secret, nil, nil, "")
+	handler := authMeHandler(secret, nil, nil, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: mintTestCookie(t, "alice", secret)})
 	rec := httptest.NewRecorder()
@@ -224,10 +224,10 @@ func TestAuthMeHandler_ValidSession(t *testing.T) {
 func TestUnauthenticatedRoutesNeverBlockOnMissingSession(t *testing.T) {
 	topMux := http.NewServeMux()
 	topMux.HandleFunc("/api/health", healthHandler)
-	topMux.HandleFunc("/auth/me", authMeHandler("secret", nil, nil, ""))
+	topMux.HandleFunc("/auth/me", authMeHandler("secret", nil, nil, nil, ""))
 	gatedMux := http.NewServeMux()
 	gatedMux.HandleFunc("/api/streaming/sessions", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-	topMux.Handle("/", requireSession("secret", nil, gatedMux))
+	topMux.Handle("/", requireSession("secret", nil, nil, gatedMux))
 
 	for _, path := range []string{"/api/health", "/auth/me"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -251,7 +251,7 @@ func TestUnauthenticatedRoutesNeverBlockOnMissingSession(t *testing.T) {
 // UI shows no "session expired" banner.
 func TestAuthMeHandler_AuthOff(t *testing.T) {
 	rec := httptest.NewRecorder()
-	authMeHandler("", nil, nil, "")(rec, httptest.NewRequest(http.MethodGet, "/auth/me", nil))
+	authMeHandler("", nil, nil, nil, "")(rec, httptest.NewRequest(http.MethodGet, "/auth/me", nil))
 	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"authEnabled":false`)) {
 		t.Errorf("code = %d body = %s", rec.Code, rec.Body.String())
 	}

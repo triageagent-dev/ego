@@ -4,13 +4,10 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 )
 
 const sessionCookieName = "ego_session"
@@ -20,10 +17,27 @@ const sessionCookieName = "ego_session"
 // chain - the in-process MCP mount (see mcp.go), currently the only user -
 // can act on whose request this is without re-parsing the cookie/bearer
 // value or re-checking it against GitHub a second time.
-type authenticatedUsernameContextKey struct{}
+type identityContextKey struct{}
 
-func withAuthenticatedUsername(ctx context.Context, username string) context.Context {
-	return context.WithValue(ctx, authenticatedUsernameContextKey{}, username)
+// identity is who a request authenticated as. Kind is the token kind (tokenKindSession, tokenKindAPI) or
+// identityGitHub for a raw GitHub access token.
+type identity struct {
+	Username string
+	Kind     string
+	Role     Role // API tokens: the role the token was minted with.
+	TokenID  string
+	Expiry   int64
+}
+
+const identityGitHub = "github"
+
+func withIdentity(ctx context.Context, id identity) context.Context {
+	return context.WithValue(ctx, identityContextKey{}, id)
+}
+
+func identityFromContext(ctx context.Context) (identity, bool) {
+	id, ok := ctx.Value(identityContextKey{}).(identity)
+	return id, ok && id.Username != ""
 }
 
 // authenticatedUsername returns the username requireSession validated for
@@ -31,46 +45,8 @@ func withAuthenticatedUsername(ctx context.Context, username string) context.Con
 // never wraps the handler at all in that case) or - defensively - if
 // called somewhere requireSession never ran.
 func authenticatedUsername(ctx context.Context) (string, bool) {
-	username, ok := ctx.Value(authenticatedUsernameContextKey{}).(string)
-	return username, ok && username != ""
-}
-
-// readSessionCookie validates a cookie/bearer value against secret and returns the username it authenticates,
-// or ok=false. No GitHub API call happens here: org membership w.
-func readSessionCookie(value, secret string) (username string, ok bool) {
-	raw, err := base64.URLEncoding.DecodeString(value)
-	if err != nil {
-		return "", false
-	}
-
-	s := string(raw)
-	sigSep := strings.LastIndexByte(s, '|')
-	if sigSep < 0 {
-		return "", false
-	}
-	sig := s[sigSep+1:]
-	rest := s[:sigSep]
-
-	expirySep := strings.LastIndexByte(rest, '|')
-	if expirySep < 0 {
-		return "", false
-	}
-	expiryStr := rest[expirySep+1:]
-	username = rest[:expirySep]
-
-	expiry, err := strconv.ParseInt(expiryStr, 10, 64)
-	if err != nil {
-		return "", false
-	}
-
-	expected := signSessionPayload(secret, username+"|"+expiryStr)
-	if !hmac.Equal([]byte(sig), []byte(expected)) {
-		return "", false
-	}
-	if time.Now().Unix() > expiry {
-		return "", false
-	}
-	return username, true
+	id, ok := identityFromContext(ctx)
+	return id.Username, ok
 }
 
 func signSessionPayload(secret, payload string) string {
@@ -79,25 +55,29 @@ func signSessionPayload(secret, payload string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// extractSessionUsername. If that bearer value doesn't validate as one of this service's own signed tokens,
-// ghTokens (nil when no GitHub OAuth config is set) gets one more try at it as a raw GitHub access token - see
-// githubtoken.go.
-func extractSessionUsername(r *http.Request, secret string, ghTokens *githubTokenValidator) (string, bool) {
+// authenticate identifies the caller. A session cookie is accepted only as the cookie and an API token only as a
+// bearer value, so a copied cookie is not a bearer token; both must be unrevoked. A bearer value that is not one
+// of this service's own tokens gets one more try as a raw GitHub access token (ghTokens is nil when no GitHub
+// OAuth config is set) - see githubtoken.go.
+func authenticate(r *http.Request, secret string, ghTokens *githubTokenValidator, revoked *revocations) (identity, bool) {
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
-		if username, ok := readSessionCookie(cookie.Value, secret); ok {
-			return username, true
+		if t, ok := parseToken(cookie.Value, secret); ok && t.Kind == tokenKindSession && !revoked.revoked(t) {
+			return identity{Username: t.Username, Kind: t.Kind, TokenID: t.ID, Expiry: t.Expiry}, true
 		}
 	}
 	if auth := r.Header.Get("Authorization"); strings.HasPrefix(strings.ToLower(auth), "bearer ") {
 		token := strings.TrimSpace(auth[7:])
-		if username, ok := readSessionCookie(token, secret); ok {
-			return username, true
+		if t, ok := parseToken(token, secret); ok {
+			if t.Kind == tokenKindAPI && !revoked.revoked(t) {
+				return identity{Username: t.Username, Kind: t.Kind, Role: t.Role, TokenID: t.ID, Expiry: t.Expiry}, true
+			}
+			return identity{}, false
 		}
 		if username, ok := ghTokens.validate(token); ok {
-			return username, true
+			return identity{Username: username, Kind: identityGitHub}, true
 		}
 	}
-	return "", false
+	return identity{}, false
 }
 
 // apiPathPrefixes.
@@ -118,13 +98,13 @@ func isAPIPath(path string) bool {
 // the bearer value - see githubtoken.go/extractSessionUsername - so a
 // non-browser client can authenticate with `gh auth token`'s output
 // instead of a separately minted ego bearer token.
-func requireSession(secret string, ghTokens *githubTokenValidator, handler http.Handler) http.Handler {
+func requireSession(secret string, ghTokens *githubTokenValidator, revoked *revocations, handler http.Handler) http.Handler {
 	if secret == "" {
 		return handler
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if username, ok := extractSessionUsername(r, secret, ghTokens); ok {
-			r = r.WithContext(withAuthenticatedUsername(r.Context(), username))
+		if id, ok := authenticate(r, secret, ghTokens, revoked); ok {
+			r = r.WithContext(withIdentity(r.Context(), id))
 			handler.ServeHTTP(w, r)
 			return
 		}

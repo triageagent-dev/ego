@@ -209,7 +209,20 @@ https server or to localhost; use `--session-token` for anything else, or `--no-
 token for a client with no `gh`:
 
 ```bash
-./bin/ego auth mint-token --name ci --secret "$EGO_SESSION_SECRET"
+./bin/ego auth mint-token --name ci --role member --secret "$EGO_SESSION_SECRET"
+```
+
+The token acts with the role given at minting (`viewer`, `member` default, `admin`); the label is only a name, so it does
+not inherit a GitHub user's bindings. The token's id is printed on stderr. Browser cookies and API tokens are not
+interchangeable: a cookie is accepted only as a cookie, a token only as a bearer value.
+
+To cut a token off before it expires, an admin posts its id; to sign a user or a token label out everywhere, post
+the subject (everything issued to it up to that second stops working, later tokens work). Logout revokes the cookie
+it ends. Revocations are kept in the session database.
+
+```bash
+curl -X POST "$EGO_SERVER_URL/api/admin/revocations" -H "Authorization: Bearer $TOKEN" -d '{"tokenId":"tok-..."}'
+curl -X POST "$EGO_SERVER_URL/api/admin/revocations" -H "Authorization: Bearer $TOKEN" -d '{"subject":"ci"}'
 ```
 
 ## Authentication and roles

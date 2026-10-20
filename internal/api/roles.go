@@ -437,22 +437,29 @@ func roleInfoOrOpen(ctx context.Context) RoleInfo {
 	return RoleInfo{Role: RoleAdmin, IsAdmin: true}
 }
 
-// withRole resolves the current request's RoleInfo (from the username
-// requireSession already put in context - see authenticatedUsername) and
-// stashes it for downstream handlers. Must be the handler requireSession
-// wraps (not the other way around): it depends on requireSession having
-// already run so authenticatedUsername is populated. A nil roleStore
-// (RBAC not configured - see server.go's Serve) passes the request
-// through untouched; downstream handlers then see roleInfoOrOpen's
-// unrestricted-admin default.
-func withRole(roleStore *RoleStore, org, sessionSecret string, ghTokens *githubTokenValidator, handler http.HandlerFunc) http.HandlerFunc {
+// roleForIdentity resolves id's access level. An API token acts with the role it was minted with and nothing
+// else, so its label does not pick up the role of a GitHub user of the same name. Everyone else gets the
+// strongest matching role binding (see EffectiveRole); unknown team membership comes back Unresolved.
+func roleForIdentity(r *http.Request, roleStore *RoleStore, org string, ghTokens *githubTokenValidator, id identity) RoleInfo {
+	if id.Kind == tokenKindAPI {
+		return RoleInfo{Role: id.Role, IsAdmin: id.Role == RoleAdmin}
+	}
+	teams, known := resolveTeamsForRequest(r, roleStore, org, ghTokens, id)
+	return roleStore.EffectiveRole(id.Username, teams, known)
+}
+
+// withRole resolves the current request's RoleInfo (from the identity requireSession already put in context) and
+// stashes it for downstream handlers. Must be the handler requireSession wraps (not the other way around): it
+// depends on requireSession having already run. A nil roleStore (RBAC not configured - see server.go's Serve)
+// passes the request through untouched; downstream handlers then see roleInfoOrOpen's unrestricted-admin
+// default.
+func withRole(roleStore *RoleStore, org string, ghTokens *githubTokenValidator, handler http.HandlerFunc) http.HandlerFunc {
 	if roleStore == nil {
 		return handler
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		if username, ok := authenticatedUsername(r.Context()); ok {
-			teams, known := resolveTeamsForRequest(r, roleStore, org, sessionSecret, ghTokens, username)
-			info := roleStore.EffectiveRole(username, teams, known)
+		if id, ok := identityFromContext(r.Context()); ok {
+			info := roleForIdentity(r, roleStore, org, ghTokens, id)
 			if info.Unresolved {
 				writeTeamsUnresolved(w, r)
 				return
@@ -463,36 +470,32 @@ func withRole(roleStore *RoleStore, org, sessionSecret string, ghTokens *githubT
 	}
 }
 
-// resolveTeamsForRequest returns username's GitHub team memberships for this request and whether they are
-// known. Prefers RoleStore's login-time cache (populated by authCallbackHandler - the only place this service
-// ever holds a browser user's own GitHub access token); for a request bearing a raw GitHub token directly (the
+// resolveTeamsForRequest returns the GitHub team memberships of id for this request and whether they are known.
+// Prefers RoleStore's login-time cache (populated by authCallbackHandler - the only place this service ever
+// holds a browser user's own GitHub access token); for a request bearing a raw GitHub token directly (the
 // MCP/CLI path - see githubtoken.go), resolves live via ghTokens (itself cached, so repeat calls in one CLI/MCP
 // session cost one GitHub API round trip, not one per call) and backfills RoleStore's cache.
 //
 // Unknown is not the same as "no teams": a browser session whose cache entry is gone (the pod restarted, the
 // entry expired) and a GitHub token whose team lookup failed are unknown, and EffectiveRole refuses them rather
-// than treating them as team-less. A token signed by this service has no teams by design, so it is known.
-func resolveTeamsForRequest(r *http.Request, roleStore *RoleStore, org, sessionSecret string, ghTokens *githubTokenValidator, username string) (teams []string, known bool) {
-	if teams, ok := roleStore.getTeams(username); ok {
+// than treating them as team-less.
+func resolveTeamsForRequest(r *http.Request, roleStore *RoleStore, org string, ghTokens *githubTokenValidator, id identity) (teams []string, known bool) {
+	if teams, ok := roleStore.getTeams(id.Username); ok {
 		return teams, true
 	}
 	if org == "" || ghTokens == nil {
 		return nil, true
 	}
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+	if id.Kind != identityGitHub {
 		return nil, false // a session cookie whose login-time team lookup is gone.
 	}
-	token := strings.TrimSpace(auth[7:])
-	if _, ok := readSessionCookie(token, sessionSecret); ok {
-		return nil, true // this service's own signed token, not a GitHub PAT - nothing to resolve.
-	}
+	token := strings.TrimSpace(r.Header.Get("Authorization")[len("bearer "):]) // identityGitHub implies a bearer header.
 	if _, ok := ghTokens.validate(token); !ok {
 		return nil, false
 	}
 	teams, known = ghTokens.teamsForCached(token)
 	if known {
-		roleStore.setTeams(username, teams)
+		roleStore.setTeams(id.Username, teams)
 	}
 	return teams, known
 }

@@ -73,20 +73,6 @@ func (c *GitHubOAuthConfig) callbackURL() string {
 	return c.PublicURL + "/auth/callback"
 }
 
-func mintSessionCookie(username, secret string) string {
-	return MintSessionToken(username, secret, sessionTTL)
-}
-
-// MintSessionToken signs a token in the same username|expiry|hmac format mintSessionCookie/readSessionCookie
-// use, valid for ttl from now. Accepted anywhere a session cookie is: requireSession's Authorization: Bearer
-// path, or the ego_session cookie itself.
-func MintSessionToken(username, secret string, ttl time.Duration) string {
-	expiry := time.Now().Add(ttl).Unix()
-	payload := fmt.Sprintf("%s|%d", username, expiry)
-	sig := signSessionPayload(secret, payload)
-	return base64.URLEncoding.EncodeToString([]byte(payload + "|" + sig))
-}
-
 // makeStateToken is an opaque CSRF nonce: set as an HttpOnly cookie before
 // redirecting to GitHub, echoed back verbatim as ?state=, and only ever
 // compared for equality against its own cookie (see verifyState) - unlike
@@ -212,13 +198,21 @@ func authCallbackHandler(cfg *GitHubOAuthConfig, roleStore *RoleStore) http.Hand
 	}
 }
 
-// authLogoutHandler ends the browser session. POST only: a GET could be triggered by any page that embeds a link
+// authLogoutHandler ends the browser session and revokes its cookie. POST only: a GET could be triggered by any page that embeds a link
 // or image pointing here.
-func authLogoutHandler() http.HandlerFunc {
+func authLogoutHandler(secret string, revoked *revocations) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
+		}
+		// The cookie itself stays valid until it expires if only the browser forgets it, so a copy would keep working.
+		if c, err := r.Cookie(sessionCookieName); err == nil && revoked != nil {
+			if t, ok := parseToken(c.Value, secret); ok && t.Kind == tokenKindSession {
+				if err := revoked.RevokeToken(t.ID, t.Expiry); err != nil {
+					log.Printf("auth: recording logout of %s failed: %v", t.Username, err)
+				}
+			}
 		}
 		deleteCookie(w, sessionCookieName)
 		http.Redirect(w, r, "/evals", http.StatusSeeOther)

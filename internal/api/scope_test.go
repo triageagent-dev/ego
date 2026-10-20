@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -199,11 +198,11 @@ func TestWithRoleAsksForNewSignInWhenTeamsAreGone(t *testing.T) {
 		t.Fatal(err)
 	}
 	called := false
-	h := withRole(s, "acme", "secret", newGitHubTokenValidator(&GitHubOAuthConfig{Org: "acme"}), func(http.ResponseWriter, *http.Request) { called = true })
+	h := withRole(s, "acme", newGitHubTokenValidator(&GitHubOAuthConfig{Org: "acme"}), func(http.ResponseWriter, *http.Request) { called = true })
 
 	req := httptest.NewRequest(http.MethodGet, "/api/runs", nil)
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "x"})
-	req = req.WithContext(context.WithValue(req.Context(), authenticatedUsernameContextKey{}, "bob"))
+	req = req.WithContext(withIdentity(req.Context(), identity{Username: "bob", Kind: tokenKindSession}))
 	rec := httptest.NewRecorder()
 	h(rec, req)
 	if called || rec.Code != http.StatusUnauthorized {
