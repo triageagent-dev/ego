@@ -18,6 +18,19 @@ spec:
       sectionName: {{ . }}
       {{- end }}
   rules:
+    {{- if $r.rootRedirect }}
+    - matches:
+        - path:
+            type: Exact
+            value: /
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: {{ $r.prefix }}/
+            statusCode: 302
+    {{- end }}
     - matches:
         - path:
             type: PathPrefix

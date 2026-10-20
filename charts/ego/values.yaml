@@ -120,6 +120,8 @@ httpRoute:
   # -- Route name for the UI prefix + root paths.
   name: ego
   prefix: /evals
+  # -- Send "/" on the host to the UI prefix, so the bare hostname opens the UI.
+  rootRedirect: true
   # -- Optional second route claiming another prefix, e.g. a legacy path ("" to skip).
   aliasName: ""
   aliasPrefix: ""
