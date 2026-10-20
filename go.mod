@@ -2,6 +2,8 @@ module github.com/triageagent-dev/ego
 
 go 1.26.0
 
+toolchain go1.27.2
+
 require (
 	cloud.google.com/go/auth v0.20.0
 	github.com/gorilla/websocket v1.5.3

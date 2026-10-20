@@ -14,7 +14,7 @@ RUN npm ci
 COPY ui/ ./
 RUN VITE_API_BASE_URL="${UI_BASE_PATH%/}" npm run build -- --base="${UI_BASE_PATH}"
 
-FROM golang:1.25-bookworm AS build
+FROM golang:1.27-bookworm AS build
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
