@@ -139,6 +139,7 @@ func convertHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limitUpload(w, r)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeEvaluateError(w, http.StatusBadRequest, "invalid multipart form: "+err.Error())
 		return

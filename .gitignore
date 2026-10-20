@@ -12,3 +12,4 @@
 /deploy/values.yaml
 /deploy/local.mk
 /deploy/k8s.yaml
+/ego

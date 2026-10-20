@@ -2,10 +2,12 @@ package api
 
 import (
 	"context"
+	"time"
 
 	"github.com/triageagent-dev/ego/internal/otlp"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 )
 
 // traceServiceServer implements coltracepb.TraceServiceServer, the OTLP/gRPC
@@ -34,7 +36,12 @@ func (s *traceServiceServer) Export(ctx context.Context, req *coltracepb.ExportT
 // trace ingestion is a service-to-service push, not a UI/API call a signed
 // session cookie applies to.
 func newOTLPGRPCServer(store *SessionStore) *grpc.Server {
-	s := grpc.NewServer()
+	s := grpc.NewServer(
+		grpc.MaxRecvMsgSize(maxOTLPBody),
+		grpc.MaxConcurrentStreams(64),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 30 * time.Second, PermitWithoutStream: false}),
+		grpc.KeepaliveParams(keepalive.ServerParameters{MaxConnectionIdle: 5 * time.Minute, Time: 2 * time.Minute, Timeout: 20 * time.Second}),
+	)
 	coltracepb.RegisterTraceServiceServer(s, &traceServiceServer{store: store})
 	return s
 }

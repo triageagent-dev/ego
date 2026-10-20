@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 
@@ -121,12 +122,14 @@ func (c *Client) evaluateInstances(ctx context.Context, body any) (*metricResult
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("evaluateInstances HTTP %d: %s", resp.StatusCode, string(respBody))
+		log.Printf("vertexeval: evaluateInstances HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 2000))
+		return nil, fmt.Errorf("evaluateInstances HTTP %d (details are in the server log)", resp.StatusCode)
 	}
 
 	var parsed evaluateInstancesResponse
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return nil, fmt.Errorf("parsing evaluateInstances response: %w (body: %s)", err, string(respBody))
+		log.Printf("vertexeval: unparseable evaluateInstances response: %s", truncate(string(respBody), 2000))
+		return nil, fmt.Errorf("parsing evaluateInstances response: %w", err)
 	}
 	if len(parsed.MetricResults) == 0 {
 		return nil, fmt.Errorf("evaluateInstances returned no metric results")
@@ -136,4 +139,12 @@ func (c *Client) evaluateInstances(ctx context.Context, body any) (*metricResult
 		return nil, fmt.Errorf("evaluateInstances metric error: %s", mr.Error.Message)
 	}
 	return &mr, nil
+}
+
+// truncate shortens s to at most n bytes for logging.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }

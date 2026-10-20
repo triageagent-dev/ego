@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/triageagent-dev/ego/internal/adk"
@@ -62,7 +61,7 @@ func saveEvalSetHandler(store *SQLiteStore) http.HandlerFunc {
 			return
 		}
 		var evalSet adk.EvalSet
-		if err := json.NewDecoder(r.Body).Decode(&evalSet); err != nil {
+		if err := decodeJSON(w, r, &evalSet); err != nil {
 			writeEvaluateError(w, http.StatusBadRequest, "invalid eval set JSON: "+err.Error())
 			return
 		}

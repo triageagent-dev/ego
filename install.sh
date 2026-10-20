@@ -21,6 +21,15 @@ if [ "$version" = latest ]; then
   [ -n "$version" ] || { echo "could not find the latest release" >&2; exit 1; }
 fi
 
+case "$version" in
+  v[0-9]*|[0-9]*) ;;
+  *) echo "invalid version: $version" >&2; exit 1 ;;
+esac
+if ! printf '%s' "$version" | grep -Eq '^v?[0-9]+[.][0-9]+[.][0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+  echo "invalid version: $version" >&2
+  exit 1
+fi
+
 name="ego_${version#v}_${os}_${arch}"
 base="https://github.com/$repo/releases/download/$version"
 tmp="$(mktemp -d)"

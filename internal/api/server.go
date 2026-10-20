@@ -155,11 +155,11 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	errCh := make(chan error, 4)
 	go func() {
 		log.Printf("ego health check listening on %s (GET /api/health, never gated)", healthAddr)
-		errCh <- http.ListenAndServe(healthAddr, healthMux)
+		errCh <- newHTTPServer(healthAddr, healthMux, 10*time.Second, 10*time.Second).ListenAndServe()
 	}()
 	go func() {
 		log.Printf("ego OTLP/HTTP receiver listening on %s (POST /v1/traces)", otlpAddr)
-		errCh <- http.ListenAndServe(otlpAddr, otlpMux)
+		errCh <- newHTTPServer(otlpAddr, otlpMux, 60*time.Second, 60*time.Second).ListenAndServe()
 	}()
 	go func() {
 		lis, err := net.Listen("tcp", otlpGRPCAddr)
@@ -203,7 +203,8 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 
 	go func() {
 		log.Printf("ego listening on %s", addr)
-		errCh <- http.ListenAndServe(addr, topMux)
+		// No write timeout: the live feed, server-sent events and streaming evaluations are long-lived.
+		errCh <- newHTTPServer(addr, securityHeaders(topMux), 120*time.Second, 0).ListenAndServe()
 	}()
 
 	sigCh := make(chan os.Signal, 1)
@@ -242,7 +243,7 @@ func otlpTracesHandler(store *SessionStore) http.HandlerFunc {
 			return
 		}
 
-		reqBody, status, err := otlpRequestBody(r)
+		reqBody, status, err := otlpRequestBody(w, r)
 		if err != nil {
 			http.Error(w, err.Error(), status)
 			return
@@ -255,7 +256,7 @@ func otlpTracesHandler(store *SessionStore) http.HandlerFunc {
 		if strings.Contains(contentType, "application/x-protobuf") {
 			raw, err := io.ReadAll(reqBody)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				writeBodyError(w, err)
 				return
 			}
 			body, err = otlp.DecodeProtobufTraces(raw)
@@ -265,7 +266,7 @@ func otlpTracesHandler(store *SessionStore) http.HandlerFunc {
 			}
 		} else {
 			if err := json.NewDecoder(reqBody).Decode(&body); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				writeBodyError(w, err)
 				return
 			}
 		}
@@ -278,18 +279,31 @@ func otlpTracesHandler(store *SessionStore) http.HandlerFunc {
 	}
 }
 
+// writeBodyError answers a failed body read: 413 for a body over a limit, 400 otherwise.
+func writeBodyError(w http.ResponseWriter, err error) {
+	if isTooLarge(err) {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	http.Error(w, err.Error(), http.StatusBadRequest)
+}
+
 // otlpRequestBody returns r's body with its Content-Encoding undone. The returned status is only meaningful
 // when err is non-nil.
-func otlpRequestBody(r *http.Request) (io.ReadCloser, int, error) {
+//
+// The body is capped as received (maxOTLPBody) and again once decompressed (maxOTLPDecoded); reading past
+// either limit fails with errTooLarge.
+func otlpRequestBody(w http.ResponseWriter, r *http.Request) (io.ReadCloser, int, error) {
+	raw := http.MaxBytesReader(w, r.Body, maxOTLPBody)
 	switch enc := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding"))); enc {
 	case "", "identity":
-		return r.Body, 0, nil
+		return raw, 0, nil
 	case "gzip":
-		zr, err := gzip.NewReader(r.Body)
+		zr, err := gzip.NewReader(raw)
 		if err != nil {
 			return nil, http.StatusBadRequest, fmt.Errorf("invalid gzip body: %w", err)
 		}
-		return zr, 0, nil
+		return newCapReader(zr, maxOTLPDecoded, func() error { _ = zr.Close(); return raw.Close() }), 0, nil
 	default:
 		return nil, http.StatusUnsupportedMediaType, fmt.Errorf("unsupported Content-Encoding %q", enc)
 	}
@@ -327,7 +341,7 @@ func createEvalSetHandler(store *SessionStore) http.HandlerFunc {
 		}
 
 		var req createEvalSetRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := decodeJSON(w, r, &req); err != nil {
 			http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -384,7 +398,7 @@ func getTraceHandler(store *SessionStore) http.HandlerFunc {
 		}
 
 		var req getTraceRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := decodeJSON(w, r, &req); err != nil {
 			http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
 			return
 		}

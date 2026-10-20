@@ -110,7 +110,7 @@ func listRunsHandler(store *SQLiteStore) http.HandlerFunc {
 		limit := 100
 		if raw := q.Get("limit"); raw != "" {
 			if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-				limit = n
+				limit = clampLimit(n, limit)
 			}
 		}
 		runs, err := store.ListRuns(q["status"], limit, q.Get("before"))

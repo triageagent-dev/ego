@@ -12,6 +12,8 @@ image:
   repository: ghcr.io/triageagent-dev/ego
   # -- Defaults to Chart.appVersion; `make deploy` sets it to the image it built.
   tag: ""
+  # -- Pin by digest (sha256:...) instead of the mutable tag; takes precedence over tag when set.
+  digest: ""
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 
@@ -70,10 +72,33 @@ resources:
     cpu: 25m
     memory: 32Mi
   limits:
+    cpu: "1"
     memory: 256Mi
 
 podSecurityContext:
   fsGroup: 65532
+  runAsNonRoot: true
+  runAsUser: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+automountServiceAccountToken: false
+
+# -- NetworkPolicy for the pods. When enabled, only the ingress rules listed here are allowed (an empty list
+# denies all ingress, so list the UI/gateway on 8001 and every telemetry producer on 4317/4318). Rules are
+# standard NetworkPolicy ingress rules, for example:
+#   ingress:
+#     - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: my-producers}}}]
+#       ports: [{port: 4317}, {port: 4318}]
+networkPolicy:
+  enabled: false
+  ingress: []
 
 # -- Gateway API HTTPRoutes. The UI is built unprefixed, so its assets and
 # API live at root paths; rootPaths lists the ones claimed on the shared

@@ -165,6 +165,7 @@ type evaluateRequest struct {
 // (via a plain JSON error or an SSE error event) when the request itself is malformed; per-file load failures
 // are instead accumulated into loadErrors.
 func parseEvaluateRequest(r *http.Request) (*evaluateRequest, int, string) {
+	limitUpload(nil, r)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		return nil, http.StatusBadRequest, "invalid multipart form: " + err.Error()
 	}
@@ -419,9 +420,17 @@ func evaluateStreamHandler(store *SQLiteStore) http.HandlerFunc {
 
 		go func() {
 			defer close(events)
+			// A client that has gone away must not leave this goroutine blocked on a full channel, holding the
+			// uploaded traces: sends give up when the request context ends.
+			send := func(ev map[string]any) {
+				select {
+				case events <- ev:
+				case <-ctx.Done():
+				}
+			}
 
 			if len(req.traces) == 0 {
-				events <- map[string]any{"error": "No traces loaded."}
+				send(map[string]any{"error": "No traces loaded."})
 				return
 			}
 
@@ -429,17 +438,17 @@ func evaluateStreamHandler(store *SQLiteStore) http.HandlerFunc {
 			getVertexEvalClient := newVertexEvalClientGetter(ctx)
 			getDecisionClient := newDecisionClientGetter()
 			total := len(req.traces)
-			events <- map[string]any{"message": fmt.Sprintf("Evaluating %d trace(s)...", total)}
+			send(map[string]any{"message": fmt.Sprintf("Evaluating %d trace(s)...", total)})
 
 			result := runResultDTO{Errors: req.loadErrors}
 			for idx, tr := range req.traces {
-				events <- map[string]any{"message": fmt.Sprintf("Trace %d/%d: %s", idx+1, total, tr.TraceID)}
+				send(map[string]any{"message": fmt.Sprintf("Trace %d/%d: %s", idx+1, total, tr.TraceID)})
 
 				traceResult := evaluateOneTrace(ctx, tr, req.cfg.Evaluators, req.evalSet, getJudgeModel, getVertexEvalClient, getDecisionClient, func(partial traceResultDTO) {
-					events <- map[string]any{"traceProgress": map[string]any{
+					send(map[string]any{"traceProgress": map[string]any{
 						"traceId":       partial.TraceID,
 						"partialResult": partial,
-					}}
+					}})
 				})
 				result.TraceResults = append(result.TraceResults, traceResult)
 			}
@@ -450,8 +459,8 @@ func evaluateStreamHandler(store *SQLiteStore) http.HandlerFunc {
 				}
 			}
 
-			events <- map[string]any{"message": "Evaluation complete"}
-			events <- map[string]any{"done": true, "result": result}
+			send(map[string]any{"message": "Evaluation complete"})
+			send(map[string]any{"done": true, "result": result})
 		}()
 
 		ticker := time.NewTicker(15 * time.Second)

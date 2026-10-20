@@ -129,7 +129,7 @@ Usage:
   ego run <trace-file>... --eval-set <path> -m <metric> [-m <metric>...] [flags]
   ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--usage-tenant-attr key] [--session-secret secret]
                    [--admin-github-users user1,user2] [--default-role member]
-  ego auth mint-token --name <label> [--ttl-days 3650] [--secret ...]
+  ego auth mint-token --name <label> [--ttl-days 90] [--secret ...]
   ego mcp [--server-url http://localhost:8001] [--session-token ...]
   ego version
 
@@ -442,6 +442,9 @@ func serveCmd(args []string) error {
 	onlineConfig := fs.String("online-config", env("ONLINE_CONFIG"),
 		"JSON file that turns on online evaluation: sampling, per-kind evaluator profiles, daily judge caps, regression detection and notification sinks (see docs/online-evaluation.md); needs --session-db; falls back to EGO_ONLINE_CONFIG")
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := checkSessionSecret(*sessionSecret); err != nil {
 		return err
 	}
 	githubOAuth, err := api.GitHubOAuthConfigFromParams(*githubClientID, *githubClientSecret, *githubOrg, *sessionSecret, *publicURL)

@@ -27,12 +27,21 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      # The app never calls the Kubernetes API; GKE Workload Identity and the projected webhook token do not
+      # need the automounted token either.
+      automountServiceAccountToken: {{ .Values.automountServiceAccountToken }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ include "ego.name" . }}
+          {{- if .Values.image.digest }}
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          {{- else }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           args:
             - serve
             - --addr=:8001
@@ -123,6 +132,9 @@ spec:
           volumeMounts:
             - name: session-db
               mountPath: /data
+            # The root filesystem is read-only; uploads spill to temp files here.
+            - name: tmp
+              mountPath: /tmp
             {{- if .Values.online.enabled }}
             - name: online-config
               mountPath: /etc/ego
@@ -137,6 +149,9 @@ spec:
         - name: session-db
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.claimName }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
         {{- if .Values.online.enabled }}
         - name: online-config
           configMap:

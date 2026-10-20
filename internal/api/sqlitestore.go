@@ -25,7 +25,7 @@ type SQLiteStore struct {
 // other.
 func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	if dir := filepath.Dir(path); dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, fmt.Errorf("creating session archive directory: %w", err)
 		}
 	}
@@ -34,6 +34,12 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening session archive: %w", err)
 	}
+	// The archive holds full prompts and responses: keep it, and the WAL files next to it, to the owner.
+	defer func() {
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			_ = os.Chmod(path+suffix, 0o600)
+		}
+	}()
 	for _, pragma := range []string{"PRAGMA journal_mode=WAL", "PRAGMA synchronous=NORMAL"} {
 		if _, err := db.Exec(pragma); err != nil {
 			db.Close()

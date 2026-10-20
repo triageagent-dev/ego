@@ -450,3 +450,15 @@ func TestDeleteRoleBindingHandler_Succeeds(t *testing.T) {
 		t.Fatalf("unexpected delete response: %+v", out)
 	}
 }
+
+func TestCheckSessionSecret(t *testing.T) {
+	if err := checkSessionSecret(""); err != nil {
+		t.Errorf("empty secret (auth off) = %v, want nil", err)
+	}
+	if err := checkSessionSecret("short"); err == nil {
+		t.Error("short secret accepted")
+	}
+	if err := checkSessionSecret(strings.Repeat("k", minSecretLen)); err != nil {
+		t.Errorf("long enough secret = %v", err)
+	}
+}
