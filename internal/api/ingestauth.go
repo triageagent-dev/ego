@@ -23,7 +23,7 @@ import (
 //     it labels them with live in that sender's own namespace (see tenantKey);
 //   - the shared --otlp-token: a trusted sender with no name, whose tenant labels are used as they are.
 //
-// With neither configured the receivers stay open, which is only safe when the network limits who can reach them.
+// With neither configured the receivers refuse every push until an admin sets --otlp-token or mints a sender token.
 type ingestAuth struct {
 	globalToken string
 	senders     *SenderStore
@@ -53,7 +53,15 @@ func (a *ingestAuth) logRejected(transport, header string) {
 	a.rejectLast, a.rejected = time.Now(), 0
 }
 
+// required reports whether pushes are checked. Every served receiver is: with no token configured and no sender
+// token minted yet, it refuses every push, because an open receiver lets anyone who can reach it write sessions,
+// scores and usage. Only a nil gate, the in-process setup of some tests, skips the check.
 func (a *ingestAuth) required() bool {
+	return a != nil
+}
+
+// configured reports whether any token can be presented: the shared one or a sender's.
+func (a *ingestAuth) configured() bool {
 	return a != nil && (a.globalToken != "" || a.senders.HasTokens())
 }
 

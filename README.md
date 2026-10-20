@@ -252,10 +252,11 @@ it when `auth.enabled` is false). A secret must be at least 32 bytes, and an emp
 `--github-client-secret`, `--github-org` and `--public-url` it requires GitHub OAuth, restricted to members of
 the org. `/api/health` is never gated.
 
-The OTLP receivers do not use the login. They are open unless `--otlp-token` (`EGO_OTLP_TOKEN`, at least 32 bytes) is
-set; then each sender must present it as `Authorization: Bearer <token>` (for the OTLP exporters:
-`OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"`). Without a token, restrict who can reach ports 4317 and
-4318 (the chart has `networkPolicy` and `otlpAuth`); anyone who can reach them can create sessions and append spans.
+The OTLP receivers do not use the login; they always require a bearer token. A sender presents either the shared
+`--otlp-token` (`EGO_OTLP_TOKEN`, at least 32 bytes) or the token of a sender an admin created, as
+`Authorization: Bearer <token>` (for the OTLP exporters: `OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"`).
+With neither configured, every push is refused (401) and the log says so; there is no open mode. The chart's
+`networkPolicy` additionally limits who can reach ports 4317 and 4318.
 
 Roles: `admin`, `member` (default, full read/write) and `viewer` (read-only), assigned to a GitHub user or team and
 optionally limited to certain agent names. A limited role sees only the sessions, traces and runs that involve one
@@ -325,7 +326,7 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`:
 | `EGO_SESSION_SECRET` | `--session-secret` | Signs session cookies and tokens; enables auth |
 | `EGO_GITHUB_CLIENT_ID`, `EGO_GITHUB_CLIENT_SECRET`, `EGO_GITHUB_ORG`, `EGO_PUBLIC_URL` | `--github-*`, `--public-url` | GitHub OAuth |
 | `EGO_ADMIN_GITHUB_USERS`, `EGO_DEFAULT_ROLE` | `--admin-github-users`, `--default-role` | Roles |
-| `EGO_OTLP_TOKEN` | `--otlp-token` | Bearer token the OTLP receivers require (empty: open) |
+| `EGO_OTLP_TOKEN` | `--otlp-token` | Shared bearer token for the OTLP receivers (sender tokens work too; with neither, pushes are refused) |
 | `EGO_EVAL_DAILY_TOKENS` | `--eval-daily-tokens` | Judge tokens interactive evaluation may use per UTC day (default 5000000, 0: unlimited) |
 | `EGO_USAGE_TENANT_ATTR` | `--usage-tenant-attr` | Span attribute the Usage view reads the tenant from |
 | `EGO_LOG_LEVEL` | `--log-level` | Log threshold: `debug`, `info` (default), `warn` or `error`. Lines are `time=… level=… msg=…` on stderr |

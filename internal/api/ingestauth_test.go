@@ -59,7 +59,8 @@ func TestIngestAuthMiddleware(t *testing.T) {
 		want       int
 		wantSender string
 	}{
-		"open receiver":             {&ingestAuth{senders: empty}, "", http.StatusNoContent, ""},
+		"no token configured":       {&ingestAuth{senders: empty}, "", http.StatusUnauthorized, ""},
+		"no token, a bearer sent":   {&ingestAuth{senders: empty}, "Bearer anything", http.StatusUnauthorized, ""},
 		"nil auth":                  {nil, "", http.StatusNoContent, ""},
 		"shared token missing":      {&ingestAuth{globalToken: testIngestToken, senders: empty}, "", http.StatusUnauthorized, ""},
 		"shared token wrong":        {&ingestAuth{globalToken: testIngestToken, senders: empty}, "Bearer nope", http.StatusUnauthorized, ""},

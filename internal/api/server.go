@@ -175,10 +175,10 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	otlpMux := http.NewServeMux()
 	ingest := &ingestAuth{globalToken: normalizeIngestToken(otlpToken), senders: senderStore}
 	otlpMux.Handle("/v1/traces", ingest.middleware(otlpTracesHandler(store)))
-	if ingest.required() {
+	if ingest.configured() {
 		logx.Infof("OTLP ingest requires a bearer token (Authorization header / gRPC metadata)")
 	} else {
-		logx.Warnf("WARNING: OTLP ingest is unauthenticated; anyone who can reach %s and %s can create sessions (set --otlp-token)", otlpAddr, otlpGRPCAddr)
+		logx.Warnf("OTLP ingest has no token yet: every push on %s and %s is refused until --otlp-token is set or a sender token is created (POST /api/admin/senders)", otlpAddr, otlpGRPCAddr)
 	}
 
 	healthMux := http.NewServeMux()

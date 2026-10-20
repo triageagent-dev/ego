@@ -98,9 +98,10 @@ containerSecurityContext:
 
 automountServiceAccountToken: false
 
-# -- Bearer token the OTLP receivers (4317, 4318) require from senders. The Secret holds the token (at least 32
-# bytes) under OTLP_TOKEN; senders put it in their exporter headers as "Authorization: Bearer <token>".
-# Off leaves the receivers open, so restrict who can reach them with networkPolicy.
+# -- A shared bearer token for the OTLP receivers (4317, 4318). The Secret holds the token (at least 32 bytes)
+# under OTLP_TOKEN; senders put it in their exporter headers as "Authorization: Bearer <token>". The receivers
+# always require a token: off, only the sender tokens an admin mints (POST /api/admin/senders) are accepted, and
+# with none minted every push is refused.
 otlpAuth:
   enabled: false
   secret: ego-otlp-token
