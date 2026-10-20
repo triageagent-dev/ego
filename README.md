@@ -54,6 +54,7 @@ helm install ego oci://ghcr.io/triageagent-dev/charts/ego --version 0.1.0 -f val
 
 `ego version` prints the installed version. To cut a release, push a tag: `git tag v0.1.0 && git push origin v0.1.0`.
 Running the *Release* workflow by hand builds the binaries without publishing anything.
+The publishing jobs run in the `release` environment: add required reviewers (and a tag rule) to it under Settings > Environments so a tag alone cannot publish. The checksums file and the image are signed keyless with cosign (the Sigstore identity is this workflow), so `cosign verify-blob --bundle checksums.txt.bundle --certificate-identity-regexp "https://github.com/triageagent-dev/ego/" --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt` and `cosign verify` on the image check where they came from. The chart is not signed yet.
 
 ## Quick start
 
