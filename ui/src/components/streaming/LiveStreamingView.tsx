@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTraceContext } from '../../context/TraceContext';
 import { SessionCard } from './SessionCard';
 import { config } from '../../config';
+import { onServerDown, onServerUp, setFeed } from '../../lib/connection';
 import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
 
 type TimeRangeKey = '1h' | '6h' | '12h' | 'day' | '7d' | 'all';
@@ -62,7 +63,6 @@ export function LiveStreamingView() {
   const { state, actions } = useTraceContext();
   const activeSessions = state.streamingSessions;
   const setActiveSessions = actions.setStreamingSessions;
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('all');
   const [searchQuery, setSearchQuery] = useState('');
   // Sessions whose trace made no LLM call (a server's per-request or
@@ -233,6 +233,7 @@ export function LiveStreamingView() {
       if (import.meta.env.DEV) {
         console.log('[Streaming] Setting up WebSocket connection');
       }
+      setFeed('connecting');
       const ws = new WebSocket(config.websocket.uiUpdatesWs);
       wsRef.current = ws;
 
@@ -241,7 +242,7 @@ export function LiveStreamingView() {
           console.log('[Streaming] WebSocket connected');
         }
         retryDelayRef.current = 1000;
-        setConnectionStatus('connected');
+        setFeed('open');
         fetchExistingSessions();
       };
 
@@ -250,7 +251,7 @@ export function LiveStreamingView() {
       // here only, not duplicated in onerror.
       ws.onclose = () => {
         if (!mountedRef.current) return;
-        setConnectionStatus('disconnected');
+        setFeed('closed');
         if (import.meta.env.DEV) {
           console.log(`[Streaming] WebSocket closed, reconnecting in ${retryDelayRef.current}ms`);
         }
@@ -517,7 +518,24 @@ export function LiveStreamingView() {
 
     connectWS();
 
+    // The health poll notices a dead link before a half-open socket does: drop the socket so it reconnects,
+    // and when the server answers again reconnect at once instead of waiting out the backoff.
+    const offDown = onServerDown(() => wsRef.current?.close());
+    const offUp = onServerUp(() => {
+      const state = wsRef.current?.readyState;
+      if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) return;
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+      retryDelayRef.current = 1000;
+      connectWS();
+    });
+
     return () => {
+      offDown();
+      offUp();
+      setFeed('idle');
       mountedRef.current = false;
       if (import.meta.env.DEV) {
         console.log('[Streaming] Closing WebSocket connection');
@@ -774,36 +792,6 @@ export function LiveStreamingView() {
                 outline: 'none',
               }}
             />
-
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '3px 4px',
-              color: connectionStatus === 'connected'
-                ? 'var(--status-success)'
-                : connectionStatus === 'connecting'
-                  ? 'var(--text-tertiary)'
-                  : 'var(--status-failure)',
-              fontSize: '12px',
-            }}>
-              <div style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: connectionStatus === 'connected'
-                  ? '#22c55e'
-                  : connectionStatus === 'connecting'
-                    ? '#94a3b8'
-                    : '#ef4444',
-                animation: connectionStatus !== 'disconnected' ? 'pulse 2s ease-in-out infinite' : 'none',
-              }} />
-              {connectionStatus === 'connected'
-                ? 'live'
-                : connectionStatus === 'connecting'
-                  ? 'connecting…'
-                  : 'offline'}
-            </div>
 
             <div style={{
               display: 'flex',

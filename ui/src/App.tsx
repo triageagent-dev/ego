@@ -13,6 +13,7 @@ import { QualityView } from './components/quality/QualityView';
 import { TabBar } from './components/shell/TabBar';
 import { Sidebar } from './components/shell/Sidebar';
 import { useUiMode } from './lib/mode';
+import { startConnectionMonitor } from './lib/connection';
 import { TABS, tabForView, viewForHash } from './components/shell/routes';
 import { SessionExpiredBanner } from './components/SessionExpiredBanner';
 
@@ -76,6 +77,7 @@ function AppContent() {
   const { state } = useTraceContext();
   const [mode] = useUiMode();
   useShellNavigation();
+  useEffect(() => startConnectionMonitor(), []);
 
   return (
     <div style={{ display: 'flex', flexDirection: mode === 'tui' ? 'column' : 'row', height: '100vh', overflow: 'hidden' }}>

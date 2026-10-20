@@ -4,6 +4,7 @@ import { useTraceContext } from '../../context/TraceContext';
 import { UserMenu } from './UserMenu';
 import { ModeSwitch } from './ModeSwitch';
 import { VersionLink } from './VersionLink';
+import { ConnectionDot } from './ConnectionDot';
 import { TABS, tabForView } from './routes';
 
 export const TabBar: React.FC = () => {
@@ -34,6 +35,7 @@ export const TabBar: React.FC = () => {
       <div css={rightStyle}>
         <UserMenu />
         <ModeSwitch />
+        <ConnectionDot />
         <VersionLink />
       </div>
     </nav>

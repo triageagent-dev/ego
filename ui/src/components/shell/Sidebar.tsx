@@ -6,6 +6,7 @@ import type { ViewType } from '../../lib/types';
 import { UserMenu } from './UserMenu';
 import { ModeSwitch } from './ModeSwitch';
 import { VersionLink } from './VersionLink';
+import { ConnectionDot } from './ConnectionDot';
 import { TABS, tabForView } from './routes';
 
 const ICONS: Partial<Record<ViewType, React.ReactNode>> = {
@@ -45,7 +46,10 @@ export const Sidebar: React.FC = () => {
       <div css={footerStyle}>
         <UserMenu />
         <ModeSwitch />
-        <VersionLink />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <ConnectionDot />
+          <VersionLink />
+        </div>
       </div>
     </nav>
   );
