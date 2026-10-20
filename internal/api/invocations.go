@@ -33,7 +33,10 @@ type ModelInfoDTO struct {
 	InputTokens   int64    `json:"inputTokens,omitempty"`
 	OutputTokens  int64    `json:"outputTokens,omitempty"`
 	TurnLatencyMs float64  `json:"turnLatencyMs,omitempty"`
-	Provider      string   `json:"provider,omitempty"`
+	// TurnStartedAt is when the turn's earliest span started, in Unix milliseconds. A session accumulates turns
+	// over time, so each turn carries its own time.
+	TurnStartedAt int64  `json:"turnStartedAt,omitempty"`
+	Provider      string `json:"provider,omitempty"`
 }
 
 // InvocationDTO matches ui/src/lib/types.ts's StreamingInvocation exactly.
@@ -206,6 +209,9 @@ func extractModelInfoFromSpans(spans []*tracepkg.Span) *ModelInfoDTO {
 	if turnEnd > turnStart {
 		info.TurnLatencyMs = float64(turnEnd-turnStart) / 1000.0
 	}
+	if turnStart > 0 {
+		info.TurnStartedAt = turnStart / 1000
+	}
 
 	var llmSpans []*tracepkg.Span
 	for _, s := range spans {
@@ -256,7 +262,7 @@ func extractModelInfoFromSpans(spans []*tracepkg.Span) *ModelInfoDTO {
 		info.Provider = provider
 	}
 
-	if len(info.Models) == 0 && info.InputTokens == 0 && info.OutputTokens == 0 && info.Provider == "" && info.TurnLatencyMs == 0 {
+	if len(info.Models) == 0 && info.InputTokens == 0 && info.OutputTokens == 0 && info.Provider == "" && info.TurnLatencyMs == 0 && info.TurnStartedAt == 0 {
 		return nil
 	}
 	return info

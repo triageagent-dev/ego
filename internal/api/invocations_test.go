@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 )
 
 // sampleGenAISpanTracesBody builds an OTLP/JSON traces body reproducing
@@ -168,5 +170,25 @@ func TestCreateEvalSetHandler_UnknownSession(t *testing.T) {
 
 	if rec.Code != 404 {
 		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+// A session accumulates turns over time, so a turn reports when it started: the earliest of its spans, in
+// Unix milliseconds.
+func TestExtractModelInfoFromSpans_TurnStartedAt(t *testing.T) {
+	const startMicros = 1_760_000_000_000_000
+	spans := []*tracepkg.Span{
+		{SpanID: "b", StartTime: startMicros + 5_000_000, Duration: 1_000_000},
+		{SpanID: "a", StartTime: startMicros, Duration: 2_000_000},
+	}
+	info := extractModelInfoFromSpans(spans)
+	if info == nil {
+		t.Fatal("info is nil")
+	}
+	if want := int64(startMicros / 1000); info.TurnStartedAt != want {
+		t.Errorf("TurnStartedAt = %d, want %d", info.TurnStartedAt, want)
+	}
+	if info.TurnLatencyMs != 6000 {
+		t.Errorf("TurnLatencyMs = %v, want 6000", info.TurnLatencyMs)
 	}
 }

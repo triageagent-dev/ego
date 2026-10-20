@@ -4,8 +4,8 @@ import { css } from '@emotion/react';
 // stat strip, and titled boxes. Dense on purpose; the data is the interface.
 
 export const pageStyle = css`
-  padding: 12px 18px 28px;
-  font-family: var(--font-mono);
+  padding: var(--page-pad);
+  font-family: var(--font-body);
   color: var(--text-secondary);
 `;
 
@@ -28,10 +28,10 @@ export const headerStyle = css`
 
 export const titleStyle = css`
   margin: 0;
-  font-size: 15px;
+  font-size: var(--title-size);
   font-weight: 600;
   color: var(--accent-cyan);
-  text-transform: lowercase;
+  text-transform: var(--title-case);
 `;
 
 export const subtitleStyle = css`
@@ -126,7 +126,7 @@ export const tilesStyle = css`
 
 export const tileStyle = css`
   flex: 1 1 150px;
-  padding: 7px 14px;
+  padding: var(--tile-pad);
   border-right: 1px solid var(--border);
   min-width: 0;
 
@@ -143,7 +143,7 @@ export const tileLabelStyle = css`
 `;
 
 export const tileValueStyle = css`
-  font-size: 1.2rem;
+  font-size: var(--tile-value);
   font-weight: 500;
   color: var(--text-primary);
   line-height: 1.3;
@@ -159,6 +159,7 @@ export const cardStyle = css`
   position: relative;
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
+  background: var(--card-surface);
   padding: 16px 12px 10px;
   margin: 16px 0 12px;
 `;

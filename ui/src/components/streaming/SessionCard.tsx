@@ -4,7 +4,7 @@ import { SpansPanel } from './SpansPanel';
 import { LiveConversationPanel } from './LiveConversationPanel';
 import type { ConversationElement } from './LiveConversationPanel';
 import { SessionMetadata } from './SessionMetadata';
-import { formatSpanDuration } from '../../lib/trace-helpers';
+import { formatSpanDuration, formatTurnTime } from '../../lib/trace-helpers';
 import type { AnnotationQueue } from '../../lib/types';
 
 interface Invocation {
@@ -17,6 +17,7 @@ interface Invocation {
     inputTokens?: number;
     outputTokens?: number;
     turnLatencyMs?: number;
+    turnStartedAt?: number;
     provider?: string;
     responseModels?: string[];
     finishReasons?: string[];
@@ -593,6 +594,11 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                   letterSpacing: '0.5px',
                 }}>
                   Turn {idx + 1}
+                  {inv.modelInfo?.turnStartedAt != null && (
+                    <span style={{ marginLeft: '10px', fontWeight: 400, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>
+                      {formatTurnTime(inv.modelInfo.turnStartedAt)}
+                    </span>
+                  )}
                 </span>
 
                 {inv.modelInfo && (inv.modelInfo.inputTokens || inv.modelInfo.outputTokens) && (

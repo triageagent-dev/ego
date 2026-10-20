@@ -265,7 +265,7 @@ root-level `/api/...` endpoint needs an entry in `httpRoute.rootPaths`, or the g
 make build-ui build        # UI first: ui/embed.go embeds ui/dist
 make test vet
 gofmt -l .                 # must print nothing
-cd ui && npx tsc --noEmit
+cd ui && npx tsc -b
 
 make dev-backend           # API on :8001
 make dev-frontend          # Vite on :5173, calls the backend directly

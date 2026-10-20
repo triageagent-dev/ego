@@ -22,7 +22,7 @@ make build-ui build         # the UI is embedded, so build it first
 make test vet
 gofmt -l .                  # must print nothing
 
-cd ui && npm ci && npx tsc --noEmit
+cd ui && npm ci && npx tsc -b
 ```
 
 `make serve` runs the full server (REST API, OTLP/HTTP and gRPC receivers, embedded UI) on `:8001`, `:4318` and

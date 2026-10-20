@@ -72,6 +72,18 @@ export function findDescendantLLMSpans(root: Span): Span[] {
   return results;
 }
 
+/** A turn's start as "20 Oct, 06:58:14" in the viewer's time zone. */
+export function formatTurnTime(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
 /** A completed session's span window: ms under a second, then 0.1s, then m ss. */
 export function formatSpanDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;

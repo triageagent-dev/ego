@@ -42,6 +42,49 @@
   /* Type: one monospace face everywhere */
   --font-mono: Menlo, 'JetBrains Mono', 'SF Mono', Consolas, monospace;
   --font-display: var(--font-mono);
+  --font-body: var(--font-mono);
+  --body-size: 13px;
+
+  /* Density of the data views (see components/ui/page.ts) */
+  --page-pad: 12px 18px 28px;
+  --title-size: 15px;
+  --title-case: lowercase;
+  --tile-pad: 7px 14px;
+  --tile-value: 1.2rem;
+  --card-surface: transparent;
+}
+
+/* classic: roomier, rounded, proportional font, with the sidebar shell */
+:root[data-mode='classic'] {
+  --bg-primary: #1a1d24;
+  --bg-surface: #252a36;
+  --bg-elevated: #2d3342;
+  --card-bg: #252a36;
+  --bg-selected: rgba(181, 171, 252, 0.14);
+
+  --text-primary: #e8eef3;
+  --text-secondary: #a8b2c1;
+  --text-tertiary: #6b7586;
+  --text-muted: #6b7586;
+
+  --accent-cyan: #b5abfc;
+  --accent-magenta: #b5abfc;
+
+  --border: #3a4052;
+  --border-default: #3a4052;
+  --radius: 6px;
+
+  --font-mono: 'IBM Plex Mono', Menlo, monospace;
+  --font-display: 'Archivo', sans-serif;
+  --font-body: 'Archivo', sans-serif;
+  --body-size: 14px;
+
+  --page-pad: 28px 32px 48px;
+  --title-size: 1.5rem;
+  --title-case: none;
+  --tile-pad: 16px 20px;
+  --tile-value: 1.8rem;
+  --card-surface: var(--bg-surface);
 }
 
 * {
@@ -51,11 +94,11 @@
 }
 
 body {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   background-color: var(--bg-primary);
   color: var(--text-secondary);
   line-height: 1.45;
-  font-size: 13px;
+  font-size: var(--body-size);
 }
 
 #root {

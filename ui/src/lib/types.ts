@@ -563,6 +563,8 @@ export interface StreamingInvocation {
     outputTokens?: number;
     /** Wall-clock span of this turn's spans (earliest start to latest end), in ms. */
     turnLatencyMs?: number;
+    /** When the turn's earliest span started, Unix ms. A session grows over time, so each turn has its own. */
+    turnStartedAt?: number;
     provider?: string;
   };
 }

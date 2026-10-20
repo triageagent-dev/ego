@@ -11,6 +11,8 @@ import { RunsView } from './components/runs/RunsView';
 import { UsageView } from './components/usage/UsageView';
 import { QualityView } from './components/quality/QualityView';
 import { TabBar } from './components/shell/TabBar';
+import { Sidebar } from './components/shell/Sidebar';
+import { useUiMode } from './lib/mode';
 import { TABS, tabForView, viewForHash } from './components/shell/routes';
 import { SessionExpiredBanner } from './components/SessionExpiredBanner';
 
@@ -20,6 +22,7 @@ function useShellNavigation() {
   const { state, actions } = useTraceContext();
   const { currentView } = state;
   const { setCurrentView } = actions;
+  const [mode, setMode] = useUiMode();
 
   useEffect(() => {
     const fromHash = () => {
@@ -53,6 +56,9 @@ function useShellNavigation() {
       if (tab) {
         setCurrentView(tab.view);
         e.preventDefault();
+      } else if (e.key === 't') {
+        setMode(mode === 'tui' ? 'classic' : 'tui');
+        e.preventDefault();
       } else if (e.key === '/') {
         const box = document.querySelector<HTMLInputElement>('input[placeholder*="earch"]');
         if (box) {
@@ -63,18 +69,19 @@ function useShellNavigation() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [setCurrentView]);
+  }, [setCurrentView, mode, setMode]);
 }
 
 function AppContent() {
   const { state } = useTraceContext();
+  const [mode] = useUiMode();
   useShellNavigation();
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: mode === 'tui' ? 'column' : 'row', height: '100vh', overflow: 'hidden' }}>
       <SessionExpiredBanner />
-      <TabBar />
-      <main style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      {mode === 'tui' ? <TabBar /> : <Sidebar />}
+      <main style={{ flex: 1, overflow: 'auto', minHeight: 0, minWidth: 0 }}>
         {state.currentView === 'upload' && <UploadView />}
         {state.currentView === 'dashboard' && <DashboardView />}
         {state.currentView === 'inspector' && <InspectorView />}

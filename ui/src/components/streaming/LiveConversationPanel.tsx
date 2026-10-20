@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
 import { UserMessage, ToolCallMessage, ToolResultMessage, AgentMessage } from './LiveMessage';
 import type { ConversationElement } from '../../lib/types';
+import { formatSpanDuration, formatTurnTime } from '../../lib/trace-helpers';
 
 export type { ConversationElement };
 
@@ -13,6 +14,7 @@ interface TurnInvocationInfo {
     inputTokens?: number;
     outputTokens?: number;
     turnLatencyMs?: number;
+    turnStartedAt?: number;
   };
 }
 
@@ -30,8 +32,7 @@ interface Turn {
 }
 
 function formatLatency(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
+  return formatSpanDuration(ms);
 }
 
 /** Groups elements by invocationId, preserving the order each invocation first appears in. */
@@ -263,6 +264,11 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
                 }}>
                   Turn {i + 1}
                 </span>
+                {modelInfo?.turnStartedAt != null && (
+                  <span title="When this turn started" style={{ fontSize: '10px', color: 'var(--text-muted)', flexShrink: 0 }}>
+                    {formatTurnTime(modelInfo.turnStartedAt)}
+                  </span>
+                )}
                 {toolCount > 0 && (
                   <span style={{
                     fontSize: '10px',

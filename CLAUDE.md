@@ -15,7 +15,7 @@ go test ./...                                  # or: make test
 go test ./internal/eval/... -run TestRouge1FMeasure -v   # single test
 go vet ./...
 gofmt -l .                                     # must print nothing (CI fails otherwise); `make fmt` only lists
-cd ui && npx tsc --noEmit                      # UI type check
+cd ui && npx tsc -b                      # UI type check
 ```
 
 `ui/embed.go` does `//go:embed all:dist`, so `ui/dist` must exist before compiling anything that imports the
