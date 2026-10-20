@@ -117,8 +117,12 @@ func authMeHandler(sessionSecret string, ghTokens *githubTokenValidator, roleSto
 		}
 		resp := map[string]any{"authenticated": true, "username": username}
 		if roleStore != nil {
-			teams := resolveTeamsForRequest(r, roleStore, org, sessionSecret, ghTokens, username)
-			info := roleStore.EffectiveRole(username, teams)
+			teams, known := resolveTeamsForRequest(r, roleStore, org, sessionSecret, ghTokens, username)
+			info := roleStore.EffectiveRole(username, teams, known)
+			if info.Unresolved {
+				writeTeamsUnresolved(w, r)
+				return
+			}
 			resp["role"] = string(info.Role)
 			resp["agents"] = info.Agents // nil (omitted as JSON null) means unrestricted.
 		}

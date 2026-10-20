@@ -670,6 +670,9 @@ func writeOnlineUnavailable(w http.ResponseWriter) {
 // onlineStatusHandler implements GET /api/online/status.
 func onlineStatusHandler(e *OnlineEngine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if denyScoped(w, r) {
+			return
+		}
 		if e == nil {
 			writeOnlineUnavailable(w)
 			return
@@ -682,6 +685,9 @@ func onlineStatusHandler(e *OnlineEngine) http.HandlerFunc {
 // 168, at most 2160): hourly mean score per (tenant, kind, metric).
 func onlineSeriesHandler(e *OnlineEngine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if denyScoped(w, r) {
+			return
+		}
 		if e == nil {
 			writeOnlineUnavailable(w)
 			return
@@ -702,6 +708,9 @@ func onlineSeriesHandler(e *OnlineEngine) http.HandlerFunc {
 // onlineAlertsHandler implements GET /api/online/alerts?state=open|all.
 func onlineAlertsHandler(e *OnlineEngine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if denyScoped(w, r) {
+			return
+		}
 		if e == nil {
 			writeOnlineUnavailable(w)
 			return

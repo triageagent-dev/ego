@@ -45,6 +45,9 @@ func usageWindow(r *http.Request) (from, to time.Time, bucketMs int64) {
 // usageHandler implements GET /api/usage: token usage cells for the window.
 func usageHandler(store *SQLiteStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if denyScoped(w, r) {
+			return
+		}
 		if store == nil {
 			writeStorageUnavailable(w)
 			return
@@ -73,6 +76,9 @@ func usageHandler(store *SQLiteStore) http.HandlerFunc {
 // With group=session it ranks sessions instead (TopUsageSessions).
 func usageCallsHandler(store *SQLiteStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if denyScoped(w, r) {
+			return
+		}
 		if store == nil {
 			writeStorageUnavailable(w)
 			return

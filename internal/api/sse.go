@@ -9,9 +9,20 @@ import (
 // sseHub fans out events to every connected /stream/ui-updates client.
 type sseHub struct {
 	mu sync.Mutex
-	// clients maps each client's channel to whether an event was dropped
-	// for it since it was last told to resync.
-	clients map[chan any]bool
+	// clients maps each client's channel to its state.
+	clients map[chan any]*hubClient
+}
+
+// hubClient is one subscriber. A client with a scoped role only receives events of sessions whose agents are in
+// its scope; seen remembers which sessions it has been told about so a session that becomes visible later (its
+// agent name arrives in a later span) makes it re-read the list instead of receiving updates for a session it
+// never heard of.
+type hubClient struct {
+	// lagged is set when an event was dropped for the client since it was last told to resync.
+	lagged bool
+	scoped bool
+	info   RoleInfo
+	seen   map[string]bool
 }
 
 // hubClientBuffer is each client's event backlog. A traced server exports
@@ -26,13 +37,27 @@ type resyncEvent struct {
 }
 
 func newSSEHub() *sseHub {
-	return &sseHub{clients: map[chan any]bool{}}
+	return &sseHub{clients: map[chan any]*hubClient{}}
 }
 
+// register subscribes a client that receives every event.
 func (h *sseHub) register() chan any {
+	return h.add(&hubClient{})
+}
+
+// registerFor subscribes a client limited by info: a scoped role only receives events of sessions whose agents
+// it may see.
+func (h *sseHub) registerFor(info RoleInfo) chan any {
+	if !info.Scoped() {
+		return h.register()
+	}
+	return h.add(&hubClient{scoped: true, info: info, seen: map[string]bool{}})
+}
+
+func (h *sseHub) add(c *hubClient) chan any {
 	ch := make(chan any, hubClientBuffer)
 	h.mu.Lock()
-	h.clients[ch] = false
+	h.clients[ch] = c
 	h.mu.Unlock()
 	return ch
 }
@@ -44,17 +69,37 @@ func (h *sseHub) unregister(ch chan any) {
 	close(ch)
 }
 
-// broadcast sends event to every connected client. A client whose buffer is full is skipped rather than
+// broadcast sends event to every unscoped client. A client whose buffer is full is skipped rather than
 // blocking the ingest path, since a slow UI client should never stall trace ingestion; it is marked for a
 // resync instead (takeResync).
 func (h *sseHub) broadcast(event any) {
+	h.broadcastSession(event, "", nil, false)
+}
+
+// broadcastSession sends an event about sessionID, whose agents are agents, to every client allowed to see
+// it. started marks the session_started event, the only one a scoped client may meet before it has heard of
+// the session; any other event for a session it has not seen yet turns into a resync, so the client reads the
+// list (filtered the same way) instead of building on a session it never received.
+func (h *sseHub) broadcastSession(event any, sessionID string, agents []string, started bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for ch := range h.clients {
+	for ch, c := range h.clients {
+		if c.scoped {
+			if sessionID == "" || !c.info.AllowsAnyAgent(agents) {
+				continue
+			}
+			if !c.seen[sessionID] {
+				c.seen[sessionID] = true
+				if !started {
+					c.lagged = true
+					continue
+				}
+			}
+		}
 		select {
 		case ch <- event:
 		default:
-			h.clients[ch] = true
+			c.lagged = true
 		}
 	}
 }
@@ -65,11 +110,12 @@ func (h *sseHub) broadcast(event any) {
 func (h *sseHub) takeResync(ch chan any) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	lagged := h.clients[ch]
-	if lagged {
-		h.clients[ch] = false
+	c := h.clients[ch]
+	if c == nil || !c.lagged {
+		return false
 	}
-	return lagged
+	c.lagged = false
+	return true
 }
 
 // uiUpdatesHandler implements GET /stream/ui-updates: a standard text/event-stream SSE endpoint the UI
@@ -88,7 +134,7 @@ func uiUpdatesHandler(hub *sseHub) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		flusher.Flush()
 
-		ch := hub.register()
+		ch := hub.registerFor(roleInfoOrOpen(r.Context()))
 		defer hub.unregister(ch)
 
 		for {
@@ -126,4 +172,17 @@ func writeSSE(w http.ResponseWriter, event any) error {
 	}
 	_, err = w.Write([]byte("\n\n"))
 	return err
+}
+
+// hasScoped reports whether any connected client is limited to a set of agents, so the ingest path only pays
+// for reading a session's agents when someone needs them.
+func (h *sseHub) hasScoped() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, c := range h.clients {
+		if c.scoped {
+			return true
+		}
+	}
+	return false
 }

@@ -64,8 +64,9 @@ streaming** path for the UI.
     `requireSession` + `withRole`; OTLP receivers and `/api/health` are never gated.
   - RBAC (`roles.go`, `roleshandlers.go`): `RoleStore` exists only when a session
     secret is set (otherwise `nil` and the feature is fully inert - preserve that). Roles admin > member >
-    viewer; viewers get 403 on write endpoints and Runs are filtered by agent scope
-    (`runVisibleForRole`).
+    viewer; viewers get 403 on write endpoints. An agent-scoped role (`RoleInfo.Scoped`) fails closed:
+    sessions, traces, runs and the hub feed (`registerFor`) are filtered by agent, views that cannot be attributed
+    to an agent use `denyScoped`, and unknown teams give `Unresolved` (refused, never `defaultRole`).
 - `ui/`: React + Vite + Ant Design, embedded into the binary. Edited here like any other code.
 - `samples/`: sample traces and eval sets; used by tests and the quickstart.
 

@@ -36,7 +36,7 @@ func wsUpdatesHandler(hub *sseHub) http.HandlerFunc {
 		}
 		defer conn.Close()
 
-		ch := hub.register()
+		ch := hub.registerFor(roleInfoOrOpen(r.Context()))
 		defer hub.unregister(ch)
 
 		// Read pump: WS requires draining incoming frames (pong/close

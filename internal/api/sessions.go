@@ -792,11 +792,16 @@ func (s *SessionStore) Ingest(body map[string]any) int {
 			}
 
 			if s.hub != nil {
+				// Agents are read once per batch: a scoped client is only sent what its agents allow.
+				var agents []string
+				if s.hub.hasScoped() {
+					agents, _ = spanIdentities(session.Spans)
+				}
 				if isNew {
-					s.hub.broadcast(sessionStartedEvent{Type: "session_started", Session: summarize(session)})
+					s.hub.broadcastSession(sessionStartedEvent{Type: "session_started", Session: summarize(session)}, session.ID, agents, true)
 				}
 				for _, u := range updates {
-					s.hub.broadcast(u)
+					s.hub.broadcastSession(u, session.ID, agents, false)
 				}
 			}
 		}
@@ -902,6 +907,10 @@ func (s *SessionStore) completeSession(sessionID string) {
 	invocations := session.Invocations
 	rootName, llmCalls, errs := spanOutline(session.Spans)
 	durationMs := spanWindowMs(session.Spans)
+	var agents []string
+	if s.hub != nil && s.hub.hasScoped() {
+		agents, _ = spanIdentities(session.Spans)
+	}
 	hub := s.hub
 	onComplete := s.onComplete
 	s.mu.Unlock()
@@ -911,7 +920,7 @@ func (s *SessionStore) completeSession(sessionID string) {
 	}
 
 	if hub != nil {
-		hub.broadcast(sessionCompleteEvent{
+		hub.broadcastSession(sessionCompleteEvent{
 			Type:         "session_complete",
 			SessionID:    sessionID,
 			Invocations:  invocations,
@@ -920,7 +929,7 @@ func (s *SessionStore) completeSession(sessionID string) {
 			LLMCalls:     llmCalls,
 			Errors:       errs,
 			DurationMs:   durationMs,
-		})
+		}, sessionID, agents, false)
 	}
 }
 

@@ -194,7 +194,12 @@ func authCallbackHandler(cfg *GitHubOAuthConfig, roleStore *RoleStore) http.Hand
 
 		if roleStore != nil {
 			if teams, err := FetchUserTeams(client, cfg.Org, accessToken); err != nil {
-				log.Printf("auth: resolving GitHub team memberships for %s failed (team-based role bindings won't apply this session): %v", username, err)
+				log.Printf("auth: resolving GitHub team memberships for %s failed: %v", username, err)
+				// Signing in without teams would give them defaultRole instead of what their team grants or limits.
+				if roleStore.HasTeamBindings() {
+					writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to resolve team membership; try again shortly"})
+					return
+				}
 			} else {
 				roleStore.setTeams(username, teams)
 			}

@@ -320,8 +320,8 @@ func persistCompletedRun(store *SQLiteStore, spec runSpecSummaryDTO, req *evalua
 	return store.FinishRun(run.RunID, status, summary, errMsg)
 }
 
-// Returns nil (not an empty slice) when no trace in this run had a resolvable agent name, so
-// RoleInfo.AllowsAnyAgent's "can't tell, so allow" default applies to the whole run rather than hiding it.
+// Returns nil (not an empty slice) when no trace in this run had a resolvable agent name; a scoped role
+// then does not see the run, as it cannot be attributed to one of its agents.
 func distinctAgentNames(results []traceResultDTO) []string {
 	seen := map[string]bool{}
 	for _, r := range results {

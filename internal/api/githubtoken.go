@@ -18,11 +18,16 @@ import (
 // SESSION_SECRET itself is rotated).
 const githubTokenCacheTTL = 5 * time.Minute
 
+// githubTeamRetryTTL is how long a failed team lookup is remembered before the next request tries again.
+const githubTeamRetryTTL = 30 * time.Second
+
 type githubTokenCacheEntry struct {
 	username string
 	ok       bool
 	teams    []string // "org/slug" GitHub team memberships within cfg.Org - see roles.go.
-	expires  time.Time
+	// teamsKnown is false when the team lookup failed, so teams is not an answer but a gap.
+	teamsKnown bool
+	expires    time.Time
 }
 
 // githubTokenValidator authenticates a bearer value that isn't one of this service's own signed session tokens
@@ -73,17 +78,22 @@ func (v *githubTokenValidator) validate(token string) (username string, ok bool)
 	}
 
 	var teams []string
+	teamsKnown := false
 	if ok {
-		// Best-effort: a failure here (rate limit, transient network error)
-		// just means team-based role bindings won't apply to this token
-		// yet, same as if none had been configured - it never fails
-		// validate() itself, since org-membership auth must not depend on
-		// this extra, role-only lookup succeeding.
-		teams, _ = FetchUserTeams(v.client, v.cfg.Org, token)
+		// A failure here (rate limit, transient network error) never fails validate() itself, since org-membership
+		// auth must not depend on this role-only lookup. It is remembered as unknown, though, and for a short time
+		// only: roles must not fall back to the default role, and the lookup should be retried soon.
+		var terr error
+		teams, terr = FetchUserTeams(v.client, v.cfg.Org, token)
+		teamsKnown = terr == nil
 	}
 
+	ttl := githubTokenCacheTTL
+	if ok && !teamsKnown {
+		ttl = githubTeamRetryTTL
+	}
 	v.mu.Lock()
-	v.cache[key] = githubTokenCacheEntry{username: username, ok: ok, teams: teams, expires: time.Now().Add(githubTokenCacheTTL)}
+	v.cache[key] = githubTokenCacheEntry{username: username, ok: ok, teams: teams, teamsKnown: teamsKnown, expires: time.Now().Add(ttl)}
 	v.mu.Unlock()
 	return username, ok
 }
@@ -92,14 +102,14 @@ func (v *githubTokenValidator) validate(token string) (username string, ok bool)
 // the most recent validate() call - roles.go's resolveTeamsForRequest
 // always calls validate(token) first (itself cheap on a cache hit), so
 // this never needs to fetch anything on its own.
-func (v *githubTokenValidator) teamsForCached(token string) []string {
+func (v *githubTokenValidator) teamsForCached(token string) ([]string, bool) {
 	key := githubTokenCacheKey(token)
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if entry, ok := v.cache[key]; ok {
-		return entry.teams
+		return entry.teams, entry.teamsKnown
 	}
-	return nil
+	return nil, false
 }
 
 // sweepExpiredLocked drops expired cache entries, at most once per

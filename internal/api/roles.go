@@ -250,6 +250,9 @@ type RoleInfo struct {
 	// or any request with no Agents-scoped binding at its winning rank).
 	Agents  []string
 	IsAdmin bool
+	// Unresolved is set when the request's team membership is unknown and a team binding could have changed
+	// its role: the request is refused rather than given defaultRole.
+	Unresolved bool
 }
 
 // CanWrite reports whether info's role permits any mutating request
@@ -259,25 +262,29 @@ func (info RoleInfo) CanWrite() bool {
 	return info.Role != RoleViewer
 }
 
-// AllowsAgent reports whether info may see a result attributed to agentName.
+// Scoped reports whether info is limited to a set of agents.
+func (info RoleInfo) Scoped() bool {
+	return info.Agents != nil
+}
+
+// AllowsAgent reports whether info may see a result attributed to agentName. A scoped role never sees a
+// result whose agent is unknown: an empty name must not be a way around the scope.
 func (info RoleInfo) AllowsAgent(agentName string) bool {
-	if info.Agents == nil || agentName == "" {
+	if !info.Scoped() {
 		return true
 	}
 	for _, a := range info.Agents {
-		if a == agentName {
+		if a == agentName && a != "" {
 			return true
 		}
 	}
 	return false
 }
 
-// AllowsAnyAgent reports whether info may see a result attributed to any
-// one of agentNames (used for a run whose distinct Summary.Agents can list
-// more than one agent). An empty agentNames is treated the same as an
-// empty single agentName in AllowsAgent - unknown, so allowed.
+// AllowsAnyAgent reports whether info may see a result attributed to any one of agentNames (a run or session
+// can list more than one agent). For a scoped role an empty list means unknown, so hidden.
 func (info RoleInfo) AllowsAnyAgent(agentNames []string) bool {
-	if info.Agents == nil || len(agentNames) == 0 {
+	if !info.Scoped() {
 		return true
 	}
 	for _, a := range agentNames {
@@ -288,13 +295,26 @@ func (info RoleInfo) AllowsAnyAgent(agentNames []string) bool {
 	return false
 }
 
-// A run with no Summary yet (still "running") or an empty/unknown Agents list is always visible: only a run
-// whose agents are known and all fall outside info.Agents is hidden.
+// runVisibleForRole hides a run from a scoped role unless one of the run's agents is in scope; a run that is
+// still running (no Summary yet) or whose agent could not be resolved is hidden too.
 func runVisibleForRole(run runDTO, info RoleInfo) bool {
-	if run.Summary == nil {
+	if !info.Scoped() {
 		return true
 	}
+	if run.Summary == nil {
+		return false
+	}
 	return info.AllowsAnyAgent(run.Summary.Agents)
+}
+
+// denyScoped answers 403 and reports true for a scoped role on an endpoint whose data cannot be attributed to
+// an agent (usage totals, eval sets, online scores): showing it would show every agent's data.
+func denyScoped(w http.ResponseWriter, r *http.Request) bool {
+	if !roleInfoOrOpen(r.Context()).Scoped() {
+		return false
+	}
+	writeEvaluateError(w, http.StatusForbidden, "this view is not available to an agent-scoped role")
+	return true
 }
 
 // EffectiveRole resolves username's access level given the GitHub teams it's currently known to belong to
@@ -305,7 +325,10 @@ func runVisibleForRole(run runDTO, info RoleInfo) bool {
 // only interpretation that lets "grant this specific person admin, even though their team is scoped to viewer"
 // work at all. Agents scopes at that winning rank are unioned; if any winning binding is itself unrestricted
 // (empty Agents), the union is unrestricted too.
-func (s *RoleStore) EffectiveRole(username string, teams []string) RoleInfo {
+//
+// When the teams are not known (teamsKnown false) and the user has no binding by name, a team binding they may
+// belong to could narrow or raise their role, so the result is Unresolved instead of defaultRole.
+func (s *RoleStore) EffectiveRole(username string, teams []string, teamsKnown bool) RoleInfo {
 	s.mu.Lock()
 	bindings := make([]RoleBinding, 0, len(s.bindings))
 	for _, b := range s.bindings {
@@ -325,6 +348,9 @@ func (s *RoleStore) EffectiveRole(username string, teams []string) RoleInfo {
 		}
 	}
 	if len(matched) == 0 {
+		if !teamsKnown && hasTeamBinding(bindings) {
+			return RoleInfo{Role: RoleViewer, Agents: []string{}, Unresolved: true}
+		}
 		return RoleInfo{Role: s.defaultRole, Agents: nil, IsAdmin: s.defaultRole == RoleAdmin}
 	}
 
@@ -358,6 +384,27 @@ func (s *RoleStore) EffectiveRole(username string, teams []string) RoleInfo {
 		sort.Strings(agents)
 	}
 	return RoleInfo{Role: best, Agents: agents, IsAdmin: best == RoleAdmin}
+}
+
+func hasTeamBinding(bindings []RoleBinding) bool {
+	for _, b := range bindings {
+		if b.SubjectType == "team" {
+			return true
+		}
+	}
+	return false
+}
+
+// HasTeamBindings reports whether any binding targets a team, i.e. whether a user's team membership matters.
+func (s *RoleStore) HasTeamBindings() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, b := range s.bindings {
+		if b.SubjectType == "team" {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------
@@ -404,43 +451,58 @@ func withRole(roleStore *RoleStore, org, sessionSecret string, ghTokens *githubT
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if username, ok := authenticatedUsername(r.Context()); ok {
-			teams := resolveTeamsForRequest(r, roleStore, org, sessionSecret, ghTokens, username)
-			info := roleStore.EffectiveRole(username, teams)
+			teams, known := resolveTeamsForRequest(r, roleStore, org, sessionSecret, ghTokens, username)
+			info := roleStore.EffectiveRole(username, teams, known)
+			if info.Unresolved {
+				writeTeamsUnresolved(w, r)
+				return
+			}
 			r = r.WithContext(withRoleInfo(r.Context(), info))
 		}
 		handler(w, r)
 	}
 }
 
-// resolveTeamsForRequest returns username's known GitHub team memberships
-// for this request, or nil if none are known. Prefers RoleStore's
-// login-time cache (populated by authCallbackHandler - the only place
-// this service ever holds a browser user's own GitHub access token); for
-// a request bearing a raw GitHub token directly (the MCP/CLI path - see
-// githubtoken.go), resolves live via ghTokens (itself cached, so repeat
-// calls in one CLI/MCP session cost one GitHub API round trip, not one per
-// call) and backfills RoleStore's cache so a mixed caller (e.g. a
-// long-lived automation reusing the same PAT) doesn't refetch every
-// request either.
-func resolveTeamsForRequest(r *http.Request, roleStore *RoleStore, org, sessionSecret string, ghTokens *githubTokenValidator, username string) []string {
+// resolveTeamsForRequest returns username's GitHub team memberships for this request and whether they are
+// known. Prefers RoleStore's login-time cache (populated by authCallbackHandler - the only place this service
+// ever holds a browser user's own GitHub access token); for a request bearing a raw GitHub token directly (the
+// MCP/CLI path - see githubtoken.go), resolves live via ghTokens (itself cached, so repeat calls in one CLI/MCP
+// session cost one GitHub API round trip, not one per call) and backfills RoleStore's cache.
+//
+// Unknown is not the same as "no teams": a browser session whose cache entry is gone (the pod restarted, the
+// entry expired) and a GitHub token whose team lookup failed are unknown, and EffectiveRole refuses them rather
+// than treating them as team-less. A token signed by this service has no teams by design, so it is known.
+func resolveTeamsForRequest(r *http.Request, roleStore *RoleStore, org, sessionSecret string, ghTokens *githubTokenValidator, username string) (teams []string, known bool) {
 	if teams, ok := roleStore.getTeams(username); ok {
-		return teams
+		return teams, true
 	}
 	if org == "" || ghTokens == nil {
-		return nil
+		return nil, true
 	}
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(strings.ToLower(auth), "bearer ") {
-		return nil
+		return nil, false // a session cookie whose login-time team lookup is gone.
 	}
 	token := strings.TrimSpace(auth[7:])
 	if _, ok := readSessionCookie(token, sessionSecret); ok {
-		return nil // this service's own signed token, not a GitHub PAT - nothing to resolve.
+		return nil, true // this service's own signed token, not a GitHub PAT - nothing to resolve.
 	}
 	if _, ok := ghTokens.validate(token); !ok {
-		return nil
+		return nil, false
 	}
-	teams := ghTokens.teamsForCached(token)
-	roleStore.setTeams(username, teams)
-	return teams
+	teams, known = ghTokens.teamsForCached(token)
+	if known {
+		roleStore.setTeams(username, teams)
+	}
+	return teams, known
+}
+
+// writeTeamsUnresolved refuses a request whose team membership could not be determined. A browser session is
+// told to sign in again, which repopulates its teams; a token holder is told to retry.
+func writeTeamsUnresolved(w http.ResponseWriter, r *http.Request) {
+	if _, err := r.Cookie(sessionCookieName); err == nil && r.Header.Get("Authorization") == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"authenticated": false, "error": "team membership is unknown; sign in again"})
+		return
+	}
+	writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "team membership could not be resolved; retry shortly"})
 }

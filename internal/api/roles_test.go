@@ -16,7 +16,7 @@ func TestRoleStore_DefaultRoleWhenNoBindingMatches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRoleStore: %v", err)
 	}
-	info := s.EffectiveRole("nobody-configured", nil)
+	info := s.EffectiveRole("nobody-configured", nil, true)
 	if info.Role != RoleMember || info.Agents != nil || info.IsAdmin {
 		t.Fatalf("EffectiveRole() = %+v, want unrestricted RoleMember", info)
 	}
@@ -35,7 +35,7 @@ func TestRoleStore_BootstrapAdminIsIdempotent(t *testing.T) {
 		t.Fatalf("bootstrap binding = %+v, want admin binding for octocat", bindings[0])
 	}
 
-	info := s.EffectiveRole("octocat", nil)
+	info := s.EffectiveRole("octocat", nil, true)
 	if !info.IsAdmin {
 		t.Fatalf("EffectiveRole(octocat) = %+v, want IsAdmin", info)
 	}
@@ -64,14 +64,14 @@ func TestRoleStore_DirectUserBindingOutranksTeamBinding(t *testing.T) {
 		t.Fatalf("Upsert(user): %v", err)
 	}
 
-	info := s.EffectiveRole("alice", []string{"acme/eng"})
+	info := s.EffectiveRole("alice", []string{"acme/eng"}, true)
 	if !info.IsAdmin {
 		t.Fatalf("EffectiveRole() = %+v, want IsAdmin (direct admin binding must outrank the viewer team binding)", info)
 	}
 
 	// A teammate with no binding of their own is scoped by the team
 	// binding alone.
-	info = s.EffectiveRole("teammate", []string{"acme/eng"})
+	info = s.EffectiveRole("teammate", []string{"acme/eng"}, true)
 	if info.Role != RoleViewer || info.IsAdmin {
 		t.Fatalf("EffectiveRole(teammate) = %+v, want RoleViewer via the team binding", info)
 	}
@@ -89,7 +89,7 @@ func TestRoleStore_AgentScopeUnionAtWinningRank(t *testing.T) {
 		t.Fatalf("Upsert: %v", err)
 	}
 
-	info := s.EffectiveRole("viewer1", []string{"acme/support"})
+	info := s.EffectiveRole("viewer1", []string{"acme/support"}, true)
 	if info.Role != RoleViewer {
 		t.Fatalf("EffectiveRole().Role = %q, want viewer", info.Role)
 	}
@@ -105,7 +105,7 @@ func TestRoleStore_AgentScopeUnionAtWinningRank(t *testing.T) {
 	if _, err := s.Upsert(RoleBinding{SubjectType: "user", Subject: "viewer1", ID: bindingIDFor(t, s, "viewer1"), Role: RoleViewer}); err != nil {
 		t.Fatalf("Upsert (widen to unrestricted): %v", err)
 	}
-	info = s.EffectiveRole("viewer1", []string{"acme/support"})
+	info = s.EffectiveRole("viewer1", []string{"acme/support"}, true)
 	if info.Agents != nil {
 		t.Fatalf("EffectiveRole().Agents = %v after widening one binding to unrestricted, want nil (unrestricted)", info.Agents)
 	}
@@ -194,11 +194,11 @@ func TestRoleStore_PersistsAcrossRestart(t *testing.T) {
 	if len(s2.List()) != 2 {
 		t.Fatalf("List() after restart = %d bindings, want 2: %+v", len(s2.List()), s2.List())
 	}
-	info := s2.EffectiveRole("admin-user", nil)
+	info := s2.EffectiveRole("admin-user", nil, true)
 	if !info.IsAdmin {
 		t.Fatalf("admin-user role after restart = %+v, want IsAdmin", info)
 	}
-	info = s2.EffectiveRole("someone-else", []string{"acme/eng"})
+	info = s2.EffectiveRole("someone-else", []string{"acme/eng"}, true)
 	if info.Role != RoleViewer || !info.AllowsAgent("a") || info.AllowsAgent("c") {
 		t.Fatalf("team-bound viewer after restart = %+v, want viewer scoped to [a b]", info)
 	}
@@ -219,7 +219,7 @@ func TestRoleStore_DeleteRemovesBinding(t *testing.T) {
 	if ok, _ := s.Delete(b.ID); ok {
 		t.Fatalf("Delete of an already-deleted ID reported ok=true")
 	}
-	if info := s.EffectiveRole("temp-admin", nil); info.IsAdmin {
+	if info := s.EffectiveRole("temp-admin", nil, true); info.IsAdmin {
 		t.Fatalf("EffectiveRole() after Delete = %+v, want fallback to default role", info)
 	}
 }
@@ -390,8 +390,8 @@ func TestRunVisibleForRole(t *testing.T) {
 			t.Errorf("run %s hidden from an unrestricted role", run.RunID)
 		}
 	}
-	if !runVisibleForRole(runNoSummary, scoped) {
-		t.Error("a run with no summary yet must stay visible even to a scoped role")
+	if runVisibleForRole(runNoSummary, scoped) {
+		t.Error("a run with no summary yet cannot be attributed, so a scoped role must not see it")
 	}
 	if !runVisibleForRole(runKnownAllowed, scoped) {
 		t.Error("a run whose agent is in the scoped allowlist must be visible")
@@ -399,8 +399,8 @@ func TestRunVisibleForRole(t *testing.T) {
 	if runVisibleForRole(runKnownDisallowed, scoped) {
 		t.Error("a run whose only known agent is outside the scoped allowlist must be hidden")
 	}
-	if !runVisibleForRole(runUnknownAgents, scoped) {
-		t.Error("a run with an empty/unknown Agents list must stay visible (can't tell, so allow)")
+	if runVisibleForRole(runUnknownAgents, scoped) {
+		t.Error("a run with an empty/unknown Agents list must be hidden from a scoped role")
 	}
 }
 

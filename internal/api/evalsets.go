@@ -25,6 +25,9 @@ func evalSetsHandler(store *SQLiteStore) http.HandlerFunc {
 // listEvalSetsHandler implements GET /api/evalsets.
 func listEvalSetsHandler(store *SQLiteStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if denyScoped(w, r) {
+			return
+		}
 		if store == nil {
 			writeStorageUnavailable(w)
 			return
@@ -85,6 +88,9 @@ func saveEvalSetHandler(store *SQLiteStore) http.HandlerFunc {
 // getEvalSetHandler implements GET /api/evalsets/{id}.
 func getEvalSetHandler(store *SQLiteStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if denyScoped(w, r) {
+			return
+		}
 		if store == nil {
 			writeStorageUnavailable(w)
 			return

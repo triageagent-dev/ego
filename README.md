@@ -217,8 +217,12 @@ With no `--session-secret`, `serve` is open. With `--session-secret`, `--github-
 `--github-client-secret`, `--github-org` and `--public-url` it requires GitHub OAuth, restricted to members of
 the org. OTLP receivers and `/api/health` are never gated.
 
-Roles: `admin`, `member` (default, full read/write) and `viewer` (read-only, optionally limited to certain
-agent names in Runs), assigned to a GitHub user or team:
+Roles: `admin`, `member` (default, full read/write) and `viewer` (read-only), assigned to a GitHub user or team and
+optionally limited to certain agent names. A limited role sees only the sessions, traces and runs that involve one
+of its agents (a session counts as the agent that appears on its spans; one without an agent name is hidden), gets
+only those sessions on the live feed, and cannot open the views that mix agents: Tokens, Quality and eval sets.
+When a user's GitHub teams cannot be determined, the request is refused (browser: sign in again) instead of
+falling back to the default role.
 
 ```bash
 ./bin/ego serve --session-secret "$EGO_SESSION_SECRET" --session-db ./ego.db \

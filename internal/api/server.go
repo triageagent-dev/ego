@@ -312,17 +312,40 @@ func otlpRequestBody(w http.ResponseWriter, r *http.Request) (io.ReadCloser, int
 func sessionsHandler(store *SessionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// ?id= returns just that session (an empty list when unknown), including one evicted from memory.
+		info := roleInfoOrOpen(r.Context())
+		// ?id= returns just that session (an empty list when unknown or out of scope), including one evicted from
+		// memory.
 		if id := r.URL.Query().Get("id"); id != "" {
 			one := []SessionSummary{}
-			if sum, ok := store.Summary(id); ok {
+			if sum, ok := store.Summary(id); ok && info.AllowsAnyAgent(sum.Agents) {
 				one = append(one, sum)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": one, "error": nil})
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": store.List(), "error": nil})
+		all := store.List()
+		if info.Scoped() {
+			visible := all[:0]
+			for _, sum := range all {
+				if info.AllowsAnyAgent(sum.Agents) {
+					visible = append(visible, sum)
+				}
+			}
+			all = visible
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": all, "error": nil})
 	}
+}
+
+// sessionInScope reports whether the request's role may see the session: always for an unscoped role, otherwise
+// only when one of the session's agents is in scope. A session out of scope is answered like a missing one.
+func sessionInScope(store *SessionStore, r *http.Request, sessionID string) bool {
+	info := roleInfoOrOpen(r.Context())
+	if !info.Scoped() {
+		return true
+	}
+	sum, ok := store.Summary(sessionID)
+	return ok && info.AllowsAnyAgent(sum.Agents)
 }
 
 // createEvalSetRequest is POST /api/streaming/create-eval-set's request body.
@@ -347,7 +370,7 @@ func createEvalSetHandler(store *SessionStore) http.HandlerFunc {
 		}
 
 		tr, ok := store.Trace(req.SessionID)
-		if !ok {
+		if !ok || !sessionInScope(store, r, req.SessionID) {
 			http.Error(w, "session not found", http.StatusNotFound)
 			return
 		}
@@ -404,7 +427,7 @@ func getTraceHandler(store *SessionStore) http.HandlerFunc {
 		}
 
 		tr, ok := store.Trace(req.SessionID)
-		if !ok {
+		if !ok || !sessionInScope(store, r, req.SessionID) {
 			http.Error(w, "session not found", http.StatusNotFound)
 			return
 		}
@@ -450,7 +473,7 @@ func sessionSpansHandler(store *SessionStore) http.HandlerFunc {
 		}
 		id := r.URL.Query().Get("session_id")
 		out, ok := store.SpanRows(id)
-		if !ok {
+		if !ok || !sessionInScope(store, r, id) {
 			writeEvaluateError(w, http.StatusNotFound, "session not found")
 			return
 		}
