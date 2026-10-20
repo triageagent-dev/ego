@@ -45,6 +45,9 @@ usageTenantAttr: ""
 # -- GitHub logins that are always admin (--admin-github-users).
 adminGithubUsers: []
 
+# -- Log threshold: debug, info, warn or error (--log-level).
+logLevel: info
+
 auth:
   # -- GitHub login gate. false drops the auth env, so the server runs open
   # (no session cookie, every caller is admin).
@@ -53,6 +56,8 @@ auth:
   # -- Role of a signed-in user no role binding covers: admin, member, viewer or none (no access). With none, give
   # every team a binding (tenants: ["*"] for staff, "<sender>/*" or "<sender>/<tenant>" for customers).
   defaultRole: member
+  # -- Log the GitHub user name of every sign-in and refused sign-in (--audit-log). Off: the log carries no user names.
+  auditLog: false
   githubOrg: ""
   publicUrl: ""
   # -- Secret holding GITHUB_CLIENT_SECRET.

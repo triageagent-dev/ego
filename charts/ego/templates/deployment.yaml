@@ -54,6 +54,12 @@ spec:
             {{- if not .Values.auth.enabled }}
             - --no-auth
             {{- end }}
+            {{- with .Values.logLevel }}
+            - --log-level={{ . }}
+            {{- end }}
+            {{- if .Values.auth.auditLog }}
+            - --audit-log
+            {{- end }}
             - --session-db=/data/{{ .Values.persistence.dbFile }}
             - --session-memory={{ .Values.persistence.memorySessions }}
             - --session-retention={{ .Values.persistence.retention }}

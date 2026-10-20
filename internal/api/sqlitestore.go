@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/triageagent-dev/ego/internal/logx"
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 	_ "modernc.org/sqlite" // pure-Go driver, no CGO - registers "sqlite" with database/sql
 )
@@ -89,7 +89,7 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 		return nil, err
 	}
 
-	log.Printf("session archive: %s", path)
+	logx.Infof("session archive: %s", path)
 	return &SQLiteStore{db: db}, nil
 }
 
@@ -148,7 +148,7 @@ func (s *SQLiteStore) SaveAll(sessions map[string]*Session) error {
 	for id, session := range sessions {
 		data, err := json.Marshal(snapshotOf(session))
 		if err != nil {
-			log.Printf("session archive: failed to serialize session %s: %v", id, err)
+			logx.Errorf("session archive: failed to serialize session %s: %v", id, err)
 			continue
 		}
 		rows = append(rows, struct{ id, data, updatedAt string }{id, string(data), now})
@@ -217,7 +217,7 @@ func (s *SQLiteStore) LoadRecent(limit int, maxBytes int64) ([]sessionSnapshot, 
 		}
 		var snap sessionSnapshot
 		if err := json.Unmarshal([]byte(data), &snap); err != nil {
-			log.Printf("session archive: failed to deserialize session %s: %v", id, err)
+			logx.Warnf("session archive: failed to deserialize session %s: %v", id, err)
 			continue
 		}
 		result = append(result, snap)
@@ -263,7 +263,7 @@ func (s *SQLiteStore) ForEachSnapshot(fn func(sessionSnapshot)) error {
 		}
 		var snap sessionSnapshot
 		if err := json.Unmarshal([]byte(data), &snap); err != nil {
-			log.Printf("session archive: failed to deserialize session %s: %v", id, err)
+			logx.Warnf("session archive: failed to deserialize session %s: %v", id, err)
 			continue
 		}
 		fn(snap)

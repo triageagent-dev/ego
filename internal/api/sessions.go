@@ -2,7 +2,6 @@ package api
 
 import (
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 	"sync"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/triageagent-dev/ego/internal/adk"
 	"github.com/triageagent-dev/ego/internal/incremental"
+	"github.com/triageagent-dev/ego/internal/logx"
 	"github.com/triageagent-dev/ego/internal/otlp"
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 )
@@ -459,7 +459,7 @@ func (s *SessionStore) LoadPersisted() error {
 		}
 	}
 	if len(snapshots) > 0 {
-		log.Printf("restored %d session(s) from archive", len(snapshots))
+		logx.Infof("restored %d session(s) from archive", len(snapshots))
 	}
 	return nil
 }
@@ -512,7 +512,7 @@ func (s *SessionStore) lookupLocked(sessionID string) (*Session, bool) {
 	}
 	snap, ok, err := s.store.Load(sessionID)
 	if err != nil {
-		log.Printf("session archive: loading %s: %v", sessionID, err)
+		logx.Warnf("session archive: loading %s: %v", sessionID, err)
 		return nil, false
 	}
 	if !ok {
@@ -535,7 +535,7 @@ func (s *SessionStore) StartPersistence(interval time.Duration, stop <-chan stru
 			select {
 			case <-ticker.C:
 				if err := s.flushPersist(); err != nil {
-					log.Printf("session archive: periodic snapshot failed: %v", err)
+					logx.Errorf("session archive: periodic snapshot failed: %v", err)
 				}
 			case <-stop:
 				return
@@ -666,7 +666,7 @@ func (s *SessionStore) pruneSessions() {
 	cutoff := time.Now().Add(-s.sessionRetention)
 	n, err := s.store.PruneSessions(cutoff)
 	if err != nil {
-		log.Printf("session archive: prune failed: %v", err)
+		logx.Errorf("session archive: prune failed: %v", err)
 		return
 	}
 	if n == 0 {
@@ -686,9 +686,9 @@ func (s *SessionStore) pruneSessions() {
 	s.order = order
 	s.mu.Unlock()
 	if err := s.store.Compact(); err != nil {
-		log.Printf("session archive: compact failed: %v", err)
+		logx.Errorf("session archive: compact failed: %v", err)
 	}
-	log.Printf("session archive: pruned %d session(s) older than %s and compacted", n, s.sessionRetention)
+	logx.Infof("session archive: pruned %d session(s) older than %s and compacted", n, s.sessionRetention)
 }
 
 // requeueRootsLocked puts trace roots back for the next flush after a
@@ -737,9 +737,9 @@ func (s *SessionStore) flushUsage() error {
 	}
 	if prune {
 		if n, err := s.store.PruneUsage(time.Now().Add(-s.usageRetention)); err != nil {
-			log.Printf("usage ledger: prune failed: %v", err)
+			logx.Errorf("usage ledger: prune failed: %v", err)
 		} else if n > 0 {
-			log.Printf("usage ledger: pruned %d row(s) older than %s", n, s.usageRetention)
+			logx.Infof("usage ledger: pruned %d row(s) older than %s", n, s.usageRetention)
 		}
 	}
 	return nil
@@ -762,7 +762,7 @@ func (s *SessionStore) Close() error {
 		return nil
 	}
 	if err := s.flushPersist(); err != nil {
-		log.Printf("session archive: final snapshot failed: %v", err)
+		logx.Errorf("session archive: final snapshot failed: %v", err)
 	}
 	return s.store.Close()
 }
@@ -830,7 +830,7 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 
 			session, isNew := s.getOrCreateSession(name, tr.TraceID, evalSetID, sender, resourceAttrs)
 			if session.Sender != sender {
-				log.Printf("ingest: dropped spans for session %q: it belongs to another sender", name)
+				logx.Warnf("ingest: dropped spans for session %q: it belongs to another sender", name)
 				continue
 			}
 

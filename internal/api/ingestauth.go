@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"crypto/subtle"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,6 +12,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/triageagent-dev/ego/internal/logx"
 )
 
 // The OTLP receivers are service-to-service pushes, so they cannot use the UI's cookie. A sender presents a
@@ -48,7 +49,7 @@ func (a *ingestAuth) logRejected(transport, header string) {
 	if _, has := bearerToken(header); !has {
 		reason = "no bearer token"
 	}
-	log.Printf("ingest: refused %d OTLP/%s push(es), latest: %s", a.rejected, transport, reason)
+	logx.Warnf("ingest: refused %d OTLP/%s push(es), latest: %s", a.rejected, transport, reason)
 	a.rejectLast, a.rejected = time.Now(), 0
 }
 

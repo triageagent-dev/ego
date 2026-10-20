@@ -12,11 +12,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/triageagent-dev/ego/internal/logx"
 )
 
 // GitHubOAuthConfig holds this service's own GitHub OAuth App credentials
@@ -36,7 +37,7 @@ type GitHubOAuthConfig struct {
 // auditf logs a sign-in event that names a user, only when the audit log is on.
 func (c *GitHubOAuthConfig) auditf(format string, args ...any) {
 	if c.AuditLog {
-		log.Printf(format, args...)
+		logx.Infof(format, args...)
 	}
 }
 
@@ -164,21 +165,21 @@ func authCallbackHandler(cfg *GitHubOAuthConfig, roleStore *RoleStore) http.Hand
 
 		accessToken, err := exchangeCodeForToken(client, cfg, code)
 		if err != nil {
-			log.Printf("auth: GitHub OAuth token exchange failed: %v", err)
+			logx.Warnf("auth: GitHub OAuth token exchange failed: %v", err)
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "GitHub OAuth token exchange failed"})
 			return
 		}
 
 		username, err := fetchGitHubLogin(client, accessToken)
 		if err != nil {
-			log.Printf("auth: fetching GitHub user failed: %v", err)
+			logx.Warnf("auth: fetching GitHub user failed: %v", err)
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to fetch GitHub user"})
 			return
 		}
 
 		member, err := checkOrgMembership(client, cfg.Org, username, accessToken)
 		if err != nil {
-			log.Printf("auth: checking org membership failed: %v", err)
+			logx.Warnf("auth: checking org membership failed: %v", err)
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to verify org membership"})
 			return
 		}
@@ -190,7 +191,7 @@ func authCallbackHandler(cfg *GitHubOAuthConfig, roleStore *RoleStore) http.Hand
 
 		if roleStore != nil {
 			if teams, err := FetchUserTeams(client, cfg.Org, accessToken); err != nil {
-				log.Printf("auth: resolving GitHub team memberships failed: %v", err)
+				logx.Warnf("auth: resolving GitHub team memberships failed: %v", err)
 				// Signing in without teams would give them defaultRole instead of what their team grants or limits.
 				if roleStore.HasTeamBindings() {
 					writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to resolve team membership; try again shortly"})
@@ -220,7 +221,7 @@ func authLogoutHandler(secret string, revoked *revocations) http.HandlerFunc {
 		if c, err := r.Cookie(sessionCookieName); err == nil && revoked != nil {
 			if t, ok := parseToken(c.Value, secret); ok && t.Kind == tokenKindSession {
 				if err := revoked.RevokeToken(t.ID, t.Expiry); err != nil {
-					log.Printf("auth: recording a logout failed: %v", err)
+					logx.Warnf("auth: recording a logout failed: %v", err)
 				}
 			}
 		}

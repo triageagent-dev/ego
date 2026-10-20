@@ -328,6 +328,8 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`:
 | `EGO_OTLP_TOKEN` | `--otlp-token` | Bearer token the OTLP receivers require (empty: open) |
 | `EGO_EVAL_DAILY_TOKENS` | `--eval-daily-tokens` | Judge tokens interactive evaluation may use per UTC day (default 5000000, 0: unlimited) |
 | `EGO_USAGE_TENANT_ATTR` | `--usage-tenant-attr` | Span attribute the Usage view reads the tenant from |
+| `EGO_LOG_LEVEL` | `--log-level` | Log threshold: `debug`, `info` (default), `warn` or `error`. Lines are `time=… level=… msg=…` on stderr |
+| `EGO_AUDIT_LOG` | `--audit-log` | Log the GitHub user name of every sign-in and refused sign-in (off by default: no user names in the log) |
 | `EGO_ONLINE_CONFIG` | `--online-config` | Online evaluation config file |
 | `EGO_SERVER_URL`, `EGO_SESSION_TOKEN` | `--server-url`, `--session-token` | For `ego mcp` |
 

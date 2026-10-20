@@ -75,3 +75,4 @@ What ego supports today, and what it does not.
   panic on a request without `:authority`, reachable through the OTLP/gRPC receiver. The only fix is an
   unreleased dev version, so `go.mod` stays on the latest stable release. Bump to the first stable release
   that carries the fix.
+- Logging (`internal/logx`): leveled `log/slog` lines (`--log-level`, default info); sign-in user names are logged only with `--audit-log`; refused OTLP pushes are logged once a minute without the token.

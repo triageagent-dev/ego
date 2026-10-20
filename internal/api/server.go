@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/adk"
+	"github.com/triageagent-dev/ego/internal/logx"
 	"github.com/triageagent-dev/ego/internal/online"
 	"github.com/triageagent-dev/ego/internal/otlp"
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
@@ -165,7 +165,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	}
 	if _, err := fs.Stat(uiDist, "index.html"); err == nil {
 		mux.Handle("/", http.FileServer(http.FS(uiDist)))
-		log.Print("serving UI embedded in binary")
+		logx.Debugf("serving UI embedded in binary")
 	} else {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "UI not built: run `make build-ui` before `go build` (ui/dist/index.html not found in embedded assets)", http.StatusNotFound)
@@ -176,25 +176,25 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	ingest := &ingestAuth{globalToken: normalizeIngestToken(otlpToken), senders: senderStore}
 	otlpMux.Handle("/v1/traces", ingest.middleware(otlpTracesHandler(store)))
 	if ingest.required() {
-		log.Printf("OTLP ingest requires a bearer token (Authorization header / gRPC metadata)")
+		logx.Infof("OTLP ingest requires a bearer token (Authorization header / gRPC metadata)")
 	} else {
-		log.Printf("WARNING: OTLP ingest is unauthenticated; anyone who can reach %s and %s can create sessions (set --otlp-token)", otlpAddr, otlpGRPCAddr)
+		logx.Warnf("WARNING: OTLP ingest is unauthenticated; anyone who can reach %s and %s can create sessions (set --otlp-token)", otlpAddr, otlpGRPCAddr)
 	}
 
 	healthMux := http.NewServeMux()
 	healthMux.HandleFunc("/api/health", healthHandler)
 
 	if sessionSecret != "" {
-		log.Printf("gh-auth enabled for %s: requires a signed ego_session cookie", addr)
+		logx.Infof("gh-auth enabled for %s: requires a signed ego_session cookie", addr)
 	}
 
 	errCh := make(chan error, 4)
 	go func() {
-		log.Printf("ego health check listening on %s (GET /api/health, never gated)", healthAddr)
+		logx.Infof("ego health check listening on %s (GET /api/health, never gated)", healthAddr)
 		errCh <- newHTTPServer(healthAddr, healthMux, 10*time.Second, 10*time.Second).ListenAndServe()
 	}()
 	go func() {
-		log.Printf("ego OTLP/HTTP receiver listening on %s (POST /v1/traces)", otlpAddr)
+		logx.Infof("ego OTLP/HTTP receiver listening on %s (POST /v1/traces)", otlpAddr)
 		errCh <- newHTTPServer(otlpAddr, otlpMux, 60*time.Second, 60*time.Second).ListenAndServe()
 	}()
 	go func() {
@@ -203,7 +203,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 			errCh <- fmt.Errorf("listening on %s for OTLP/gRPC: %w", otlpGRPCAddr, err)
 			return
 		}
-		log.Printf("ego OTLP/gRPC receiver listening on %s", otlpGRPCAddr)
+		logx.Infof("ego OTLP/gRPC receiver listening on %s", otlpGRPCAddr)
 		errCh <- newOTLPGRPCServer(store, ingest).Serve(lis)
 	}()
 	// /api/health and /auth/me stay reachable on addr itself, unwrapped by
@@ -230,15 +230,15 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		topMux.HandleFunc("/auth/login", authLoginHandler(githubOAuth))
 		topMux.HandleFunc("/auth/callback", authCallbackHandler(githubOAuth, roleStore))
 		topMux.HandleFunc("/auth/logout", authLogoutHandler(sessionSecret, revoked))
-		log.Printf("independent GitHub OAuth enabled for %s: org=%q, callback=%q", addr, githubOAuth.Org, githubOAuth.callbackURL())
+		logx.Infof("independent GitHub OAuth enabled for %s: org=%q, callback=%q", addr, githubOAuth.Org, githubOAuth.callbackURL())
 	}
 	if roleStore != nil {
-		log.Printf("multi-user RBAC enabled for %s: default role=%q, %d role binding(s) loaded", addr, defaultRole, len(roleStore.List()))
+		logx.Infof("multi-user RBAC enabled for %s: default role=%q, %d role binding(s) loaded", addr, defaultRole, len(roleStore.List()))
 	}
 	topMux.Handle("/", requireSession(sessionSecret, ghTokens, revoked, withRole(roleStore, roleOrg, ghTokens, mux.ServeHTTP)))
 
 	go func() {
-		log.Printf("ego listening on %s", addr)
+		logx.Infof("ego listening on %s", addr)
 		// No write timeout: the live feed, server-sent events and streaming evaluations are long-lived.
 		publicHost := ""
 		if githubOAuth != nil {
@@ -258,7 +258,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	case sig := <-sigCh:
 		// The deferred store.Close()/close(stop) above still run on this
 		// return, flushing a final snapshot before the process exits.
-		log.Printf("received %s, shutting down", sig)
+		logx.Infof("received %s, shutting down", sig)
 		return nil
 	}
 }

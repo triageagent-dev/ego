@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/triageagent-dev/ego/internal/eval"
 	"github.com/triageagent-dev/ego/internal/judge"
 	"github.com/triageagent-dev/ego/internal/loader"
+	"github.com/triageagent-dev/ego/internal/logx"
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 	"github.com/triageagent-dev/ego/internal/vertexeval"
 )
@@ -379,7 +379,7 @@ func evaluateHandler(store *SQLiteStore) http.HandlerFunc {
 
 		if store != nil {
 			if err := persistCompletedRun(store, runSpecFromRequest(req), req, result); err != nil {
-				log.Printf("run history: failed to persist run: %v", err)
+				logx.Errorf("run history: failed to persist run: %v", err)
 			}
 		}
 
@@ -474,7 +474,7 @@ func evaluateStreamHandler(store *SQLiteStore) http.HandlerFunc {
 
 			if store != nil {
 				if err := persistCompletedRun(store, runSpecFromRequest(req), req, result); err != nil {
-					log.Printf("run history: failed to persist run: %v", err)
+					logx.Errorf("run history: failed to persist run: %v", err)
 				}
 			}
 

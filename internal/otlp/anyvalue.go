@@ -3,9 +3,10 @@
 package otlp
 
 import (
-	"log"
 	"sort"
 	"strconv"
+
+	"github.com/triageagent-dev/ego/internal/logx"
 )
 
 // anyValueFields are the OTLP AnyValue union's possible keys, in the shape
@@ -83,7 +84,7 @@ func decodeAttribute(key string, valueObj map[string]any) (keep bool, value any)
 	switch value.(type) {
 	case map[string]any, []any:
 		if !specContainerAttrs[key] {
-			log.Printf("otlp: dropping container value for %s; only spec container attributes are kept", key)
+			logx.Debugf("otlp: dropping container value for %s; only spec container attributes are kept", key)
 			return false, nil
 		}
 	}

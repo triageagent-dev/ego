@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"sort"
@@ -18,6 +17,7 @@ import (
 	"github.com/triageagent-dev/ego/internal/decision"
 	"github.com/triageagent-dev/ego/internal/eval"
 	"github.com/triageagent-dev/ego/internal/judge"
+	"github.com/triageagent-dev/ego/internal/logx"
 	"github.com/triageagent-dev/ego/internal/online"
 	"github.com/triageagent-dev/ego/internal/vertexeval"
 )
@@ -114,12 +114,12 @@ func (e *OnlineEngine) Start(stop <-chan struct{}) {
 	now := e.now()
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	if spent, err := e.store.OnlineSpentSince(day.UnixMilli()); err != nil {
-		log.Printf("online: restoring today's spend: %v", err)
+		logx.Warnf("online: restoring today's spend: %v", err)
 	} else {
 		e.budget.Restore(spent, now)
 	}
 	if open, err := e.store.OnlineAlerts("open", 1000); err != nil {
-		log.Printf("online: loading open alerts: %v", err)
+		logx.Warnf("online: loading open alerts: %v", err)
 	} else {
 		for _, a := range open {
 			e.alerts[a.Key] = a
@@ -129,11 +129,11 @@ func (e *OnlineEngine) Start(stop <-chan struct{}) {
 	if os.Getenv("JEV_API_KEY") == "" {
 		for _, p := range e.cfg.Profiles {
 			if p.UsesJev() {
-				log.Printf("online: profile %s has jev_* evaluators but JEV_API_KEY is not set; they will report errors", p.Key())
+				logx.Warnf("online: profile %s has jev_* evaluators but JEV_API_KEY is not set; they will report errors", p.Key())
 			}
 		}
 	}
-	log.Printf("online evaluation: %d profile(s), %d sink(s), judge cap %d tokens/day, jev cap %d calls/day",
+	logx.Infof("online evaluation: %d profile(s), %d sink(s), judge cap %d tokens/day, jev cap %d calls/day",
 		len(e.cfg.Profiles), len(e.cfg.Sinks), e.cfg.Budget.JudgeTokensPerDay, e.cfg.Budget.JevCallsPerDay)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -168,7 +168,7 @@ func (e *OnlineEngine) Start(stop <-chan struct{}) {
 // process samples and maybe scores one completed session.
 func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 	if done, err := e.store.OnlineEvalExists(sessionID); err != nil {
-		log.Printf("online: %v", err)
+		logx.Errorf("online: %v", err)
 		return
 	} else if done {
 		e.count(online.SkipAlreadySeen)
@@ -262,7 +262,7 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		JevCalls:    actual.JevCalls,
 		RunID:       runID,
 	}, f.Version, f.Model, scores); err != nil {
-		log.Printf("online: storing scores for %s: %v", sessionID, err)
+		logx.Errorf("online: storing scores for %s: %v", sessionID, err)
 	}
 }
 
@@ -347,7 +347,7 @@ func (e *OnlineEngine) recordRun(f online.Features, p online.Profile, result tra
 			},
 		})
 		if err != nil {
-			log.Printf("online: creating run: %v", err)
+			logx.Errorf("online: creating run: %v", err)
 			return ""
 		}
 		hr = &onlineHourRun{runID: run.RunID, hour: hour}
@@ -376,7 +376,7 @@ func (e *OnlineEngine) recordRun(f online.Features, p online.Profile, result tra
 		})
 	}
 	if err := e.store.InsertRunResults(hr.runID, rows); err != nil {
-		log.Printf("online: writing run results: %v", err)
+		logx.Errorf("online: writing run results: %v", err)
 	}
 	return hr.runID
 }
@@ -398,12 +398,12 @@ func withAgent(details map[string]any, service string) map[string]any {
 func (e *OnlineEngine) finishRun(runID string) {
 	rows, err := e.store.GetRunResults(runID)
 	if err != nil {
-		log.Printf("online: reading run %s: %v", runID, err)
+		logx.Errorf("online: reading run %s: %v", runID, err)
 		return
 	}
 	summary := summarizeResultRows(rows)
 	if err := e.store.FinishRun(runID, "succeeded", &summary, nil); err != nil {
-		log.Printf("online: finishing run %s: %v", runID, err)
+		logx.Errorf("online: finishing run %s: %v", runID, err)
 	}
 }
 
@@ -458,7 +458,7 @@ func (e *OnlineEngine) finishStaleRuns(all bool) {
 	if all {
 		runs, err := e.store.ListRuns([]string{"running"}, 1000, "")
 		if err != nil {
-			log.Printf("online: listing open runs: %v", err)
+			logx.Errorf("online: listing open runs: %v", err)
 			return
 		}
 		for _, r := range runs {
@@ -492,7 +492,7 @@ func (e *OnlineEngine) Tick(ctx context.Context) {
 	if now.Sub(e.lastTick) > 24*time.Hour {
 		if !e.lastTick.IsZero() {
 			if err := e.store.PruneOnline(now.Add(-onlineRetention)); err != nil {
-				log.Printf("online: prune: %v", err)
+				logx.Warnf("online: prune: %v", err)
 			}
 		}
 		e.lastTick = now
@@ -503,7 +503,7 @@ func (e *OnlineEngine) detect(ctx context.Context, now time.Time) {
 	cfg := e.cfg.Detector
 	rows, err := e.store.OnlineSamples(now.Add(-cfg.Baseline.D()).UnixMilli())
 	if err != nil {
-		log.Printf("online: reading samples: %v", err)
+		logx.Errorf("online: reading samples: %v", err)
 		return
 	}
 	split := now.Add(-cfg.Window.D())
@@ -556,13 +556,13 @@ func (e *OnlineEngine) detect(ctx context.Context, now time.Time) {
 			e.mu.Unlock()
 		}
 		if err := e.store.UpsertOnlineAlert(next); err != nil {
-			log.Printf("online: storing alert: %v", err)
+			logx.Errorf("online: storing alert: %v", err)
 		}
 		if event != "" {
-			log.Printf("online: alert %s %s %s/%s/%s %.2f -> %.2f (n=%d)", next.ID, event,
+			logx.Infof("online: alert %s %s %s/%s/%s %.2f -> %.2f (n=%d)", next.ID, event,
 				key.Tenant, key.Kind, key.Metric, r.BaseMean, r.CurMean, r.NCur)
 			if err := e.notifier.Alert(ctx, online.PayloadOf(event, next, e.cfg)); err != nil {
-				log.Printf("online: notifying alert %s: %v", next.ID, err)
+				logx.Warnf("online: notifying alert %s: %v", next.ID, err)
 			}
 		}
 	}
@@ -579,7 +579,7 @@ func (e *OnlineEngine) digest(ctx context.Context, now time.Time) {
 	}
 	rows, err := e.store.OnlineSamples(now.Add(-48 * time.Hour).UnixMilli())
 	if err != nil {
-		log.Printf("online: digest samples: %v", err)
+		logx.Errorf("online: digest samples: %v", err)
 		return
 	}
 	split := now.Add(-24 * time.Hour)
@@ -618,11 +618,11 @@ func (e *OnlineEngine) digest(ctx context.Context, now time.Time) {
 	e.mu.Unlock()
 	text := online.DigestText(out, e.budget.Status(now), open, e.cfg.PublicURL)
 	if err := e.notifier.Digest(ctx, text); err != nil {
-		log.Printf("online: digest: %v", err)
+		logx.Errorf("online: digest: %v", err)
 		return
 	}
 	if err := e.store.SetOnlineState(onlineDigestKey, today); err != nil {
-		log.Printf("online: digest state: %v", err)
+		logx.Errorf("online: digest state: %v", err)
 	}
 }
 

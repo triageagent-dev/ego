@@ -1,11 +1,12 @@
 package api
 
 import (
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/triageagent-dev/ego/internal/logx"
 )
 
 var wsUpgrader = websocket.Upgrader{
@@ -28,7 +29,7 @@ func wsUpdatesHandler(hub *sseHub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		conn, err := wsUpgrader.Upgrade(w, r, nil)
 		if err != nil {
-			log.Printf("ws-updates: upgrade failed: %v", err)
+			logx.Debugf("ws-updates: upgrade failed: %v", err)
 			return
 		}
 		defer conn.Close()

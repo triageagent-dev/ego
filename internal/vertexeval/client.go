@@ -8,12 +8,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/auth/credentials"
+
+	"github.com/triageagent-dev/ego/internal/logx"
 )
 
 // cloudPlatformScope is the OAuth scope needed for the aiplatform REST API,
@@ -122,13 +123,13 @@ func (c *Client) evaluateInstances(ctx context.Context, body any) (*metricResult
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Printf("vertexeval: evaluateInstances HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 2000))
+		logx.Warnf("vertexeval: evaluateInstances HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 2000))
 		return nil, fmt.Errorf("evaluateInstances HTTP %d (details are in the server log)", resp.StatusCode)
 	}
 
 	var parsed evaluateInstancesResponse
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		log.Printf("vertexeval: unparseable evaluateInstances response: %s", truncate(string(respBody), 2000))
+		logx.Warnf("vertexeval: unparseable evaluateInstances response: %s", truncate(string(respBody), 2000))
 		return nil, fmt.Errorf("parsing evaluateInstances response: %w", err)
 	}
 	if len(parsed.MetricResults) == 0 {
