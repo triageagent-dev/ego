@@ -28,6 +28,16 @@ type GitHubOAuthConfig struct {
 	Org           string
 	SessionSecret string
 	PublicURL     string // e.g. "https://your-app.example.com", no trailing slash
+	// AuditLog records who signed in or was refused, by GitHub username. Off by default: the log carries no
+	// user names unless an operator asks for a sign-in trail.
+	AuditLog bool
+}
+
+// auditf logs a sign-in event that names a user, only when the audit log is on.
+func (c *GitHubOAuthConfig) auditf(format string, args ...any) {
+	if c.AuditLog {
+		log.Printf(format, args...)
+	}
 }
 
 const (
@@ -173,14 +183,14 @@ func authCallbackHandler(cfg *GitHubOAuthConfig, roleStore *RoleStore) http.Hand
 			return
 		}
 		if !member {
-			log.Printf("auth: GitHub OAuth: %s denied (not an active member of org %s)", username, cfg.Org)
+			cfg.auditf("auth: GitHub OAuth: %s denied (not an active member of org %s)", username, cfg.Org)
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("GitHub user %q is not an active member of the %q org", username, cfg.Org)})
 			return
 		}
 
 		if roleStore != nil {
 			if teams, err := FetchUserTeams(client, cfg.Org, accessToken); err != nil {
-				log.Printf("auth: resolving GitHub team memberships for %s failed: %v", username, err)
+				log.Printf("auth: resolving GitHub team memberships failed: %v", err)
 				// Signing in without teams would give them defaultRole instead of what their team grants or limits.
 				if roleStore.HasTeamBindings() {
 					writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to resolve team membership; try again shortly"})
@@ -191,7 +201,7 @@ func authCallbackHandler(cfg *GitHubOAuthConfig, roleStore *RoleStore) http.Hand
 			}
 		}
 
-		log.Printf("auth: GitHub OAuth: %s authenticated (member of %s)", username, cfg.Org)
+		cfg.auditf("auth: GitHub OAuth: %s authenticated (member of %s)", username, cfg.Org)
 		setCookie(w, sessionCookieName, mintSessionCookie(username, cfg.SessionSecret), sessionTTL)
 		deleteCookie(w, stateCookieName)
 		http.Redirect(w, r, "/evals", http.StatusFound)
@@ -210,7 +220,7 @@ func authLogoutHandler(secret string, revoked *revocations) http.HandlerFunc {
 		if c, err := r.Cookie(sessionCookieName); err == nil && revoked != nil {
 			if t, ok := parseToken(c.Value, secret); ok && t.Kind == tokenKindSession {
 				if err := revoked.RevokeToken(t.ID, t.Expiry); err != nil {
-					log.Printf("auth: recording logout of %s failed: %v", t.Username, err)
+					log.Printf("auth: recording a logout failed: %v", err)
 				}
 			}
 		}

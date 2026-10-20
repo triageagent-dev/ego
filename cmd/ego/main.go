@@ -127,7 +127,7 @@ func usage() {
 
 Usage:
   ego run <trace-file>... --eval-set <path> -m <metric> [-m <metric>...] [flags]
-  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth]
+  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth] [--audit-log]
                    [--admin-github-users user1,user2] [--default-role member]
   ego auth mint-token --name <label> [--ttl-days 90] [--secret ...]
   ego mcp [--server-url http://localhost:8001] [--session-token ...] [--trace-dir dir] [--admin-tools]
@@ -445,6 +445,8 @@ func serveCmd(args []string) error {
 		"serve on non-loopback addresses without a login. Without --session-secret, serve refuses to listen on anything but loopback unless this is set, because everyone who can reach it would be an admin; falls back to EGO_NO_AUTH=true")
 	otlpToken := fs.String("otlp-token", env("OTLP_TOKEN"),
 		"bearer token the OTLP/HTTP and OTLP/gRPC receivers require from senders (Authorization: Bearer ...); empty leaves them open; at least 32 bytes; falls back to EGO_OTLP_TOKEN")
+	auditLog := fs.Bool("audit-log", envBool("AUDIT_LOG"),
+		"log the GitHub user name of every sign-in and refused sign-in; off by default so the log carries no user names; falls back to EGO_AUDIT_LOG=true")
 	onlineConfig := fs.String("online-config", env("ONLINE_CONFIG"),
 		"JSON file that turns on online evaluation: sampling, per-kind evaluator profiles, daily judge caps, regression detection and notification sinks (see docs/online-evaluation.md); needs --session-db; falls back to EGO_ONLINE_CONFIG")
 	if err := fs.Parse(args); err != nil {
@@ -462,6 +464,9 @@ func serveCmd(args []string) error {
 	githubOAuth, err := api.GitHubOAuthConfigFromParams(*githubClientID, *githubClientSecret, *githubOrg, *sessionSecret, *publicURL)
 	if err != nil {
 		return fmt.Errorf("github OAuth config: %w", err)
+	}
+	if githubOAuth != nil {
+		githubOAuth.AuditLog = *auditLog
 	}
 	var adminUsers []string
 	for _, u := range strings.Split(*adminGitHubUsers, ",") {

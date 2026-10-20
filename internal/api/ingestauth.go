@@ -3,8 +3,11 @@ package api
 import (
 	"context"
 	"crypto/subtle"
+	"log"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -23,6 +26,30 @@ import (
 type ingestAuth struct {
 	globalToken string
 	senders     *SenderStore
+
+	rejectMu   sync.Mutex
+	rejectLast time.Time
+	rejected   int
+}
+
+// rejectLogEvery bounds the refusal log: a sender with a wrong token retries on every export.
+const rejectLogEvery = time.Minute
+
+// logRejected notes a refused push, at most once a minute with the count since the last note. It says why but
+// never prints the token a sender presented.
+func (a *ingestAuth) logRejected(transport, header string) {
+	a.rejectMu.Lock()
+	defer a.rejectMu.Unlock()
+	a.rejected++
+	if time.Since(a.rejectLast) < rejectLogEvery {
+		return
+	}
+	reason := "unknown token"
+	if _, has := bearerToken(header); !has {
+		reason = "no bearer token"
+	}
+	log.Printf("ingest: refused %d OTLP/%s push(es), latest: %s", a.rejected, transport, reason)
+	a.rejectLast, a.rejected = time.Now(), 0
 }
 
 func (a *ingestAuth) required() bool {
@@ -75,6 +102,7 @@ func (a *ingestAuth) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sender, ok := a.resolve(r.Header.Get("Authorization"))
 		if !ok {
+			a.logRejected("http", r.Header.Get("Authorization"))
 			w.Header().Set("WWW-Authenticate", `Bearer realm="ego-ingest"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -93,6 +121,7 @@ func (a *ingestAuth) interceptor() grpc.UnaryServerInterceptor {
 		}
 		sender, ok := a.resolve(header)
 		if !ok {
+			a.logRejected("grpc", header)
 			return nil, status.Error(codes.Unauthenticated, "unauthorized")
 		}
 		return handler(withIngestSender(ctx, sender), req)

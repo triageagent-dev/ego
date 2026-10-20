@@ -1,10 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,5 +128,42 @@ func TestNormalizeIngestToken(t *testing.T) {
 		if got := normalizeIngestToken(in); got != want {
 			t.Errorf("normalizeIngestToken(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestAuditLogIsOffByDefault(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	cfg := &GitHubOAuthConfig{}
+	cfg.auditf("signed in: %s", "alice")
+	if buf.Len() != 0 {
+		t.Errorf("logged %q with the audit log off", buf.String())
+	}
+	cfg.AuditLog = true
+	cfg.auditf("signed in: %s", "alice")
+	if !strings.Contains(buf.String(), "alice") {
+		t.Errorf("audit log on but nothing logged: %q", buf.String())
+	}
+}
+
+func TestRefusedPushIsLoggedWithoutTheToken(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	a := &ingestAuth{globalToken: "0123456789abcdef0123456789abcdef"}
+	a.logRejected("grpc", "Bearer secret-value-that-must-not-leak")
+	a.logRejected("grpc", "Bearer secret-value-that-must-not-leak")
+	out := buf.String()
+	if !strings.Contains(out, "refused 1 OTLP/grpc") || !strings.Contains(out, "unknown token") {
+		t.Errorf("log = %q", out)
+	}
+	if strings.Contains(out, "secret-value") {
+		t.Errorf("token leaked into the log: %q", out)
+	}
+	if strings.Count(out, "ingest: refused") != 1 {
+		t.Errorf("not rate limited: %q", out)
 	}
 }
