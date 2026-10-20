@@ -11,7 +11,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.0
 	google.golang.org/genai v1.71.0
 	google.golang.org/grpc v1.84.0
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.59.0
 )
 
