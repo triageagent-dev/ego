@@ -9,7 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/mark3labs/mcp-go v1.1.1
 	go.opentelemetry.io/proto/otlp v1.11.0
-	google.golang.org/genai v1.71.0
+	google.golang.org/genai v1.75.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.11
 	modernc.org/sqlite v1.59.0
