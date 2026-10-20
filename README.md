@@ -42,7 +42,7 @@ ego is meant to run in Kubernetes. Each tagged release (`v*.*.*`) publishes a mu
 
 ```bash
 # Kubernetes: try it without a login, then see charts/ego/README.md for production values
-helm install ego oci://ghcr.io/triageagent-dev/charts/ego --version 0.1.35 \
+helm install ego oci://ghcr.io/triageagent-dev/charts/ego --version 0.1.36 \
   --set auth.enabled=false --set vertex.enabled=false
 kubectl port-forward svc/ego 8001:8001
 

@@ -13,7 +13,7 @@ The chart and the image are published to GitHub Container Registry on every rele
 Try it in a cluster without a login (reachable only inside the cluster, or through `kubectl port-forward`):
 
 ```bash
-helm install ego oci://ghcr.io/triageagent-dev/charts/ego --version 0.1.35 \
+helm install ego oci://ghcr.io/triageagent-dev/charts/ego --version 0.1.36 \
   --set auth.enabled=false --set vertex.enabled=false
 kubectl port-forward svc/ego 8001:8001      # UI and API
 ```
