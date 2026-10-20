@@ -9,32 +9,36 @@ import { TraceEditorDrawer } from './TraceEditorDrawer';
 import { useTraceContext } from '../../context/TraceContext';
 
 const uploadViewStyle = css`
-  max-width: 1600px;
-  margin: 0 auto;
-  padding: 20px;
+  padding: 12px 18px 24px;
   min-height: 100%;
   display: flex;
   flex-direction: column;
 
   .header {
-    margin-bottom: 16px;
+    margin-bottom: 8px;
     position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 14px;
   }
 
   .header-nav {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 0;
+    order: 3;
+    margin-left: auto;
   }
 
   .nav-button {
-    padding: 8px 16px;
-    border-radius: 6px;
+    padding: 3px 10px;
+    border-radius: var(--radius);
     border: 1px solid var(--border-default);
     background: var(--bg-surface);
     color: var(--text-primary);
-    font-size: 0.875rem;
+    font-size: 12px;
     cursor: pointer;
     transition: all 0.2s ease;
     display: flex;
@@ -49,15 +53,15 @@ const uploadViewStyle = css`
   }
 
   .title {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin-bottom: 4px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    text-transform: lowercase;
   }
 
   .subtitle {
-    font-size: 0.9rem;
-    color: var(--text-secondary);
+    font-size: 12px;
+    color: var(--text-muted);
   }
 
   .upload-grid {
@@ -68,20 +72,27 @@ const uploadViewStyle = css`
   }
 
   .section {
-    background-color: var(--bg-surface);
+    position: relative;
     border: 1px solid var(--border-default);
-    border-radius: 8px;
-    padding: 12px;
+    border-radius: var(--radius);
+    padding: 16px 12px 10px;
+    margin-top: 6px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
   }
 
   .section-title {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 8px;
+    position: absolute;
+    top: -9px;
+    left: 10px;
+    padding: 0 6px;
+    background: var(--bg-primary);
+    font-size: 12.5px;
+    font-weight: 400;
+    color: var(--accent-cyan);
+    text-transform: lowercase;
+    line-height: 18px;
   }
 
   .metrics-section {
@@ -115,29 +126,27 @@ const uploadViewStyle = css`
   .actions {
     display: flex;
     justify-content: center;
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border-default);
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
   }
 
   .run-button {
-    height: 44px;
-    font-size: 15px;
+    height: 32px;
+    font-size: 13px;
     font-weight: 600;
-    padding: 0 32px;
-    border-radius: 8px;
+    padding: 0 22px;
+    border-radius: var(--radius);
     display: flex;
     align-items: center;
     gap: 10px;
     background-color: var(--accent-primary) !important;
     border-color: var(--accent-primary) !important;
     color: #000 !important;
-    box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
-    transition: all 0.3s ease;
+    transition: all 0.15s ease;
 
     &:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 0 30px rgba(168, 85, 247, 0.5);
+      filter: brightness(1.1);
       background-color: var(--accent-primary) !important;
       border-color: var(--accent-primary) !important;
     }
@@ -202,7 +211,7 @@ export const UploadView: React.FC = () => {
               <button
                 className="nav-button"
                 onClick={() => actions.setCurrentView('annotation-queue')}
-                style={{ borderColor: 'rgba(168, 85, 247, 0.4)', color: '#A855F7' }}
+                style={{ borderColor: 'rgba(181, 171, 252, 0.4)', color: '#b5abfc' }}
               >
                 Annotation Queues
               </button>
@@ -211,7 +220,7 @@ export const UploadView: React.FC = () => {
         </div>
         <h1 className="title">Evaluate</h1>
         <p className="subtitle">
-          Evaluate agent behavior from OpenTelemetry traces
+          traces + a golden set, scored by the metrics you pick
         </p>
       </div>
 
@@ -219,11 +228,11 @@ export const UploadView: React.FC = () => {
         {state.evaluationOrigin === 'streaming' ? (
           <>
             <div className="section">
-              <div className="section-title">Trace Files</div>
+              <div className="section-title">traces</div>
               <div style={{
                 padding: '10px',
                 backgroundColor: 'var(--bg-elevated)',
-                borderRadius: '4px',
+                borderRadius: 'var(--radius)',
                 border: '1px solid var(--border-default)'
               }}>
                 <div style={{ color: 'var(--text-primary)', fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>
@@ -238,7 +247,7 @@ export const UploadView: React.FC = () => {
                       fontSize: '11px',
                       padding: '3px 6px',
                       backgroundColor: 'var(--bg-surface)',
-                      borderRadius: '3px',
+                      borderRadius: 'var(--radius)',
                       marginTop: idx > 0 ? '3px' : '0',
                       fontFamily: 'monospace',
                       cursor: 'pointer',
@@ -259,7 +268,7 @@ export const UploadView: React.FC = () => {
                     marginTop: '8px',
                     padding: '6px',
                     backgroundColor: 'var(--bg-surface)',
-                    borderRadius: '3px',
+                    borderRadius: 'var(--radius)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
@@ -275,7 +284,7 @@ export const UploadView: React.FC = () => {
                     marginTop: '8px',
                     padding: '6px',
                     backgroundColor: 'var(--bg-surface)',
-                    borderRadius: '3px',
+                    borderRadius: 'var(--radius)',
                     color: 'var(--status-success)',
                     fontSize: '11px'
                   }}>
@@ -286,12 +295,12 @@ export const UploadView: React.FC = () => {
             </div>
 
             <div className="section">
-              <div className="section-title">Eval Set (Optional)</div>
+              <div className="section-title">golden set · optional</div>
               {state.evalSetFile ? (
                 <div style={{
                   padding: '10px',
                   backgroundColor: 'var(--bg-elevated)',
-                  borderRadius: '4px',
+                  borderRadius: 'var(--radius)',
                   border: '1px solid var(--border-default)'
                 }}>
                   <div style={{ color: 'var(--text-primary)', fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>
@@ -304,7 +313,7 @@ export const UploadView: React.FC = () => {
                       fontSize: '11px',
                       padding: '3px 6px',
                       backgroundColor: 'var(--bg-surface)',
-                      borderRadius: '3px',
+                      borderRadius: 'var(--radius)',
                       fontFamily: 'monospace',
                       cursor: 'pointer',
                       display: 'flex',
@@ -329,7 +338,7 @@ export const UploadView: React.FC = () => {
         ) : (
           <>
             <div className="section">
-              <div className="section-title">Trace Files</div>
+              <div className="section-title">traces</div>
               <FileDropZone
                 title="Drop trace files here"
                 description="Upload one or more trace files (.json or .jsonl)"
@@ -342,7 +351,7 @@ export const UploadView: React.FC = () => {
                   marginTop: 12,
                   padding: '10px',
                   backgroundColor: 'var(--bg-elevated)',
-                  borderRadius: '4px',
+                  borderRadius: 'var(--radius)',
                   border: '1px solid var(--border-default)'
                 }}>
                   <div style={{
@@ -362,7 +371,7 @@ export const UploadView: React.FC = () => {
                         fontSize: '11px',
                         padding: '3px 6px',
                         backgroundColor: 'var(--bg-surface)',
-                        borderRadius: '3px',
+                        borderRadius: 'var(--radius)',
                         marginTop: idx > 0 ? '3px' : '0',
                         fontFamily: 'monospace',
                         cursor: 'pointer',
@@ -383,7 +392,7 @@ export const UploadView: React.FC = () => {
                       marginTop: '8px',
                       padding: '6px',
                       backgroundColor: 'var(--bg-surface)',
-                      borderRadius: '3px',
+                      borderRadius: 'var(--radius)',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '8px',
@@ -399,7 +408,7 @@ export const UploadView: React.FC = () => {
                       marginTop: '8px',
                       padding: '6px',
                       backgroundColor: 'var(--bg-surface)',
-                      borderRadius: '3px',
+                      borderRadius: 'var(--radius)',
                       color: 'var(--status-success)',
                       fontSize: '11px'
                     }}>
@@ -411,7 +420,7 @@ export const UploadView: React.FC = () => {
             </div>
 
             <div className="section">
-              <div className="section-title">Eval Set (Optional)</div>
+              <div className="section-title">golden set · optional</div>
               <FileDropZone
                 title="Drop eval set file here"
                 description="Upload golden eval set JSON for comparison"
@@ -422,7 +431,7 @@ export const UploadView: React.FC = () => {
                   marginTop: 12,
                   padding: '10px',
                   backgroundColor: 'var(--bg-elevated)',
-                  borderRadius: '4px',
+                  borderRadius: 'var(--radius)',
                   border: '1px solid var(--border-default)'
                 }}>
                   <div style={{
@@ -440,7 +449,7 @@ export const UploadView: React.FC = () => {
                       fontSize: '11px',
                       padding: '3px 6px',
                       backgroundColor: 'var(--bg-surface)',
-                      borderRadius: '3px',
+                      borderRadius: 'var(--radius)',
                       fontFamily: 'monospace',
                       cursor: 'pointer',
                       display: 'flex',
@@ -461,7 +470,7 @@ export const UploadView: React.FC = () => {
         )}
 
         <div className="section metrics-section">
-          <div className="section-title">Built-in Evaluator Configuration</div>
+          <div className="section-title">metrics</div>
           <MetricSelector
             selectedEvaluatorNames={state.selectedEvaluatorNames}
             onToggleEvaluatorName={actions.toggleEvaluatorName}

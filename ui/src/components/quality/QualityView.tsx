@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
+import { pageStyle, headerStyle, titleStyle, subtitleStyle, refreshStyle, filterRowStyle, segmentStyle, segBtnStyle, segActiveStyle, errorStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle, tileSubStyle, cardStyle, cardTitleStyle } from '../ui/page';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -110,9 +111,9 @@ export const QualityView: React.FC = () => {
     <div css={pageStyle}>
       <header css={headerStyle}>
         <div>
-          <h1 css={titleStyle}>Quality</h1>
+          <h1 css={titleStyle}>quality</h1>
           <p css={subtitleStyle}>
-            Online evaluation of sampled live sessions. Each hour's scores are also a run in Runs.
+            online evaluation of sampled live sessions · hourly scores are also runs
           </p>
         </div>
         <button css={refreshStyle} onClick={load} disabled={loading} title="Refresh">
@@ -259,146 +260,13 @@ const Tile: React.FC<{ label: string; value: string; sub: string }> = ({ label, 
   </div>
 );
 
-const pageStyle = css`
-  padding: 32px 40px 48px;
-  max-width: 1400px;
-  font-family: var(--font-display);
-  color: var(--text-primary);
-`;
-
-const headerStyle = css`
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 20px;
-`;
-
-const titleStyle = css`
-  font-size: 1.6rem;
-  font-weight: 600;
-  margin: 0 0 4px;
-`;
-
-const subtitleStyle = css`
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-`;
-
-const refreshStyle = css`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border-default);
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: var(--font-display);
-  cursor: pointer;
-  &:hover { color: var(--text-primary); border-color: var(--accent-primary); }
-  &:disabled { opacity: 0.6; cursor: default; }
-`;
-
 const spinStyle = css`
   animation: quality-spin 1s linear infinite;
   @keyframes quality-spin { to { transform: rotate(360deg); } }
 `;
 
-const filterRowStyle = css`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 20px;
-`;
-
-const segmentStyle = css`
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  background: var(--bg-surface);
-`;
-
-const segBtnStyle = css`
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: var(--font-display);
-  font-size: 0.8rem;
-  padding: 5px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  &:hover { color: var(--text-primary); background: var(--bg-elevated); }
-`;
-
-const segActiveStyle = css`
-  color: var(--text-primary);
-  background: var(--bg-elevated);
-  box-shadow: inset 0 0 0 1px var(--accent-primary);
-`;
-
-const errorStyle = css`
-  padding: 12px 16px;
-  border: 1px solid var(--status-failure);
-  border-radius: 8px;
-  color: var(--text-primary);
-  margin-bottom: 20px;
-`;
-
-const tilesStyle = css`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
-`;
-
-const tileStyle = css`
-  background: var(--card-bg);
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  padding: 14px 16px;
-`;
-
-const tileLabelStyle = css`
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-`;
-
-const tileValueStyle = css`
-  font-family: var(--font-mono);
-  font-size: 1.6rem;
-  font-weight: 500;
-  margin: 6px 0 2px;
-`;
-
-const tileSubStyle = css`
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
-`;
-
-const cardStyle = css`
-  background: var(--card-bg);
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  padding: 16px 18px;
-  margin-bottom: 20px;
-`;
-
-const cardTitleStyle = css`
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin: 0 0 12px;
-`;
-
 const chartBoxStyle = css`
-  height: 320px;
+  height: 240px;
   position: relative;
 `;
 
@@ -459,7 +327,7 @@ const dimStyle = css`
 const tagStyle = css`
   font-size: 0.7rem;
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   border: 1px solid var(--border-default);
   color: var(--text-secondary);
 `;
@@ -478,7 +346,7 @@ const chipRowStyle = css`
 const chipStyle = css`
   font-size: 0.78rem;
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--bg-elevated);
   color: var(--text-secondary);
   b { color: var(--text-primary); font-family: var(--font-mono); font-weight: 500; margin-left: 4px; }

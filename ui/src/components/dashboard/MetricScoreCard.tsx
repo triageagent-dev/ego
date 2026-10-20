@@ -15,7 +15,7 @@ const cardStyle = css`
   &.full {
     background-color: var(--bg-elevated);
     border: 1px solid var(--border-default);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 16px;
   }
 
@@ -59,14 +59,14 @@ const cardStyle = css`
     width: 100%;
     height: 8px;
     background-color: var(--bg-surface);
-    border-radius: 4px;
+    border-radius: var(--radius);
     overflow: hidden;
     position: relative;
   }
 
   .score-bar {
     height: 100%;
-    border-radius: 4px;
+    border-radius: var(--radius);
     transition: width 0.6s ease-out;
   }
 
@@ -83,7 +83,7 @@ const cardStyle = css`
     border-left: 2px solid var(--status-failure);
     font-size: 12px;
     color: var(--status-failure);
-    border-radius: 4px;
+    border-radius: var(--radius);
   }
 `;
 

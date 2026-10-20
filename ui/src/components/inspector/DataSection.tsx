@@ -67,7 +67,7 @@ export const DataSection: React.FC<DataSectionProps> = ({
 
 const sectionContainerStyles = (color: string, isHighlighted: boolean) => css`
   background: var(--bg-elevated);
-  border-radius: 6px;
+  border-radius: var(--radius);
   border: 1px solid var(--border-default);
   overflow: hidden;
   transition: all 0.2s ease;

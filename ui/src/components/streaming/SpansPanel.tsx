@@ -72,7 +72,7 @@ function SpanRow({ span }: { span: SessionSpan }) {
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
         style={{
           display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none',
-          padding: '4px 8px', paddingLeft: `${8 + span.depth * 16}px`, borderRadius: '6px',
+          padding: '4px 8px', paddingLeft: `${8 + span.depth * 16}px`, borderRadius: 'var(--radius)',
           background: open ? 'var(--bg-primary)' : 'transparent', fontSize: '12px',
         }}
       >
@@ -81,14 +81,14 @@ function SpanRow({ span }: { span: SessionSpan }) {
           {span.operation_name || span.span_id}
         </span>
         {err && (
-          <span style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444', background: 'rgba(239, 68, 68, 0.12)', padding: '1px 6px', borderRadius: '4px' }}>ERROR</span>
+          <span style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444', background: 'rgba(239, 68, 68, 0.12)', padding: '1px 6px', borderRadius: 'var(--radius)' }}>ERROR</span>
         )}
         <span style={{ fontFamily: 'monospace', color: 'var(--text-tertiary)', flexShrink: 0 }}>{fmtDuration(span.duration)}</span>
       </div>
       {open && (
         <div style={{ padding: '6px 8px 10px', paddingLeft: `${26 + span.depth * 16}px` }}>
           {errKeys.length > 0 && (
-            <div style={{ border: '1px solid rgba(239, 68, 68, 0.5)', background: 'rgba(239, 68, 68, 0.06)', borderRadius: '6px', padding: '6px 10px', marginBottom: '8px' }}>
+            <div style={{ border: '1px solid rgba(239, 68, 68, 0.5)', background: 'rgba(239, 68, 68, 0.06)', borderRadius: 'var(--radius)', padding: '6px 10px', marginBottom: '8px' }}>
               <AttrTable tags={span.tags} keys={errKeys} />
             </div>
           )}

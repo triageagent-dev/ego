@@ -1,5 +1,6 @@
 import React from 'react';
 import { css } from '@emotion/react';
+import { cardStyle, cardTitleStyle } from '../ui/page';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -25,7 +26,7 @@ export const PerMetricTrendChart: React.FC<PerMetricTrendChartProps> = ({ runs }
   if (metricNames.length === 0) {
     return (
       <div css={cardStyle}>
-        <h3>Per-metric score trend</h3>
+        <h3 css={cardTitleStyle}>Per-metric score trend</h3>
         <p css={emptyStyle}>
           No per-metric scores recorded. Runs created before this feature won't have them.
         </p>
@@ -89,7 +90,7 @@ export const PerMetricTrendChart: React.FC<PerMetricTrendChartProps> = ({ runs }
 
   return (
     <div css={cardStyle}>
-      <h3>Per-metric score trend</h3>
+      <h3 css={cardTitleStyle}>Per-metric score trend</h3>
       <div css={chartWrapperStyle}>
         <Line data={{ labels, datasets }} options={options} />
       </div>
@@ -97,22 +98,9 @@ export const PerMetricTrendChart: React.FC<PerMetricTrendChartProps> = ({ runs }
   );
 };
 
-const cardStyle = css`
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  padding: 20px;
-
-  h3 {
-    margin: 0 0 16px 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-`;
 
 const chartWrapperStyle = css`
-  height: 300px;
+  height: 210px;
   position: relative;
 `;
 

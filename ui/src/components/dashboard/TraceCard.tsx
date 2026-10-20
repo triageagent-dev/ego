@@ -18,7 +18,7 @@ interface TraceCardProps {
 const cardStyle = css`
   background-color: var(--bg-surface);
   border: 1px solid var(--border-default);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 20px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -27,7 +27,7 @@ const cardStyle = css`
 
   &:hover {
     transform: translateY(-4px);
-    box-shadow: 0 8px 32px rgba(168, 85, 247, 0.15);
+    box-shadow: 0 8px 32px rgba(181, 171, 252, 0.15);
     border-color: var(--accent-primary);
   }
 
@@ -54,7 +54,7 @@ const cardStyle = css`
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
-    border-radius: 6px;
+    border-radius: var(--radius);
     font-size: 12px;
     font-weight: 600;
     position: relative;
@@ -131,7 +131,7 @@ const cardStyle = css`
     padding: 12px;
     background-color: rgba(255, 179, 71, 0.1);
     border-left: 3px solid var(--status-warning);
-    border-radius: 4px;
+    border-radius: var(--radius);
   }
 
   .warning-text {

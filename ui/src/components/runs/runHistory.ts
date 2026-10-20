@@ -159,7 +159,7 @@ export const CHART_COLORS = {
 };
 
 export const METRIC_PALETTE = [
-  '#A855F7',
+  '#b5abfc',
   '#36a2eb',
   '#ff9f43',
   '#7cff6b',

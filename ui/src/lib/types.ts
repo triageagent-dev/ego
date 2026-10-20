@@ -281,7 +281,7 @@ export interface EvalSetSummary {
 }
 
 // View types
-export type ViewType = 'welcome' | 'upload' | 'dashboard' | 'inspector' | 'comparison' | 'builder' | 'streaming' | 'annotation-queue' | 'runs' | 'usage' | 'quality';
+export type ViewType = 'upload' | 'dashboard' | 'inspector' | 'comparison' | 'builder' | 'streaming' | 'annotation-queue' | 'runs' | 'usage' | 'quality';
 
 // Persisted run history (durable storage, GET /api/runs)
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';

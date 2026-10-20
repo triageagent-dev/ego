@@ -114,12 +114,12 @@ export const InspectorHeader: React.FC<InspectorHeaderProps> = ({
             onClick={() => actions.setCurrentView('annotation-queue')}
             css={css`
               display: flex; align-items: center; gap: 8px;
-              padding: 8px 14px; border-radius: 6px;
-              border: 1px solid rgba(168, 85, 247, 0.4);
-              background: transparent; color: #A855F7;
+              padding: 8px 14px; border-radius: var(--radius);
+              border: 1px solid rgba(181, 171, 252, 0.4);
+              background: transparent; color: #b5abfc;
               font-size: 0.875rem; font-weight: 500; cursor: pointer;
               transition: all 0.2s ease;
-              &:hover { background: rgba(168, 85, 247, 0.08); }
+              &:hover { background: rgba(181, 171, 252, 0.08); }
             `}
           >
             Annotation Queues
@@ -165,7 +165,7 @@ const backButtonStyles = css`
   padding: 8px 16px;
   background: transparent;
   border: 1px solid var(--border-default);
-  border-radius: 6px;
+  border-radius: var(--radius);
   color: var(--text-primary);
   font-family: var(--font-display);
   font-size: 0.875rem;
@@ -211,7 +211,7 @@ const traceIdCodeStyles = css`
   color: var(--accent-primary);
   padding: 4px 8px;
   background: var(--bg-primary);
-  border-radius: 4px;
+  border-radius: var(--radius);
 `;
 
 const copyButtonStyles = css`
@@ -221,7 +221,7 @@ const copyButtonStyles = css`
   padding: 4px;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -273,7 +273,7 @@ const statusBadgeStyles = (status: string) => css`
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0.5px;

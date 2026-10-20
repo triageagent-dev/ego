@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { css } from '@emotion/react';
-import { Upload, FileJson } from 'lucide-react';
+import { FileJson } from 'lucide-react';
 import { message } from 'antd';
 import { convertTraces } from '../../api/client';
 import { generateEvalSet } from '../../lib/evalset-builder';
@@ -55,8 +55,8 @@ export const TraceUploadZone: React.FC = () => {
     <div css={containerStyle}>
       <div css={contentStyle}>
         <div css={headerStyle}>
-          <h1>Eval sets</h1>
-          <p>Upload a trace file to get started</p>
+          <h1>eval sets</h1>
+          <p>golden references built from traces</p>
         </div>
 
         <div
@@ -73,13 +73,11 @@ export const TraceUploadZone: React.FC = () => {
           />
           <label htmlFor="trace-file-input" css={labelStyle}>
             <div css={iconWrapperStyle}>
-              <FileJson size={64} />
+              <FileJson size={22} />
             </div>
-            <h2>Drop your trace file here</h2>
-            <p>or click to browse</p>
-            <div css={supportedFormatsStyle}>
-              <Upload size={16} />
-              <span>Supports trace files (.json or .jsonl)</span>
+            <div>
+              <h2>drop a trace file to start a new set</h2>
+              <p>or click to browse · .json, .jsonl</p>
             </div>
           </label>
         </div>
@@ -91,50 +89,46 @@ export const TraceUploadZone: React.FC = () => {
 
 const containerStyle = css`
   min-height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: var(--bg-primary);
-  padding: 24px;
+  padding: 12px 18px 24px;
 `;
 
 const contentStyle = css`
-  max-width: 600px;
+  max-width: 760px;
   width: 100%;
 `;
 
 const headerStyle = css`
-  text-align: center;
-  margin-bottom: 40px;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 10px;
 
   h1 {
-    font-size: 2rem;
-    font-weight: 700;
-    margin: 0 0 12px 0;
-    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--accent-cyan);
+    text-transform: lowercase;
   }
 
   p {
-    font-size: 1rem;
-    color: var(--text-secondary);
+    font-size: 12px;
+    color: var(--text-muted);
     margin: 0;
   }
 `;
 
 const dropZoneStyle = css`
   position: relative;
-  background: var(--bg-surface);
-  border: 2px dashed var(--border-default);
-  border-radius: 16px;
-  padding: 64px 32px;
-  transition: all 0.3s ease;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius);
+  padding: 16px;
   cursor: pointer;
 
   &:hover {
     border-color: var(--accent-primary);
-    background: var(--bg-elevated);
-    transform: translateY(-4px);
-    box-shadow: 0 16px 48px rgba(168, 85, 247, 0.15);
+    background: var(--bg-surface);
   }
 `;
 
@@ -144,51 +138,34 @@ const fileInputStyle = css`
 
 const labelStyle = css`
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   cursor: pointer;
 
   h2 {
-    font-size: 1.25rem;
-    font-weight: 600;
+    font-size: 13px;
+    font-weight: 500;
     color: var(--text-primary);
     margin: 0;
   }
 
   p {
-    font-size: 1rem;
-    color: var(--text-secondary);
+    font-size: 12px;
+    color: var(--text-muted);
     margin: 0;
   }
 `;
 
 const iconWrapperStyle = css`
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(109, 40, 217, 0.1) 100%);
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  background: var(--bg-surface);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--accent-primary);
-  transition: all 0.3s ease;
-
-  label:hover & {
-    transform: scale(1.1);
-    background: linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(109, 40, 217, 0.2) 100%);
-  }
 `;
 
-const supportedFormatsStyle = css`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--bg-primary);
-  border-radius: 8px;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-top: 8px;
-`;
 

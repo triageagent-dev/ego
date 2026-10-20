@@ -106,7 +106,7 @@ const containerStyles = css`
   margin-top: 12px;
   padding: 12px;
   background: rgba(255, 87, 87, 0.05);
-  border-radius: 4px;
+  border-radius: var(--radius);
   border: 1px solid rgba(255, 87, 87, 0.2);
 `;
 
@@ -120,7 +120,7 @@ const headerStyles = css`
 
 const comparisonCardStyles = css`
   background: var(--bg-elevated);
-  border-radius: 4px;
+  border-radius: var(--radius);
   padding: 12px;
   margin-bottom: 12px;
 
@@ -165,7 +165,7 @@ const toolListStyles = css`
 
 const toolCallStyles = css`
   background: var(--bg-primary);
-  border-radius: 3px;
+  border-radius: var(--radius);
   padding: 8px;
   border: 1px solid var(--border-default);
 `;
@@ -189,7 +189,7 @@ const argsStyles = css`
   margin: 0;
   padding: 6px;
   background: var(--bg-elevated);
-  border-radius: 2px;
+  border-radius: var(--radius);
   overflow-x: auto;
   line-height: 1.4;
 `;
@@ -223,7 +223,7 @@ const differenceHintStyles = css`
   margin-top: 8px;
   padding: 6px 8px;
   background: rgba(255, 87, 87, 0.1);
-  border-radius: 3px;
+  border-radius: var(--radius);
   font-size: 0.688rem;
   color: var(--status-failure);
   font-style: italic;

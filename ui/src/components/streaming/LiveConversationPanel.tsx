@@ -245,8 +245,8 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
                   gap: '8px',
                   cursor: 'pointer',
                   padding: '6px 8px',
-                  borderRadius: '6px',
-                  background: isExpanded ? 'rgba(124, 58, 237, 0.06)' : 'transparent',
+                  borderRadius: 'var(--radius)',
+                  background: isExpanded ? 'rgba(167, 159, 240, 0.06)' : 'transparent',
                   userSelect: 'none',
                 }}
               >
@@ -256,7 +256,7 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
                 <span style={{
                   fontSize: '10px',
                   fontWeight: 700,
-                  color: '#7C3AED',
+                  color: '#a79ff0',
                   textTransform: 'uppercase' as const,
                   letterSpacing: '0.5px',
                   flexShrink: 0,
@@ -270,7 +270,7 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
                     color: toolErrorCount > 0 ? '#ef4444' : 'var(--text-tertiary)',
                     background: toolErrorCount > 0 ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-primary)',
                     padding: '1px 6px',
-                    borderRadius: '4px',
+                    borderRadius: 'var(--radius)',
                     flexShrink: 0,
                   }}>
                     {toolCount} tool{toolCount !== 1 ? 's' : ''}
@@ -285,7 +285,7 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
                     color: '#10b981',
                     background: 'rgba(16, 185, 129, 0.08)',
                     padding: '1px 6px',
-                    borderRadius: '4px',
+                    borderRadius: 'var(--radius)',
                     flexShrink: 0,
                   }}>
                     ↓{(modelInfo?.inputTokens || 0).toLocaleString()} ↑{(modelInfo?.outputTokens || 0).toLocaleString()}
@@ -323,7 +323,7 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
 
               {isExpanded && (
                 <div style={{
-                  borderLeft: '2px solid rgba(124, 58, 237, 0.2)',
+                  borderLeft: '2px solid rgba(167, 159, 240, 0.2)',
                   marginLeft: '13px',
                   paddingLeft: '14px',
                   paddingTop: '8px',

@@ -17,7 +17,7 @@ const statsStyle = css`
   .stat-card {
     background-color: var(--bg-surface);
     border: 1px solid var(--border-default);
-    border-radius: 12px;
+    border-radius: var(--radius);
     padding: 24px;
     text-align: center;
   }

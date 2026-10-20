@@ -128,7 +128,7 @@ const passedBadgeStyles = css`
   padding: 4px 12px;
   background: rgba(124, 255, 107, 0.1);
   border: 1px solid var(--status-success);
-  border-radius: 12px;
+  border-radius: var(--radius);
   color: var(--status-success);
   font-size: 0.75rem;
   font-weight: 600;
@@ -141,7 +141,7 @@ const failedBadgeStyles = css`
   padding: 4px 12px;
   background: rgba(255, 87, 87, 0.1);
   border: 1px solid var(--status-failure);
-  border-radius: 12px;
+  border-radius: var(--radius);
   color: var(--status-failure);
   font-size: 0.75rem;
   font-weight: 600;
@@ -162,7 +162,7 @@ const panelContentStyles = css`
 
   &::-webkit-scrollbar-thumb {
     background: var(--border-default);
-    border-radius: 4px;
+    border-radius: var(--radius);
   }
 
   &::-webkit-scrollbar-thumb:hover {

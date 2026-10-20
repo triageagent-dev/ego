@@ -45,7 +45,7 @@ const badgeStyles = css`
   color: var(--text-secondary);
   background: var(--bg-primary);
   border: 1px solid var(--border-default);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 2px 8px;
   white-space: nowrap;
 `;

@@ -303,7 +303,7 @@ const backButtonStyles = css`
   padding: 12px 24px;
   background: var(--accent-primary);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   color: var(--bg-primary);
   font-family: var(--font-display);
   font-size: 0.875rem;
@@ -313,6 +313,6 @@ const backButtonStyles = css`
 
   &:hover {
     background: var(--accent-purple);
-    box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
+    box-shadow: 0 0 20px rgba(181, 171, 252, 0.3);
   }
 `;

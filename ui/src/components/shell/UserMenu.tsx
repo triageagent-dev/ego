@@ -63,7 +63,7 @@ const userRowStyle = css`
   justify-content: space-between;
   gap: 8px;
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius);
   border: 1px solid var(--border-default);
   font-size: 0.75rem;
   font-family: var(--font-display);
@@ -97,7 +97,7 @@ const loginLinkStyle = css`
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius);
   border: 1px solid var(--border-default);
   background: transparent;
   color: var(--accent-primary);

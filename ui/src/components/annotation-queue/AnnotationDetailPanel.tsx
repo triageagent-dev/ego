@@ -50,7 +50,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
             onClick={onClose}
             style={{
               padding: '6px 12px',
-              borderRadius: '6px',
+              borderRadius: 'var(--radius)',
               background: 'transparent',
               border: '1.5px solid var(--border)',
               color: 'var(--text-secondary)',
@@ -70,16 +70,16 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
           marginBottom: '20px',
         }}>
           <span style={{
-            fontSize: '11px', fontWeight: 600, color: '#A855F7',
-            background: 'rgba(168, 85, 247, 0.1)', padding: '4px 10px',
-            borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px',
+            fontSize: '11px', fontWeight: 600, color: '#b5abfc',
+            background: 'rgba(181, 171, 252, 0.1)', padding: '4px 10px',
+            borderRadius: 'var(--radius)', textTransform: 'uppercase', letterSpacing: '0.5px',
           }}>
             {item.model || 'Unknown model'}
           </span>
           {totalTokens > 0 && (
             <span style={{
               fontSize: '11px', fontWeight: 600, color: '#10b981',
-              background: 'rgba(16, 185, 129, 0.1)', padding: '4px 10px', borderRadius: '6px',
+              background: 'rgba(16, 185, 129, 0.1)', padding: '4px 10px', borderRadius: 'var(--radius)',
             }}>
               {totalTokens.toLocaleString()} tokens
             </span>
@@ -87,7 +87,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
           {item.startTime && (
             <span style={{
               fontSize: '11px', color: 'var(--text-tertiary)',
-              background: 'var(--bg-primary)', padding: '4px 10px', borderRadius: '6px', fontWeight: 600,
+              background: 'var(--bg-primary)', padding: '4px 10px', borderRadius: 'var(--radius)', fontWeight: 600,
             }}>
               {new Date(item.startTime).toLocaleString('en-US', {
                 month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -117,7 +117,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
         </div>
 
         {invocations.length > 0 ? (
-          <div style={{ background: 'var(--bg-elevated)', padding: '16px', borderRadius: '8px' }}>
+          <div style={{ background: 'var(--bg-elevated)', padding: '16px', borderRadius: 'var(--radius)' }}>
             {invocations.map((inv, idx) => (
               <div
                 key={inv.invocationId}
@@ -128,7 +128,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
                 }}
               >
                 <div style={{
-                  fontSize: '11px', fontWeight: 700, color: '#7C3AED',
+                  fontSize: '11px', fontWeight: 700, color: '#a79ff0',
                   marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px',
                 }}>
                   Turn {idx + 1}
@@ -136,7 +136,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
 
                 <div style={{ marginBottom: '12px' }}>
                   <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>User</div>
-                  <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: '6px', borderLeft: '3px solid #7C3AED' }}>
+                  <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius)', borderLeft: '3px solid #a79ff0' }}>
                     {inv.userText || '(no text)'}
                   </div>
                 </div>
@@ -159,7 +159,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
                 {inv.agentText && (
                   <div>
                     <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Agent</div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: '6px', borderLeft: '3px solid #10b981' }}>
+                    <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius)', borderLeft: '3px solid #10b981' }}>
                       {inv.agentText}
                     </div>
                   </div>
@@ -168,7 +168,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
             ))}
           </div>
         ) : elements.length > 0 ? (
-          <div style={{ background: 'var(--bg-elevated)', padding: '16px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ background: 'var(--bg-elevated)', padding: '16px', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {elements.map((el, idx) => (
               <div key={idx}>
                 {el.type === 'tool_call' ? (
@@ -186,8 +186,8 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
                       lineHeight: '1.6',
                       padding: '8px 12px',
                       background: 'var(--bg-surface)',
-                      borderRadius: '6px',
-                      borderLeft: `3px solid ${el.type === 'user_input' ? '#7C3AED' : '#10b981'}`,
+                      borderRadius: 'var(--radius)',
+                      borderLeft: `3px solid ${el.type === 'user_input' ? '#a79ff0' : '#10b981'}`,
                     }}>
                       {el.data?.text || '(no text)'}
                     </div>
@@ -234,7 +234,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
                   style={{
                     flex: 1,
                     padding: '10px',
-                    borderRadius: '8px',
+                    borderRadius: 'var(--radius)',
                     border: `1.5px solid ${isSelected
                       ? (isPositive ? 'rgba(16, 185, 129, 0.5)' : 'rgba(255, 87, 87, 0.5)')
                       : 'var(--border-default)'}`,
@@ -265,7 +265,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
             style={{
               width: '100%',
               padding: '10px 12px',
-              borderRadius: '8px',
+              borderRadius: 'var(--radius)',
               border: '1.5px solid var(--border-default)',
               background: 'var(--bg-primary)',
               color: 'var(--text-primary)',
@@ -285,7 +285,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
             disabled={!firstPass}
             style={{
               padding: '10px 24px',
-              borderRadius: '8px',
+              borderRadius: 'var(--radius)',
               background: firstPass ? 'var(--accent-primary)' : 'var(--bg-elevated)',
               border: 'none',
               color: firstPass ? '#fff' : 'var(--text-tertiary)',
@@ -293,7 +293,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
               fontWeight: 600,
               cursor: firstPass ? 'pointer' : 'not-allowed',
               transition: 'all 0.2s',
-              boxShadow: firstPass ? '0 0 16px rgba(168, 85, 247, 0.25)' : 'none',
+              boxShadow: firstPass ? '0 0 16px rgba(181, 171, 252, 0.25)' : 'none',
             }}
           >
             Save Annotation
@@ -310,7 +310,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
             padding: '12px 16px',
             background: 'rgba(16, 185, 129, 0.05)',
             border: '1px solid rgba(16, 185, 129, 0.2)',
-            borderRadius: '8px',
+            borderRadius: 'var(--radius)',
           }}>
             <div style={{ fontSize: '11px', fontWeight: 700, color: '#10b981', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Current annotation

@@ -233,7 +233,7 @@ const unsavedBadgeStyle = css`
   color: var(--status-warning);
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: rgba(245, 158, 11, 0.1);
 `;
 
@@ -268,7 +268,7 @@ const applyButtonStyle = css`
     }
 
     &:disabled {
-      background-color: rgba(168, 85, 247, 0.3);
+      background-color: rgba(181, 171, 252, 0.3);
       border-color: transparent;
       color: rgba(255, 255, 255, 0.4);
     }

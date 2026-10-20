@@ -122,29 +122,30 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
     <div
       style={{
         background: 'var(--card-bg)',
-        borderRadius: '12px',
-        border: isSelected ? '2px solid #7C3AED' : '1px solid var(--border)',
-        padding: '20px',
+        borderRadius: 'var(--radius)',
+        border: isSelected ? '1px solid var(--accent-magenta)' : '1px solid var(--border-default)',
+        padding: '8px 12px',
         minWidth: 0,
         transition: 'all 0.2s',
-        boxShadow: isSelected ? '0 4px 12px rgba(124, 58, 237, 0.15)' : 'none',
+        boxShadow: 'none',
       }}
     >
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'start',
-        marginBottom: '16px',
+        alignItems: 'center',
+        gap: '12px',
+        marginBottom: '0',
       }}>
         <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
             <span style={{
               fontSize: '11px',
               fontWeight: 600,
-              color: '#A855F7',
-              background: 'rgba(168, 85, 247, 0.1)',
-              padding: '4px 10px',
-              borderRadius: '6px',
+              color: '#b5abfc',
+              background: 'rgba(181, 171, 252, 0.1)',
+              padding: '1px 7px',
+              borderRadius: 'var(--radius)',
               textTransform: 'uppercase',
               letterSpacing: '0.5px',
             }}>
@@ -157,8 +158,8 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                 fontWeight: 600,
                 color: '#3b82f6',
                 background: 'rgba(59, 130, 246, 0.1)',
-                padding: '4px 10px',
-                borderRadius: '6px',
+                padding: '1px 7px',
+                borderRadius: 'var(--radius)',
               }}>
                 {providerName}
               </span>
@@ -170,8 +171,8 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                 fontWeight: 600,
                 color: 'var(--text-primary)',
                 background: 'rgba(148, 163, 184, 0.18)',
-                padding: '4px 10px',
-                borderRadius: '6px',
+                padding: '1px 7px',
+                borderRadius: 'var(--radius)',
               }}>
                 {session.invocations.length} turns
               </span>
@@ -183,8 +184,8 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                 fontWeight: 600,
                 color: '#10b981',
                 background: 'rgba(16, 185, 129, 0.1)',
-                padding: '4px 10px',
-                borderRadius: '6px',
+                padding: '1px 7px',
+                borderRadius: 'var(--radius)',
               }}>
                 {totalTokens.toLocaleString()} tokens
               </span>
@@ -196,8 +197,8 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                 fontWeight: 600,
                 color: '#fff',
                 background: 'var(--accent-primary)',
-                padding: '4px 10px',
-                borderRadius: '6px',
+                padding: '1px 7px',
+                borderRadius: 'var(--radius)',
                 fontVariantNumeric: 'tabular-nums',
               }}>
                 {formatSpanDuration(session.durationMs)}
@@ -210,8 +211,8 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                 fontWeight: 600,
                 color: 'var(--text-primary)',
                 background: 'rgba(148, 163, 184, 0.18)',
-                padding: '4px 10px',
-                borderRadius: '6px',
+                padding: '1px 7px',
+                borderRadius: 'var(--radius)',
               }}>
                 {new Date(session.startedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
               </span>
@@ -223,8 +224,8 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                 fontWeight: 600,
                 color: '#f59e0b',
                 background: 'rgba(245, 158, 11, 0.1)',
-                padding: '4px 10px',
-                borderRadius: '6px',
+                padding: '1px 7px',
+                borderRadius: 'var(--radius)',
               }}>
                 cache {totalCacheRead > 0 ? `${totalCacheRead.toLocaleString()} read` : ''}
                 {totalCacheCreation > 0 && totalCacheRead > 0 ? ' / ' : ''}
@@ -236,11 +237,11 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
               <span key={name} style={{
                 fontSize: '11px',
                 fontWeight: 600,
-                color: '#A855F7',
-                background: 'rgba(168, 85, 247, 0.12)',
-                border: '1px solid rgba(168, 85, 247, 0.3)',
-                padding: '3px 8px',
-                borderRadius: '6px',
+                color: '#b5abfc',
+                background: 'rgba(181, 171, 252, 0.12)',
+                border: '1px solid rgba(181, 171, 252, 0.3)',
+                padding: '1px 6px',
+                borderRadius: 'var(--radius)',
               }}>
                 📋 {name}
               </span>
@@ -248,10 +249,10 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
           </div>
 
           <h3 style={{
-            fontSize: '16px',
+            fontSize: '13px',
             fontWeight: 600,
             color: 'var(--text-primary)',
-            margin: '0 0 4px 0',
+            margin: '0 0 2px 0',
           }}>
             {session.sessionId}
           </h3>
@@ -292,21 +293,21 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                   setShowQueuePicker(!showQueuePicker);
                 }}
                 style={{
-                  padding: '8px 14px', borderRadius: '8px',
-                  background: showQueuePicker ? 'rgba(168, 85, 247, 0.15)' : 'transparent',
-                  border: '1.5px solid rgba(168, 85, 247, 0.4)',
-                  color: '#A855F7', fontSize: '13px', fontWeight: 600,
+                  padding: '2px 9px', borderRadius: 'var(--radius)',
+                  background: showQueuePicker ? 'rgba(181, 171, 252, 0.15)' : 'transparent',
+                  border: '1px solid rgba(181, 171, 252, 0.4)',
+                  color: '#b5abfc', fontSize: '12px', fontWeight: 500,
                   cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap',
                 }}
               >
-                + Queue
+                + queue
               </button>
 
               {showQueuePicker && (
                 <div style={{
                   position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 100,
                   background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
-                  borderRadius: '10px', padding: '8px', minWidth: '200px',
+                  borderRadius: 'var(--radius)', padding: '8px', minWidth: '200px',
                   boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
                 }}>
                   {(annotationQueues || []).length > 0 && (
@@ -321,7 +322,7 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                           }}
                           style={{
                             display: 'block', width: '100%', padding: '8px 10px',
-                            borderRadius: '6px', background: 'transparent', border: 'none',
+                            borderRadius: 'var(--radius)', background: 'transparent', border: 'none',
                             color: 'var(--text-primary)', fontSize: '13px', fontWeight: 500,
                             cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s',
                           }}
@@ -353,8 +354,8 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                         }}
                         placeholder="Queue name"
                         style={{
-                          padding: '6px 10px', borderRadius: '6px',
-                          border: '1.5px solid var(--border-default)',
+                          padding: '6px 10px', borderRadius: 'var(--radius)',
+                          border: '1px solid var(--border-default)',
                           background: 'var(--bg-primary)', color: 'var(--text-primary)',
                           fontSize: '12px', outline: 'none', width: '100%', boxSizing: 'border-box',
                         }}
@@ -371,7 +372,7 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                             }
                           }}
                           style={{
-                            flex: 1, padding: '6px', borderRadius: '6px',
+                            flex: 1, padding: '6px', borderRadius: 'var(--radius)',
                             background: 'var(--accent-primary)', border: 'none',
                             color: '#fff', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
                           }}
@@ -381,7 +382,7 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                         <button
                           onClick={(e) => { e.stopPropagation(); setShowNewQueueInput(false); setNewQueueName(''); }}
                           style={{
-                            padding: '6px 8px', borderRadius: '6px', background: 'transparent',
+                            padding: '6px 8px', borderRadius: 'var(--radius)', background: 'transparent',
                             border: '1px solid var(--border)', color: 'var(--text-secondary)',
                             fontSize: '12px', cursor: 'pointer',
                           }}
@@ -395,11 +396,11 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                       onClick={(e) => { e.stopPropagation(); setShowNewQueueInput(true); }}
                       style={{
                         display: 'block', width: '100%', padding: '8px 10px',
-                        borderRadius: '6px', background: 'transparent', border: 'none',
-                        color: '#A855F7', fontSize: '13px', fontWeight: 600,
+                        borderRadius: 'var(--radius)', background: 'transparent', border: 'none',
+                        color: '#b5abfc', fontSize: '13px', fontWeight: 600,
                         cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s',
                       }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.08)')}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(181, 171, 252, 0.08)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     >
                       + New queue
@@ -416,8 +417,8 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                 <div
                   key={mr.metricName}
                   style={{
-                    padding: '6px 10px',
-                    borderRadius: '6px',
+                    padding: '1px 7px',
+                    borderRadius: 'var(--radius)',
                     background: mr.evalStatus === 'PASSED'
                       ? 'rgba(34, 197, 94, 0.15)'
                       : 'rgba(239, 68, 68, 0.15)',
@@ -441,13 +442,13 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                 gap: '6px',
                 fontSize: '12px',
                 fontWeight: 600,
-                color: compareOption.checked ? '#7C3AED' : 'var(--text-secondary)',
+                color: compareOption.checked ? '#a79ff0' : 'var(--text-secondary)',
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
-                padding: '8px 10px',
-                borderRadius: '8px',
-                background: compareOption.checked ? 'rgba(124, 58, 237, 0.1)' : 'transparent',
-                border: `1.5px solid ${compareOption.checked ? 'rgba(124, 58, 237, 0.4)' : 'var(--border)'}`,
+                padding: '2px 8px',
+                borderRadius: 'var(--radius)',
+                background: compareOption.checked ? 'rgba(167, 159, 240, 0.1)' : 'transparent',
+                border: `1px solid ${compareOption.checked ? 'rgba(167, 159, 240, 0.4)' : 'var(--border)'}`,
               }}
             >
               <input
@@ -455,7 +456,7 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                 checked={compareOption.checked}
                 onChange={compareOption.onToggle}
               />
-              Compare
+              compare
             </label>
           )}
 
@@ -465,19 +466,19 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
               onSelect();
             }}
             style={{
-              padding: '8px 16px',
-              borderRadius: '8px',
-              background: isSelected ? '#7C3AED' : 'transparent',
-              border: isSelected ? 'none' : '1.5px solid var(--border)',
-              color: isSelected ? 'white' : 'var(--text-primary)',
-              fontSize: '13px',
-              fontWeight: 600,
+              padding: '2px 10px',
+              borderRadius: 'var(--radius)',
+              background: isSelected ? '#a79ff0' : 'transparent',
+              border: isSelected ? 'none' : '1px solid var(--border)',
+              color: isSelected ? '#14161f' : 'var(--text-primary)',
+              fontSize: '12px',
+              fontWeight: 500,
               cursor: 'pointer',
               transition: 'all 0.2s',
               whiteSpace: 'nowrap',
             }}
           >
-            {isSelected ? 'EvalSet' : 'Set as EvalSet'}
+            {isSelected ? 'golden ✓' : 'set golden'}
           </button>
 
           {session.status === 'complete' && onRemove && (
@@ -494,10 +495,10 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
               }}
               title="Remove session"
               style={{
-                padding: '8px 10px',
-                borderRadius: '8px',
+                padding: '2px 8px',
+                borderRadius: 'var(--radius)',
                 background: 'transparent',
-                border: '1.5px solid rgba(239, 68, 68, 0.3)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
                 color: '#ef4444',
                 fontSize: '13px',
                 fontWeight: 600,
@@ -517,9 +518,9 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
             }}
             style={{
               padding: '8px 12px',
-              borderRadius: '8px',
-              background: expanded ? 'rgba(124, 58, 237, 0.1)' : 'transparent',
-              border: '1.5px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              background: expanded ? 'rgba(167, 159, 240, 0.1)' : 'transparent',
+              border: '1px solid var(--border)',
               color: 'var(--text-primary)',
               fontSize: '13px',
               fontWeight: 600,
@@ -579,14 +580,14 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                 marginBottom: '16px',
                 padding: '16px',
                 background: 'var(--bg-primary)',
-                borderRadius: '10px',
-                borderLeft: '3px solid #7C3AED',
+                borderRadius: 'var(--radius)',
+                borderLeft: '3px solid #a79ff0',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <span style={{
                   fontSize: '11px',
-                  color: '#7C3AED',
+                  color: '#a79ff0',
                   fontWeight: 700,
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
@@ -601,8 +602,8 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                         fontSize: '10px',
                         color: 'var(--text-tertiary)',
                         background: 'var(--card-bg)',
-                        padding: '3px 8px',
-                        borderRadius: '4px',
+                        padding: '1px 6px',
+                        borderRadius: 'var(--radius)',
                         fontWeight: 600,
                       }}>
                         ↓ {inv.modelInfo.inputTokens}
@@ -613,8 +614,8 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                         fontSize: '10px',
                         color: 'var(--text-tertiary)',
                         background: 'var(--card-bg)',
-                        padding: '3px 8px',
-                        borderRadius: '4px',
+                        padding: '1px 6px',
+                        borderRadius: 'var(--radius)',
                         fontWeight: 600,
                       }}>
                         ↑ {inv.modelInfo.outputTokens}
@@ -662,11 +663,11 @@ export function SessionCard({ session, isSelected, onSelect, onRemove, evaluatio
                         key={i}
                         style={{
                           fontSize: '12px',
-                          color: '#7C3AED',
+                          color: '#a79ff0',
                           fontFamily: 'monospace',
-                          background: 'rgba(124, 58, 237, 0.08)',
+                          background: 'rgba(167, 159, 240, 0.08)',
                           padding: '6px 10px',
-                          borderRadius: '6px',
+                          borderRadius: 'var(--radius)',
                           fontWeight: 500,
                         }}
                       >

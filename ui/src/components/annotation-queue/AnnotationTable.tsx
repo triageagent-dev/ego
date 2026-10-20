@@ -19,7 +19,7 @@ const tableStyle = css`
   .ant-table {
     background: var(--bg-surface);
     border: 1px solid var(--border-default);
-    border-radius: 8px;
+    border-radius: var(--radius);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
@@ -58,8 +58,8 @@ const tableStyle = css`
     }
 
     &.selected-row {
-      border-left-color: #7C3AED;
-      outline-color: #7C3AED;
+      border-left-color: #a79ff0;
+      outline-color: #a79ff0;
     }
   }
 
@@ -255,10 +255,10 @@ export const AnnotationTable: React.FC<AnnotationTableProps> = ({
             }}
             style={{
               padding: '5px 12px',
-              borderRadius: '6px',
+              borderRadius: 'var(--radius)',
               fontSize: '12px',
               fontWeight: 600,
-              background: isGolden ? '#7C3AED' : 'transparent',
+              background: isGolden ? '#a79ff0' : 'transparent',
               border: isGolden ? 'none' : '1.5px solid var(--border)',
               color: isGolden ? 'white' : 'var(--text-primary)',
               cursor: 'pointer',
@@ -281,7 +281,7 @@ export const AnnotationTable: React.FC<AnnotationTableProps> = ({
       <div style={{
         background: 'var(--bg-elevated)',
         padding: '16px',
-        borderRadius: '8px',
+        borderRadius: 'var(--radius)',
         marginLeft: '40px',
       }}>
         {invocations.map((inv, idx) => (
@@ -294,14 +294,14 @@ export const AnnotationTable: React.FC<AnnotationTableProps> = ({
             }}
           >
             <div style={{
-              fontSize: '11px', fontWeight: 700, color: '#7C3AED',
+              fontSize: '11px', fontWeight: 700, color: '#a79ff0',
               marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px',
             }}>
               Turn {idx + 1}
             </div>
             <div style={{ marginBottom: '8px' }}>
               <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>User</div>
-              <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: '6px', borderLeft: '3px solid #7C3AED' }}>
+              <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius)', borderLeft: '3px solid #a79ff0' }}>
                 {inv.userText || '(no text)'}
               </div>
             </div>
@@ -310,7 +310,7 @@ export const AnnotationTable: React.FC<AnnotationTableProps> = ({
                 <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Tool Calls</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   {inv.toolCalls.map((tc, i) => (
-                    <div key={i} style={{ fontSize: '12px', color: '#A855F7', fontFamily: 'monospace', background: 'rgba(168, 85, 247, 0.08)', padding: '6px 10px', borderRadius: '6px' }}>
+                    <div key={i} style={{ fontSize: '12px', color: '#b5abfc', fontFamily: 'monospace', background: 'rgba(181, 171, 252, 0.08)', padding: '6px 10px', borderRadius: 'var(--radius)' }}>
                       {tc.name}({Object.keys(tc.args || {}).length > 0 ? Object.keys(tc.args).map(k => `${k}=${JSON.stringify(tc.args[k])}`).join(', ') : ''})
                     </div>
                   ))}
@@ -320,7 +320,7 @@ export const AnnotationTable: React.FC<AnnotationTableProps> = ({
             {inv.agentText && (
               <div>
                 <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Agent</div>
-                <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: '6px', borderLeft: '3px solid #10b981' }}>
+                <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius)', borderLeft: '3px solid #10b981' }}>
                   {inv.agentText}
                 </div>
               </div>

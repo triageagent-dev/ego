@@ -145,7 +145,7 @@ const tableStyle = css`
   .ant-table {
     background: var(--bg-surface);
     border: 1px solid var(--border-default);
-    border-radius: 8px;
+    border-radius: var(--radius);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
@@ -157,7 +157,7 @@ const tableStyle = css`
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    padding: 12px 16px;
+    padding: 5px 12px;
   }
 
   .ant-table-tbody > tr {
@@ -177,7 +177,7 @@ const tableStyle = css`
   }
 
   .ant-table-tbody > tr > td {
-    padding: 12px 16px;
+    padding: 5px 12px;
     color: var(--text-secondary);
     background: transparent !important;
   }
@@ -251,14 +251,14 @@ const barCellStyle = css`
 const barTrackStyle = css`
   width: 64px;
   height: 6px;
-  border-radius: 3px;
+  border-radius: var(--radius);
   background: var(--bg-elevated);
   overflow: hidden;
 `;
 
 const barFillStyle = css`
   height: 100%;
-  border-radius: 3px;
+  border-radius: var(--radius);
   transition: width 0.3s ease;
 `;
 

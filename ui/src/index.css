@@ -1,49 +1,49 @@
-/* Import fonts */
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
-
-/* CSS Variables - Theme */
+/* ego - terminal-style theme: monospace, thin rules, titled boxes. */
 :root {
-  /* Backgrounds */
-  --bg-primary: #1a1d24;
-  --bg-surface: #252a36;
-  --bg-elevated: #2d3342;
-  --card-bg: #252a36;
+  /* Surfaces */
+  --bg-primary: #14161f;
+  --bg-surface: #1b1d2b;
+  --bg-elevated: #20222f;
+  --card-bg: #1b1d2b;
+  --bg-selected: #2b2547;
 
   /* Text */
-  --text-primary: #e8eef3;
-  --text-secondary: #a8b2c1;
-  --text-tertiary: #6b7586;
-  --text-muted: #6b7586;
+  --text-primary: #e9e9ed;
+  --text-secondary: #c9ccdb;
+  --text-tertiary: #8a8ea3;
+  --text-muted: #6f7387;
 
   /* Accents */
-  --accent-primary: #A855F7;
-  --accent-purple: #6D28D9;
-  --accent-lime: #7cff6b;
-  --accent-orange: #ff9f43;
+  --accent-primary: #b5abfc;
+  --accent-purple: #a79ff0;
+  --accent-cyan: #67e8f9;
+  --accent-magenta: #e879f9;
+  --accent-lime: #4ade80;
+  --accent-orange: #f59e0b;
 
   /* Status */
-  --status-success: #7cff6b;
-  --status-failure: #ff5757;
-  --status-warning: #ffb347;
-  --status-info: #A855F7;
+  --status-success: #4ade80;
+  --status-failure: #f87171;
+  --status-warning: #f59e0b;
+  --status-info: #60a5fa;
 
-  /* Borders */
-  --border: #3a4052;
-  --border-default: #3a4052;
-  --border-focus: #A855F7;
+  /* Rules */
+  --border: #24263a;
+  --border-default: #3a3d55;
+  --border-focus: #b5abfc;
+  --radius: 3px;
 
-  /* Shadows & Glows */
-  --glow-success: 0 0 20px rgba(124, 255, 107, 0.4);
-  --glow-failure: 0 0 20px rgba(255, 87, 87, 0.4);
-  --glow-info: 0 0 20px rgba(168, 85, 247, 0.3);
-  --glow-warning: 0 0 20px rgba(255, 179, 71, 0.3);
+  /* Glows */
+  --glow-success: 0 0 12px rgba(74, 222, 128, 0.25);
+  --glow-failure: 0 0 12px rgba(248, 113, 113, 0.25);
+  --glow-info: 0 0 12px rgba(181, 171, 252, 0.2);
+  --glow-warning: 0 0 12px rgba(245, 158, 11, 0.25);
 
-  /* Typography */
-  --font-display: 'Archivo', sans-serif;
-  --font-mono: 'IBM Plex Mono', monospace;
+  /* Type: one monospace face everywhere */
+  --font-mono: Menlo, 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  --font-display: var(--font-mono);
 }
 
-/* Base styles */
 * {
   margin: 0;
   padding: 0;
@@ -51,34 +51,24 @@
 }
 
 body {
-  font-family: var(--font-display);
+  font-family: var(--font-mono);
   background-color: var(--bg-primary);
-  color: var(--text-primary);
-  line-height: 1.6;
-  font-size: 14px;
-}
-
-/* Grid background pattern */
-body::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-image:
-    linear-gradient(var(--border-default) 1px, transparent 1px),
-    linear-gradient(90deg, var(--border-default) 1px, transparent 1px);
-  background-size: 50px 50px;
-  opacity: 0.1;
-  pointer-events: none;
-  z-index: 0;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  font-size: 13px;
 }
 
 #root {
-  position: relative;
-  z-index: 1;
   min-height: 100vh;
+}
+
+a {
+  color: var(--accent-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: #fff;
 }
 
 /* Typography utilities */
@@ -135,7 +125,7 @@ body::before {
 
 ::-webkit-scrollbar-thumb {
   background: var(--border-default);
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -204,7 +194,7 @@ body::before {
 }
 
 .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
-  background-color: rgba(124, 58, 237, 0.12) !important;
+  background-color: rgba(167, 159, 240, 0.12) !important;
   color: var(--accent-primary) !important;
   font-weight: 600 !important;
 }

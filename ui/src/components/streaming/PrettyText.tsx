@@ -9,7 +9,7 @@ const codeStyle = {
   fontFamily: 'monospace',
   fontSize: '0.9em',
   background: 'var(--bg-primary)',
-  borderRadius: '4px',
+  borderRadius: 'var(--radius)',
   padding: '1px 5px',
 };
 

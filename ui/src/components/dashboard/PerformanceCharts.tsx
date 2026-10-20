@@ -245,7 +245,7 @@ const chartsContainerStyle = css`
 const chartCardStyle = css`
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 20px;
 
   h3 {

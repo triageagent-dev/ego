@@ -110,14 +110,14 @@ export const InvocationCard: React.FC<InvocationCardProps> = ({
 
 const cardStyles = (isSelected: boolean) => css`
   background: var(--bg-surface);
-  border-radius: 8px;
+  border-radius: var(--radius);
   border: 1px solid var(--border-default);
   overflow: hidden;
   transition: all 0.2s ease;
 
   ${isSelected && `
     border-color: var(--accent-primary);
-    box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
+    box-shadow: 0 0 20px rgba(181, 171, 252, 0.2);
   `}
 
   &:hover {
@@ -156,7 +156,7 @@ const invocationIdStyles = css`
   color: var(--text-secondary);
   background: var(--bg-primary);
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 `;
 
 const cardBodyStyles = css`

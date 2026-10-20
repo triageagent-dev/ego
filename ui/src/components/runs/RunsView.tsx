@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
+import { pageStyle, headerStyle, titleStyle, subtitleStyle, refreshStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle } from '../ui/page';
 import { Segmented, Select } from 'antd';
 import { RefreshCw, History, AlertCircle } from 'lucide-react';
 import type { Run } from '../../lib/types';
@@ -84,9 +85,9 @@ export const RunsView: React.FC = () => {
   return (
     <div css={pageStyle}>
       <header css={headerStyle}>
-        <div css={titleStyle}>
-          <History size={22} />
-          <h1>Run history</h1>
+        <div>
+          <h1 css={titleStyle}>runs</h1>
+          <p css={subtitleStyle}>every evaluation, newest first</p>
         </div>
         <div css={controlsStyle}>
           {runs.length > 0 && (
@@ -117,7 +118,7 @@ export const RunsView: React.FC = () => {
               ]}
             />
           )}
-          <button css={refreshButtonStyle} onClick={load} disabled={loading}>
+          <button css={refreshStyle} onClick={load} disabled={loading}>
             <RefreshCw size={14} className={loading ? 'spinning' : undefined} />
             Refresh
           </button>
@@ -154,7 +155,7 @@ export const RunsView: React.FC = () => {
 
       {!loading && !storageUnavailable && runs.length > 0 && (
         <>
-          <div css={statsGridStyle}>
+          <div css={tilesStyle}>
             <StatCard label="Runs" value={String(stats.total)} />
             <StatCard
               label="Latest pass rate"
@@ -194,44 +195,17 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, accent }) => {
         ? 'var(--status-success)'
         : 'var(--accent-primary)';
   return (
-    <div css={statCardStyle}>
-      <div css={statValueStyle} style={{ color }}>
+    <div css={tileStyle}>
+      <div css={tileLabelStyle}>{label}</div>
+      <div css={tileValueStyle} style={{ color }}>
         {value}
       </div>
-      <div css={statLabelStyle}>{label}</div>
     </div>
   );
 };
 
-const pageStyle = css`
-  padding: 32px;
-  max-width: 1400px;
-  margin: 0 auto;
-`;
 
-const headerStyle = css`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 24px;
-  gap: 16px;
-  flex-wrap: wrap;
-`;
 
-const titleStyle = css`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--accent-primary);
-
-  h1 {
-    margin: 0;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    font-family: var(--font-display);
-  }
-`;
 
 const controlsStyle = css`
   display: flex;
@@ -243,50 +217,13 @@ const selectStyle = css`
   min-width: 200px;
 `;
 
-const refreshButtonStyle = css`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border-default);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  font-weight: 600;
-  font-size: 0.8125rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-
-  &:hover:not(:disabled) {
-    color: var(--accent-primary);
-    border-color: var(--accent-primary);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-
-  .spinning {
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
-`;
 
 const noticeStyle = css`
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 14px 18px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   margin-bottom: 24px;
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
   border: 1px solid var(--border-default);
@@ -299,7 +236,7 @@ const noticeStyle = css`
     color: var(--accent-primary);
     background: var(--bg-elevated);
     padding: 1px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius);
   }
 `;
 
@@ -334,41 +271,15 @@ const emptyStateStyle = css`
   }
 `;
 
-const statsGridStyle = css`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-`;
 
-const statCardStyle = css`
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 12px;
-  padding: 20px 24px;
-  text-align: center;
-`;
 
-const statValueStyle = css`
-  font-size: 2rem;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  margin-bottom: 4px;
-`;
 
-const statLabelStyle = css`
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-tertiary);
-  font-weight: 600;
-`;
 
 const chartsGridStyle = css`
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  margin-bottom: 24px;
+  gap: 16px;
+  margin-bottom: 12px;
 
   @media (max-width: 1100px) {
     grid-template-columns: 1fr;

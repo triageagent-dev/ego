@@ -69,7 +69,7 @@ const containerStyles = css`
 const sentenceCardStyles = (color: string) => css`
   border-left: 3px solid ${color};
   background: var(--bg-primary);
-  border-radius: 4px;
+  border-radius: var(--radius);
   padding: 8px 10px;
 `;
 
@@ -95,7 +95,7 @@ const labelBadgeStyles = (color: string) => css`
   letter-spacing: 0.5px;
   color: ${color};
   border: 1px solid ${color};
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 1px 8px;
 `;
 

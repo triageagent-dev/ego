@@ -84,7 +84,7 @@ export const EvalCaseCard: React.FC<EvalCaseCardProps> = ({
 const cardStyle = css`
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
-  border-radius: 6px;
+  border-radius: var(--radius);
   overflow: hidden;
 `;
 

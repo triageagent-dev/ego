@@ -134,9 +134,9 @@ const countBadgeStyles = css`
   display: flex;
   align-items: center;
   padding: 4px 12px;
-  background: rgba(168, 85, 247, 0.1);
+  background: rgba(181, 171, 252, 0.1);
   border: 1px solid var(--accent-primary);
-  border-radius: 12px;
+  border-radius: var(--radius);
   color: var(--accent-primary);
   font-size: 0.75rem;
   font-weight: 600;
@@ -160,7 +160,7 @@ const panelContentStyles = css`
 
   &::-webkit-scrollbar-thumb {
     background: var(--border-default);
-    border-radius: 4px;
+    border-radius: var(--radius);
   }
 
   &::-webkit-scrollbar-thumb:hover {
@@ -193,7 +193,7 @@ const emptyStateStyles = css`
 const invocationCardStyles = (selected: boolean) => css`
   background: var(--bg-elevated);
   border: ${selected ? '2px' : '1px'} solid ${selected ? 'var(--accent-primary)' : 'var(--border-default)'};
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -202,7 +202,7 @@ const invocationCardStyles = (selected: boolean) => css`
   &:hover {
     border-color: var(--accent-primary);
     transform: translateY(-2px);
-    box-shadow: ${selected ? 'var(--glow-info)' : '0 4px 16px rgba(168, 85, 247, 0.15)'};
+    box-shadow: ${selected ? 'var(--glow-info)' : '0 4px 16px rgba(181, 171, 252, 0.15)'};
   }
 `;
 
@@ -227,7 +227,7 @@ const invocationIdStyles = css`
   color: var(--text-secondary);
   background: var(--bg-primary);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 `;
 
 const cardSectionStyles = css`
@@ -264,7 +264,7 @@ const previewTextStyles = css`
   color: var(--text-primary);
   padding: 8px;
   background: var(--bg-primary);
-  border-radius: 4px;
+  border-radius: var(--radius);
   white-space: pre-wrap;
   word-wrap: break-word;
 `;
@@ -275,7 +275,7 @@ const toolBadgeStyles = css`
   padding: 6px 12px;
   background: rgba(124, 255, 107, 0.1);
   border: 1px solid var(--accent-lime);
-  border-radius: 12px;
+  border-radius: var(--radius);
   color: var(--accent-lime);
   font-size: 0.75rem;
   font-weight: 600;

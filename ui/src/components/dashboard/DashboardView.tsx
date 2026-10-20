@@ -31,7 +31,7 @@ const dashboardStyle = css`
     padding: 16px;
     background-color: var(--bg-surface);
     border: 1px solid var(--border-default);
-    border-radius: 8px;
+    border-radius: var(--radius);
   }
 
   .results-grid {
@@ -54,7 +54,7 @@ const dashboardStyle = css`
   .errors {
     background-color: rgba(255, 87, 87, 0.1);
     border: 1px solid var(--status-failure);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 16px;
     margin-bottom: 24px;
   }
@@ -80,7 +80,7 @@ const dashboardStyle = css`
     padding: 16px;
     background: var(--bg-elevated);
     border: 1px solid var(--accent-primary);
-    border-radius: 8px;
+    border-radius: var(--radius);
     margin-bottom: 24px;
     display: flex;
     align-items: center;
@@ -150,10 +150,10 @@ export const DashboardView: React.FC = () => {
               onClick={() => actions.setCurrentView('annotation-queue')}
               style={{
                 padding: '8px 16px',
-                borderRadius: '6px',
-                border: '1px solid rgba(168, 85, 247, 0.4)',
+                borderRadius: 'var(--radius)',
+                border: '1px solid rgba(181, 171, 252, 0.4)',
                 background: 'var(--bg-surface)',
-                color: '#A855F7',
+                color: '#b5abfc',
                 fontSize: '0.875rem',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
@@ -162,7 +162,7 @@ export const DashboardView: React.FC = () => {
                 gap: '8px',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(168, 85, 247, 0.08)';
+                e.currentTarget.style.background = 'rgba(181, 171, 252, 0.08)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'var(--bg-surface)';

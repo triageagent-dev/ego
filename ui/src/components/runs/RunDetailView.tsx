@@ -511,7 +511,7 @@ const countsRowStyle = css`
 const cardStyle = css`
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 20px;
   margin-bottom: 20px;
 
@@ -556,7 +556,7 @@ const configTableStyle = css`
 
 const caseBlockStyle = css`
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius);
   margin-bottom: 12px;
   overflow: hidden;
 `;
@@ -669,7 +669,7 @@ function rubricVerdictColor(verdict: 'yes' | 'no' | null): string {
 const sentenceBlockStyle = css`
   padding: 8px 10px;
   background: var(--bg-primary);
-  border-radius: 6px;
+  border-radius: var(--radius);
 `;
 
 const sentenceLabelBadgeStyle = css`
@@ -697,7 +697,7 @@ const sentenceExcerptStyle = css`
 const jsonStyle = css`
   background: var(--bg-primary);
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 12px;
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -716,7 +716,7 @@ const errorStyle = css`
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   margin-top: 12px;
   background: rgba(255, 87, 87, 0.08);
   color: var(--status-failure);

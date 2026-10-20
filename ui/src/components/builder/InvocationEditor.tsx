@@ -81,7 +81,7 @@ export const InvocationEditor: React.FC<InvocationEditorProps> = ({
 const containerStyle = css`
   background: var(--bg-primary);
   border: 1px solid var(--border-default);
-  border-radius: 4px;
+  border-radius: var(--radius);
   padding: 12px;
   margin-bottom: 12px;
 
@@ -110,7 +110,7 @@ const labelStyle = css`
 const jsonDisplayStyle = css`
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
-  border-radius: 4px;
+  border-radius: var(--radius);
   padding: 8px;
 
   pre {

@@ -116,7 +116,7 @@ const toolItemStyles = css`
 
 const toolUseStyles = css`
   background: var(--bg-primary);
-  border-radius: 4px;
+  border-radius: var(--radius);
   border-left: 3px solid #7cff6b;
   padding: 12px;
   cursor: pointer;
@@ -130,7 +130,7 @@ const toolUseStyles = css`
 
 const toolResponseStyles = (hasError?: boolean) => css`
   background: var(--bg-primary);
-  border-radius: 4px;
+  border-radius: var(--radius);
   border-left: 3px solid ${hasError ? '#ff5757' : '#ff9f43'};
   padding: 12px;
   margin-left: 16px;
@@ -182,7 +182,7 @@ const toolIdStyles = css`
   color: var(--text-secondary);
   background: var(--bg-surface);
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius);
 `;
 
 const argsContainerStyles = css`
@@ -206,7 +206,7 @@ const jsonCodeStyles = css`
   color: var(--text-primary);
   background: var(--bg-elevated);
   padding: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   margin: 0;
   overflow-x: auto;
 
@@ -220,7 +220,7 @@ const jsonCodeStyles = css`
 
   &::-webkit-scrollbar-thumb {
     background: var(--border-default);
-    border-radius: 3px;
+    border-radius: var(--radius);
   }
 
   &::-webkit-scrollbar-thumb:hover {

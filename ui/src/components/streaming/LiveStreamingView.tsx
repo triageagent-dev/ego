@@ -702,35 +702,34 @@ export function LiveStreamingView() {
 
   return (
     <div style={{
-      padding: '48px',
-      maxWidth: '1400px',
-      margin: '0 auto',
+      padding: '12px 18px 28px',
     }}>
       <div style={{
-        marginBottom: '32px',
+        marginBottom: '12px',
       }}>
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'start',
-          marginBottom: '16px',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '10px',
+          marginBottom: '8px',
         }}>
-          <div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '14px', flexWrap: 'wrap' }}>
             <h1 style={{
-              fontSize: '28px',
-              fontWeight: 700,
-              marginBottom: '6px',
-              color: 'var(--text-primary)',
-              letterSpacing: '-0.5px',
+              fontSize: '15px',
+              fontWeight: 600,
+              margin: 0,
+              color: 'var(--accent-cyan)',
             }}>
-              Live Agent Sessions
+              sessions
             </h1>
             <p style={{
-              fontSize: '14px',
-              color: 'var(--text-secondary)',
+              fontSize: '12px',
+              color: 'var(--text-muted)',
               margin: 0,
             }}>
-              Watch agent traces stream in real-time, select a golden run, and evaluate all sessions
+              pick a golden session, then evaluate the rest
             </p>
           </div>
 
@@ -744,17 +743,17 @@ export function LiveStreamingView() {
               aria-pressed={showNoLLM}
               title="Sessions whose trace made no LLM call, such as a server's per-event traces"
               style={{
-                padding: '7px 12px',
-                borderRadius: '8px',
+                padding: '3px 9px',
+                borderRadius: 'var(--radius)',
                 border: `1px solid ${showNoLLM ? 'var(--accent-primary)' : 'var(--border-default)'}`,
-                background: 'var(--bg-surface)',
-                color: showNoLLM ? 'var(--text-primary)' : 'var(--text-secondary)',
-                fontSize: '13px',
+                background: 'transparent',
+                color: showNoLLM ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                fontSize: '12px',
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
               }}
             >
-              {showNoLLM ? 'Hide sessions without LLM calls' : `Show sessions without LLM calls${hiddenNoLLM ? ` (${hiddenNoLLM})` : ''}`}
+              {showNoLLM ? 'hide non-LLM' : `show non-LLM${hiddenNoLLM ? ` (${hiddenNoLLM})` : ''}`}
             </button>
 
             <input
@@ -764,13 +763,14 @@ export function LiveStreamingView() {
               placeholder="Search sessions…"
               aria-label="Search sessions"
               style={{
-                padding: '7px 12px',
-                borderRadius: '8px',
+                padding: '3px 9px',
+                borderRadius: 'var(--radius)',
                 border: '1px solid var(--border-default)',
-                background: 'var(--bg-surface)',
+                background: 'transparent',
                 color: 'var(--text-primary)',
-                fontSize: '13px',
-                width: '180px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '12px',
+                width: '170px',
                 outline: 'none',
               }}
             />
@@ -778,16 +778,14 @@ export function LiveStreamingView() {
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              background: connectionStatus === 'connected'
-                ? 'rgba(34, 197, 94, 0.1)'
+              gap: '6px',
+              padding: '3px 4px',
+              color: connectionStatus === 'connected'
+                ? 'var(--status-success)'
                 : connectionStatus === 'connecting'
-                  ? 'rgba(148, 163, 184, 0.1)'
-                  : 'rgba(239, 68, 68, 0.1)',
-              fontSize: '13px',
-              fontWeight: 600,
+                  ? 'var(--text-tertiary)'
+                  : 'var(--status-failure)',
+              fontSize: '12px',
             }}>
               <div style={{
                 width: '8px',
@@ -801,18 +799,17 @@ export function LiveStreamingView() {
                 animation: connectionStatus !== 'disconnected' ? 'pulse 2s ease-in-out infinite' : 'none',
               }} />
               {connectionStatus === 'connected'
-                ? 'Connected'
+                ? 'live'
                 : connectionStatus === 'connecting'
-                  ? 'Connecting…'
-                  : 'Disconnected'}
+                  ? 'connecting…'
+                  : 'offline'}
             </div>
 
             <div style={{
               display: 'flex',
               gap: '2px',
-              padding: '3px',
-              borderRadius: '8px',
-              background: 'var(--bg-surface)',
+              padding: '1px',
+              borderRadius: 'var(--radius)',
               border: '1px solid var(--border-default)',
             }}>
               {TIME_RANGES.map(range => (
@@ -820,13 +817,13 @@ export function LiveStreamingView() {
                   key={range.key}
                   onClick={() => setTimeRange(range.key)}
                   style={{
-                    padding: '5px 10px',
-                    borderRadius: '6px',
+                    padding: '2px 9px',
+                    borderRadius: 'var(--radius)',
                     border: 'none',
-                    background: timeRange === range.key ? 'var(--accent-primary)' : 'transparent',
-                    color: timeRange === range.key ? '#fff' : 'var(--text-secondary)',
+                    background: timeRange === range.key ? 'var(--bg-selected)' : 'transparent',
+                    color: timeRange === range.key ? 'var(--accent-magenta)' : 'var(--text-tertiary)',
+                    fontFamily: 'var(--font-mono)',
                     fontSize: '12px',
-                    fontWeight: 600,
                     cursor: 'pointer',
                     transition: 'all 0.15s',
                   }}
@@ -841,21 +838,19 @@ export function LiveStreamingView() {
 
         {allSessions.length > 0 && (
           <div style={{
-            padding: '12px 16px',
-            background: 'rgba(124, 58, 237, 0.05)',
-            borderRadius: '8px',
-            border: '1px solid rgba(124, 58, 237, 0.2)',
+            padding: '5px 10px',
+            borderRadius: 'var(--radius)',
+            border: '1px solid var(--border)',
             display: 'flex',
             gap: '16px',
             alignItems: 'center',
             justifyContent: 'space-between',
           }}>
             <span style={{
-              fontSize: '13px',
-              color: 'var(--text-secondary)',
-              fontWeight: 600,
+              fontSize: '12px',
+              color: 'var(--text-tertiary)',
             }}>
-              {activeLiveSessions.length} active, {completedSessions.length} completed
+              {activeLiveSessions.length} live · {completedSessions.length} done
             </span>
             {completedSessions.length > 0 && (
               <button
@@ -867,18 +862,18 @@ export function LiveStreamingView() {
                   }
                 }}
                 style={{
-                  padding: '5px 12px',
-                  borderRadius: '6px',
+                  padding: '1px 9px',
+                  borderRadius: 'var(--radius)',
                   background: 'transparent',
-                  border: '1.5px solid rgba(239, 68, 68, 0.4)',
-                  color: '#ef4444',
+                  border: '1px solid var(--border-default)',
+                  color: 'var(--text-tertiary)',
+                  fontFamily: 'var(--font-mono)',
                   fontSize: '12px',
-                  fontWeight: 600,
                   cursor: 'pointer',
                   transition: 'all 0.2s',
                 }}
               >
-                Clear completed
+                clear done
               </button>
             )}
           </div>
@@ -888,16 +883,16 @@ export function LiveStreamingView() {
       {totalQueuedSessions > 0 && (
         <div style={{
           padding: '16px 20px',
-          background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(124, 58, 237, 0.08) 100%)',
-          borderRadius: '12px',
+          background: 'linear-gradient(135deg, rgba(181, 171, 252, 0.08) 0%, rgba(167, 159, 240, 0.08) 100%)',
+          borderRadius: 'var(--radius)',
           marginBottom: '16px',
-          border: '2px solid rgba(168, 85, 247, 0.2)',
+          border: '2px solid rgba(181, 171, 252, 0.2)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
         }}>
           <div>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: '#A855F7', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: '#b5abfc', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Annotation Queues
             </div>
             <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>
@@ -907,10 +902,10 @@ export function LiveStreamingView() {
           <button
             onClick={() => actions.setCurrentView('annotation-queue')}
             style={{
-              padding: '8px 20px', borderRadius: '8px',
-              background: 'rgba(168, 85, 247, 0.15)',
-              border: '1.5px solid rgba(168, 85, 247, 0.4)',
-              color: '#A855F7', fontSize: '13px', fontWeight: 600,
+              padding: '8px 20px', borderRadius: 'var(--radius)',
+              background: 'rgba(181, 171, 252, 0.15)',
+              border: '1.5px solid rgba(181, 171, 252, 0.4)',
+              color: '#b5abfc', fontSize: '13px', fontWeight: 600,
               cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap',
             }}
           >
@@ -922,10 +917,10 @@ export function LiveStreamingView() {
       {selectedGoldenId && (
         <div style={{
           padding: '24px',
-          background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%)',
-          borderRadius: '12px',
+          background: 'linear-gradient(135deg, rgba(167, 159, 240, 0.08) 0%, rgba(181, 171, 252, 0.08) 100%)',
+          borderRadius: 'var(--radius)',
           marginBottom: '24px',
-          border: '2px solid rgba(124, 58, 237, 0.2)',
+          border: '2px solid rgba(167, 159, 240, 0.2)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -934,7 +929,7 @@ export function LiveStreamingView() {
             <div style={{
               fontSize: '12px',
               fontWeight: 700,
-              color: '#7C3AED',
+              color: '#a79ff0',
               marginBottom: '8px',
               textTransform: 'uppercase',
               letterSpacing: '0.5px',
@@ -966,7 +961,7 @@ export function LiveStreamingView() {
             style={{
               height: '44px',
               padding: '0 32px',
-              borderRadius: '8px',
+              borderRadius: 'var(--radius)',
               background: isPreparingEvaluation ? 'var(--bg-surface)' : 'var(--accent-primary)',
               border: isPreparingEvaluation ? '1px solid var(--border-default)' : 'none',
               color: isPreparingEvaluation ? 'var(--text-secondary)' : '#fff',
@@ -975,7 +970,7 @@ export function LiveStreamingView() {
               cursor: isPreparingEvaluation ? 'not-allowed' : 'pointer',
               opacity: isPreparingEvaluation ? 0.4 : 1,
               transition: 'all 0.3s ease',
-              boxShadow: isPreparingEvaluation ? 'none' : '0 0 20px rgba(168, 85, 247, 0.3)',
+              boxShadow: isPreparingEvaluation ? 'none' : '0 0 20px rgba(181, 171, 252, 0.3)',
               whiteSpace: 'nowrap',
               display: 'flex',
               alignItems: 'center',
@@ -984,13 +979,13 @@ export function LiveStreamingView() {
             onMouseEnter={(e) => {
               if (!isPreparingEvaluation) {
                 e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 0 30px rgba(168, 85, 247, 0.5)';
+                e.currentTarget.style.boxShadow = '0 0 30px rgba(181, 171, 252, 0.5)';
               }
             }}
             onMouseLeave={(e) => {
               if (!isPreparingEvaluation) {
                 e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(168, 85, 247, 0.3)';
+                e.currentTarget.style.boxShadow = '0 0 20px rgba(181, 171, 252, 0.3)';
               }
             }}
           >
@@ -1005,7 +1000,7 @@ export function LiveStreamingView() {
           padding: '80px 40px',
           textAlign: 'center',
           background: 'var(--card-bg)',
-          borderRadius: '16px',
+          borderRadius: 'var(--radius)',
           border: '2px dashed var(--border)',
         }}>
           <div style={{
@@ -1040,7 +1035,7 @@ export function LiveStreamingView() {
               style={{
                 marginTop: '16px',
                 padding: '8px 16px',
-                borderRadius: '8px',
+                borderRadius: 'var(--radius)',
                 border: '1.5px solid var(--border)',
                 background: 'transparent',
                 color: 'var(--accent-primary)',
@@ -1058,17 +1053,17 @@ export function LiveStreamingView() {
           {activeLiveSessions.length > 0 && (
             <div>
               <h2 style={{
-                fontSize: '16px',
-                fontWeight: 700,
-                color: 'var(--text-primary)',
-                marginBottom: '12px',
+                fontSize: '12.5px',
+                fontWeight: 400,
+                color: 'var(--accent-cyan)',
+                marginBottom: '6px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
               }}>
-                Active Sessions ({activeLiveSessions.length})
+                live ({activeLiveSessions.length})
               </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '16px', marginBottom: '32px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px', marginBottom: '14px' }}>
                 {activeLiveSessions.map(session => (
                   <SessionCard
                     key={session.sessionId}
@@ -1090,17 +1085,17 @@ export function LiveStreamingView() {
           {completedSessions.length > 0 && (
             <div>
               <h2 style={{
-                fontSize: '16px',
-                fontWeight: 700,
-                color: 'var(--text-primary)',
-                marginBottom: '12px',
+                fontSize: '12.5px',
+                fontWeight: 400,
+                color: 'var(--accent-cyan)',
+                marginBottom: '6px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
               }}>
-                Completed Sessions ({completedSessions.length})
+                done ({completedSessions.length})
               </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px' }}>
                 {completedSessions.map(session => (
                   <SessionCard
                     key={session.sessionId}

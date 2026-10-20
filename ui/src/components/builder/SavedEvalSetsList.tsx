@@ -59,7 +59,7 @@ export const SavedEvalSetsList: React.FC = () => {
 
   return (
     <div css={containerStyle}>
-      <h3 css={headingStyle}>Saved EvalSets</h3>
+      <h3 css={headingStyle}>saved sets</h3>
       <ul css={listStyle}>
         {evalSets.map((es) => (
           <li key={es.evalSetId} css={itemStyle} onClick={() => handleOpen(es.evalSetId)}>
@@ -82,18 +82,16 @@ export const SavedEvalSetsList: React.FC = () => {
 };
 
 const containerStyle = css`
-  max-width: 600px;
+  max-width: 760px;
   width: 100%;
-  margin-top: 32px;
+  margin-top: 16px;
 `;
 
 const headingStyle = css`
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-secondary);
-  margin: 0 0 12px 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--accent-cyan);
+  margin: 0 0 6px 0;
 `;
 
 const listStyle = css`
@@ -102,16 +100,16 @@ const listStyle = css`
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 `;
 
 const itemStyle = css`
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 10px;
+  padding: 6px 10px;
   border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--bg-surface);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -131,7 +129,7 @@ const itemTextStyle = css`
 `;
 
 const itemNameStyle = css`
-  font-size: 0.9375rem;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
@@ -140,8 +138,8 @@ const itemNameStyle = css`
 `;
 
 const itemMetaStyle = css`
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: 11.5px;
+  color: var(--text-muted);
 `;
 
 const spinStyle = css`

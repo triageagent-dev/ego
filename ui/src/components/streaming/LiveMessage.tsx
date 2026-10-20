@@ -62,7 +62,7 @@ interface UserMessageProps {
 }
 
 export function UserMessage({ text }: UserMessageProps) {
-  return <MessageBlock label="User" color="#7C3AED" text={text} />;
+  return <MessageBlock label="User" color="#a79ff0" text={text} />;
 }
 
 interface ToolCallMessageProps {
@@ -93,7 +93,7 @@ export function ToolCallMessage({ name, args, latencyMs, resultBytes }: ToolCall
     }}>
       <div style={{
         fontSize: '12px',
-        color: '#A855F7',
+        color: '#b5abfc',
         fontFamily: 'monospace',
         fontWeight: 500,
       }}>

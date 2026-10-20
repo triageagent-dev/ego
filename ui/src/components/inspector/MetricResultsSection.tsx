@@ -134,7 +134,7 @@ function getStatusIcon(status: string) {
 
 const containerStyles = css`
   background: var(--bg-elevated);
-  border-radius: 6px;
+  border-radius: var(--radius);
   border: 1px solid var(--border-default);
   padding: 16px;
   margin-top: 16px;
@@ -168,7 +168,7 @@ const metricsListStyles = css`
 
 const metricItemStyles = (statusColor: string) => css`
   background: var(--bg-primary);
-  border-radius: 4px;
+  border-radius: var(--radius);
   border-left: 3px solid ${statusColor};
   padding: 12px;
   transition: all 0.2s ease;
@@ -247,7 +247,7 @@ const invocationScoreStyles = css`
   color: var(--text-primary);
   background: var(--bg-elevated);
   padding: 4px 8px;
-  border-radius: 3px;
+  border-radius: var(--radius);
 `;
 
 const errorMessageStyles = css`
@@ -259,7 +259,7 @@ const errorMessageStyles = css`
   margin-top: 8px;
   padding: 8px;
   background: rgba(255, 87, 87, 0.1);
-  border-radius: 4px;
+  border-radius: var(--radius);
 
   svg {
     flex-shrink: 0;

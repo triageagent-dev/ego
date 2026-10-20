@@ -414,7 +414,7 @@ const thresholdBadgeStyles = css`
   font-family: var(--font-mono);
   background: var(--bg-elevated);
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius);
   border: 1px solid var(--border-default);
 `;
 
@@ -426,7 +426,7 @@ const metricsListStyles = css`
 
 const metricCardStyles = (borderColor: string) => css`
   background: var(--bg-elevated);
-  border-radius: 8px;
+  border-radius: var(--radius);
   border: 1px solid var(--border-default);
   overflow: hidden;
   transition: all 0.2s ease;
@@ -484,7 +484,7 @@ const statusBadgeStyles = (color: string) => css`
   padding: 4px 12px;
   background: ${color}22;
   border: 1px solid ${color};
-  border-radius: 12px;
+  border-radius: var(--radius);
   color: ${color};
   font-size: 0.75rem;
   font-weight: 600;
@@ -532,7 +532,7 @@ const toolItemStyles = css`
   color: var(--text-primary);
   padding: 6px 10px;
   background: var(--bg-primary);
-  border-radius: 4px;
+  border-radius: var(--radius);
   border-left: 3px solid var(--accent-lime);
 `;
 
@@ -541,7 +541,7 @@ const textContentStyles = css`
   word-wrap: break-word;
   padding: 8px;
   background: var(--bg-primary);
-  border-radius: 4px;
+  border-radius: var(--radius);
   font-size: 0.813rem;
   line-height: 1.5;
 `;
@@ -579,7 +579,7 @@ const errorMessageStyles = css`
   margin: 12px 16px;
   padding: 8px;
   background: rgba(255, 87, 87, 0.1);
-  border-radius: 4px;
+  border-radius: var(--radius);
 
   svg {
     flex-shrink: 0;
@@ -596,7 +596,7 @@ const singleInvocationDetailStyles = css`
   margin: 0 16px 12px;
   padding: 8px;
   background: var(--bg-primary);
-  border-radius: 4px;
+  border-radius: var(--radius);
 `;
 
 const perInvocationScoresStyles = css`
@@ -648,7 +648,7 @@ const invocationDetailStyles = css`
   margin-top: 6px;
   padding: 8px;
   background: var(--bg-primary);
-  border-radius: 4px;
+  border-radius: var(--radius);
 `;
 
 const miniComparisonGridStyles = css`
@@ -672,7 +672,7 @@ const miniToolItemStyles = css`
   color: var(--text-primary);
   padding: 2px 6px;
   background: var(--bg-elevated);
-  border-radius: 3px;
+  border-radius: var(--radius);
   margin-bottom: 2px;
 `;
 
@@ -698,7 +698,7 @@ const miniArgsStyles = css`
   margin: 4px 0 0;
   padding: 4px 6px;
   background: var(--bg-elevated);
-  border-radius: 2px;
+  border-radius: var(--radius);
   overflow-x: auto;
   line-height: 1.4;
 `;
@@ -707,7 +707,7 @@ const diffHintStyles = css`
   margin-top: 6px;
   padding: 4px 8px;
   background: rgba(255, 87, 87, 0.1);
-  border-radius: 3px;
+  border-radius: var(--radius);
   font-size: 0.688rem;
   color: var(--status-failure);
   font-style: italic;

@@ -16,31 +16,29 @@ const selectorStyle = css`
   height: 100%;
 
   .metric-categories {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 10px;
+    align-items: start;
   }
 
   .metric-category {
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 10px;
   }
 
   .category-title {
-    color: var(--accent-primary);
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    margin-bottom: 10px;
-    letter-spacing: 0.5px;
+    color: var(--accent-magenta);
+    font-size: 11.5px;
+    text-transform: lowercase;
+    margin-bottom: 6px;
   }
 
   .metric-list {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
   }
 
   .metric-item {
@@ -85,7 +83,7 @@ const selectorStyle = css`
   .metric-badge {
     font-size: 10px;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius);
     font-weight: 500;
     line-height: 1.4;
   }
@@ -97,15 +95,15 @@ const selectorStyle = css`
   }
 
   .badge-llm {
-    background-color: rgba(168, 85, 247, 0.1);
+    background-color: rgba(181, 171, 252, 0.1);
     color: var(--accent-primary);
-    border: 1px solid rgba(168, 85, 247, 0.3);
+    border: 1px solid rgba(181, 171, 252, 0.3);
   }
 
   .badge-gcp {
-    background-color: rgba(124, 58, 237, 0.1);
+    background-color: rgba(167, 159, 240, 0.1);
     color: #60A5FA;
-    border: 1px solid rgba(124, 58, 237, 0.3);
+    border: 1px solid rgba(167, 159, 240, 0.3);
   }
 
   .badge-rubrics {
