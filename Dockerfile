@@ -37,7 +37,8 @@ FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 COPY --from=build /ego /usr/local/bin/ego
 
-EXPOSE 8001 4318
+USER 65532:65532
+EXPOSE 8001 4317 4318 9090
 
 ENTRYPOINT ["ego"]
 CMD ["serve", "--addr", ":8001", "--otlp-addr", ":4318", "--otlp-grpc-addr", ":4317", "--health-addr", ":9090"]
