@@ -3,7 +3,7 @@ import { Button, Select, Slider } from 'antd';
 import { css } from '@emotion/react';
 import { Play, Pencil } from 'lucide-react';
 import { FileDropZone } from './FileDropZone';
-import { MetricSelector } from './MetricSelector';
+import { MetricGroup, useMetricGroups } from './MetricSelector';
 import { EvalSetEditorDrawer } from './EvalSetEditorDrawer';
 import { TraceEditorDrawer } from './TraceEditorDrawer';
 import { useTraceContext } from '../../context/TraceContext';
@@ -90,6 +90,15 @@ const uploadViewStyle = css`
 
 // The page is a list and its details, as the sessions page is: each step of an evaluation is a card on the left with
 // what it holds, the open one shows its controls on the right.
+// The traces and the golden set share one details panel, one under the other.
+const boxStyle = css`
+  & + & {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-default);
+  }
+`;
+
 const splitStyle = css`
   display: flex;
   align-items: flex-start;
@@ -136,11 +145,6 @@ const cardTitleStyle = css`
   color: var(--accent-cyan);
   font-size: 13px;
   text-transform: lowercase;
-`;
-
-const optionalStyle = css`
-  color: var(--text-muted);
-  font-size: 11px;
 `;
 
 const chipsStyle = css`
@@ -238,7 +242,9 @@ const noteStyle = css`
   font-size: 11px;
 `;
 
-type Section = 'traces' | 'golden' | 'metrics' | 'settings';
+// The open card: the sources (traces and golden set), a metric category's name, or the settings.
+const SOURCES = 'sources';
+const SETTINGS = 'settings';
 
 const JUDGE_MODELS = [
   { value: 'gemini-2.5-flash', provider: 'google' },
@@ -251,7 +257,9 @@ type JudgeModelProvider = typeof JUDGE_MODELS[number]['provider'];
 
 export const UploadView: React.FC = () => {
   const { state, actions } = useTraceContext();
-  const [section, setSection] = useState<Section>('traces');
+  const groups = useMetricGroups();
+  const [picked, setPicked] = useState('');
+  const section = picked || SOURCES;
   const [evalSetDrawerOpen, setEvalSetDrawerOpen] = useState(false);
   const [traceEditorIndex, setTraceEditorIndex] = useState<number | null>(null);
 
@@ -262,13 +270,12 @@ export const UploadView: React.FC = () => {
     !state.isLoadingMetadata;
 
   const traceCount = state.traceFiles.length;
-  const metricCount = state.selectedEvaluatorNames.length;
 
-  const card = (id: Section, title: string, extra: React.ReactNode, chips: React.ReactNode) => (
+  const card = (id: string, title: string, extra: React.ReactNode, chips: React.ReactNode) => (
     <button
       key={id}
       css={[cardStyle, section === id && cardOpenStyle]}
-      onClick={() => setSection(id)}
+      onClick={() => setPicked(id)}
       aria-pressed={section === id}
     >
       <span css={cardTitleStyle}>{title}{extra}</span>
@@ -292,10 +299,8 @@ export const UploadView: React.FC = () => {
     </>
   );
 
-  const detailsOf = (id: Section) => {
-    if (id === 'traces') {
-      return (
-        <>
+  const tracesBox = (
+    <section css={boxStyle}>
           <h2 css={detailsTitleStyle}>traces</h2>
           <p css={detailsHintStyle}>
             {fromSessions ? 'Loaded from the sessions you picked.' : 'The traces to score. Click a file to edit it.'}
@@ -323,12 +328,11 @@ export const UploadView: React.FC = () => {
               {traceStatus}
             </div>
           )}
-        </>
-      );
-    }
-    if (id === 'golden') {
-      return (
-        <>
+        </section>
+  );
+
+  const goldenBox = (
+    <section css={boxStyle}>
           <h2 css={detailsTitleStyle}>golden set · optional</h2>
           <p css={detailsHintStyle}>A reference conversation the traces are compared with.</p>
           {!fromSessions && (
@@ -349,18 +353,21 @@ export const UploadView: React.FC = () => {
           ) : (
             fromSessions && <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>No golden eval set loaded.</div>
           )}
-        </>
-      );
-    }
-    if (id === 'metrics') {
+        </section>
+  );
+
+  const detailsOf = (id: string) => {
+    if (id === SOURCES) return <>{tracesBox}{goldenBox}</>;
+    const group = groups.find(([name]) => name === id);
+    if (group) {
       return (
         <>
-          <h2 css={detailsTitleStyle}>metrics</h2>
-          <p css={detailsHintStyle}>What each trace is scored on.</p>
-          <MetricSelector
+          <h2 css={detailsTitleStyle}>{group[0]}</h2>
+          <p css={detailsHintStyle}>Tick the metrics each trace is scored on.</p>
+          <MetricGroup
+            metrics={group[1]}
             selectedEvaluatorNames={state.selectedEvaluatorNames}
             onToggleEvaluatorName={actions.toggleEvaluatorName}
-            loadFromAPI={true}
           />
         </>
       );
@@ -456,43 +463,39 @@ export const UploadView: React.FC = () => {
       <div css={splitStyle}>
         <div css={listStyle}>
           {card(
-            'traces',
-            'traces',
+            SOURCES,
+            'traces & golden set',
             null,
-            traceCount === 0
-              ? <span css={[chipStyle, chipMutedStyle]}>none yet</span>
-              : (
-                <>
-                  <span css={chipStyle}>{traceCount} file{traceCount === 1 ? '' : 's'}</span>
-                  {state.isLoadingMetadata
-                    ? <span css={[chipStyle, chipMutedStyle]}>reading…</span>
-                    : state.traceMetadata.size > 0 && <span css={[chipStyle, chipGoodStyle]}>{state.traceMetadata.size} ready</span>}
-                </>
-              ),
+            <>
+              {traceCount === 0
+                ? <span css={[chipStyle, chipMutedStyle]}>no traces yet</span>
+                : (
+                  <>
+                    <span css={chipStyle}>{traceCount} trace file{traceCount === 1 ? '' : 's'}</span>
+                    {state.isLoadingMetadata
+                      ? <span css={[chipStyle, chipMutedStyle]}>reading…</span>
+                      : state.traceMetadata.size > 0 && <span css={[chipStyle, chipGoodStyle]}>{state.traceMetadata.size} ready</span>}
+                  </>
+                )}
+              <span css={[chipStyle, !state.evalSetFile && chipMutedStyle]}>
+                {state.evalSetFile ? `golden: ${state.evalSetFile.name}` : 'no golden set'}
+              </span>
+            </>,
           )}
+          {groups.map(([name, metrics]) => {
+            const on = metrics.filter((m) => state.selectedEvaluatorNames.includes(m.name));
+            return card(
+              name,
+              name,
+              null,
+              <>
+                <span css={[chipStyle, on.length > 0 && chipGoodStyle]}>{on.length} of {metrics.length}</span>
+                {on.length > 0 && <span css={[chipStyle, chipMutedStyle]}>{on.map((m) => m.name).join(' · ')}</span>}
+              </>,
+            );
+          })}
           {card(
-            'golden',
-            'golden set',
-            <span css={optionalStyle}>optional</span>,
-            state.evalSetFile
-              ? <span css={chipStyle}>{state.evalSetFile.name}</span>
-              : <span css={[chipStyle, chipMutedStyle]}>none</span>,
-          )}
-          {card(
-            'metrics',
-            'metrics',
-            null,
-            metricCount === 0
-              ? <span css={[chipStyle, chipMutedStyle]}>pick at least one</span>
-              : (
-                <>
-                  <span css={chipStyle}>{metricCount} selected</span>
-                  <span css={[chipStyle, chipMutedStyle]}>{state.selectedEvaluatorNames.join(' · ')}</span>
-                </>
-              ),
-          )}
-          {card(
-            'settings',
+            SETTINGS,
             'settings',
             null,
             <>

@@ -4,41 +4,11 @@ import { css } from '@emotion/react';
 import { AVAILABLE_METRICS, type MetricMetadata } from '../../lib/types';
 import { listMetrics } from '../../api/client';
 
-interface MetricSelectorProps {
-  selectedEvaluatorNames: string[];
-  onToggleEvaluatorName: (evaluatorName: string) => void;
-  loadFromAPI?: boolean;
-}
-
-const selectorStyle = css`
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-
-  .metric-categories {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-    gap: 10px;
-    align-items: stretch;
-  }
-
-  .metric-category {
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 8px 10px;
-  }
-
-  .category-title {
-    color: var(--accent-magenta);
-    font-size: 11.5px;
-    text-transform: lowercase;
-    margin-bottom: 6px;
-  }
-
+export const metricStyle = css`
   .metric-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 12px;
   }
 
   .metric-item {
@@ -64,13 +34,9 @@ const selectorStyle = css`
     color: var(--text-secondary);
     font-size: 11px;
     margin-left: 24px;
-    line-height: 1.3;
+    line-height: 1.4;
     overflow-wrap: break-word;
     word-break: break-word;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
   }
 
   .metric-badges {
@@ -144,13 +110,9 @@ const selectorStyle = css`
 
 let cachedMetrics: MetricMetadata[] | null = null;
 
-export const MetricSelector: React.FC<MetricSelectorProps> = ({
-  selectedEvaluatorNames,
-  onToggleEvaluatorName,
-  loadFromAPI = false,
-}) => {
+/** The metrics grouped by category, in the order the server lists them; loads them once per page view. */
+export function useMetricGroups(loadFromAPI = true): Array<[category: string, metrics: MetricMetadata[]]> {
   const [metrics, setMetrics] = useState<MetricMetadata[]>(cachedMetrics ?? AVAILABLE_METRICS);
-  const hasCaveatedMetrics = metrics.some((m) => m.requiresRubrics === true || m.working === false);
 
   useEffect(() => {
     if (!loadFromAPI || cachedMetrics) return;
@@ -168,84 +130,58 @@ export const MetricSelector: React.FC<MetricSelectorProps> = ({
     return () => { cancelled = true; };
   }, [loadFromAPI]);
 
-  const categorizedMetrics = metrics.reduce(
-    (acc, metric) => {
-      if (!acc[metric.category]) {
-        acc[metric.category] = [];
-      }
-      acc[metric.category].push(metric);
-      return acc;
-    },
-    {} as Record<string, MetricMetadata[]>
-  );
+  const groups = new Map<string, MetricMetadata[]>();
+  for (const m of metrics) groups.set(m.category, [...(groups.get(m.category) ?? []), m]);
+  return Array.from(groups.entries());
+}
 
-  const handleSelectAll = () => {
-    metrics.forEach((metric) => {
-      if (!selectedEvaluatorNames.includes(metric.name)) {
-        onToggleEvaluatorName(metric.name);
-      }
-    });
-  };
+interface MetricGroupProps {
+  metrics: MetricMetadata[];
+  selectedEvaluatorNames: string[];
+  onToggleEvaluatorName: (evaluatorName: string) => void;
+}
 
-  const handleClearAll = () => {
-    selectedEvaluatorNames.forEach((metric) => {
-      onToggleEvaluatorName(metric);
+/** One category's metrics with their badges and descriptions, and select-all / clear for just that category. */
+export const MetricGroup: React.FC<MetricGroupProps> = ({ metrics, selectedEvaluatorNames, onToggleEvaluatorName }) => {
+  const caveated = metrics.some((m) => m.requiresRubrics === true || m.working === false);
+  const setGroup = (on: boolean) => {
+    metrics.forEach((m) => {
+      if (selectedEvaluatorNames.includes(m.name) !== on) onToggleEvaluatorName(m.name);
     });
   };
 
   return (
-    <div css={selectorStyle}>
-      <div className="metric-categories">
-        {Object.entries(categorizedMetrics).map(([category, metrics]) => (
-          <div key={category} className="metric-category">
-            <div className="category-title">{category}</div>
-            <div className="metric-list">
-              {metrics.map((metric) => (
-                <div key={metric.name} className="metric-item">
-                  <div className="metric-row">
-                    <Checkbox
-                      checked={selectedEvaluatorNames.includes(metric.name)}
-                      onChange={() => onToggleEvaluatorName(metric.name)}
-                    >
-                      <span className="metric-name">{metric.name}</span>
-                    </Checkbox>
-                    <div className="metric-badges">
-                      {metric.requiresEvalSet && (
-                        <span className="metric-badge badge-eval-set">Requires Eval Set</span>
-                      )}
-                      {metric.requiresLLM && (
-                        <span className="metric-badge badge-llm">Uses LLM</span>
-                      )}
-                      {metric.requiresGCP && (
-                        <span className="metric-badge badge-gcp">Requires GCP</span>
-                      )}
-                      {metric.requiresRubrics && (
-                        <span className="metric-badge badge-rubrics">Requires Rubrics</span>
-                      )}
-                      {metric.working === false && (
-                        <span className="metric-badge badge-incomplete">Incomplete</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="metric-description" title={metric.description}>{metric.description}</div>
-                </div>
-              ))}
+    <div css={metricStyle}>
+      <div className="metric-list">
+        {metrics.map((metric) => (
+          <div key={metric.name} className="metric-item">
+            <div className="metric-row">
+              <Checkbox
+                checked={selectedEvaluatorNames.includes(metric.name)}
+                onChange={() => onToggleEvaluatorName(metric.name)}
+              >
+                <span className="metric-name">{metric.name}</span>
+              </Checkbox>
+              <div className="metric-badges">
+                {metric.requiresEvalSet && <span className="metric-badge badge-eval-set">Requires Eval Set</span>}
+                {metric.requiresLLM && <span className="metric-badge badge-llm">Uses LLM</span>}
+                {metric.requiresGCP && <span className="metric-badge badge-gcp">Requires GCP</span>}
+                {metric.requiresRubrics && <span className="metric-badge badge-rubrics">Requires Rubrics</span>}
+                {metric.working === false && <span className="metric-badge badge-incomplete">Incomplete</span>}
+              </div>
             </div>
+            <div className="metric-description">{metric.description}</div>
           </div>
         ))}
       </div>
 
       <div className="selector-actions">
-        <Button size="small" onClick={handleSelectAll}>
-          Select All
-        </Button>
-        <Button size="small" onClick={handleClearAll}>
-          Clear All
-        </Button>
+        <Button size="small" onClick={() => setGroup(true)}>Select all</Button>
+        <Button size="small" onClick={() => setGroup(false)}>Clear</Button>
       </div>
-      {hasCaveatedMetrics && (
+      {caveated && (
         <div className="selector-note">
-          Some evaluators require rubric configuration or are work-in-progress; see badges.
+          Some evaluators here require rubric configuration or are work-in-progress; see badges.
         </div>
       )}
     </div>
