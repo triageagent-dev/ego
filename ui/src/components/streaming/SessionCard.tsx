@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { Modal } from 'antd';
+import { EyeOff } from 'lucide-react';
 import type { ConversationElement } from './LiveConversationPanel';
 import { formatSpanDuration, formatStarted, modelsLabel } from '../../lib/trace-helpers';
 import { tenantName, useTenantNames } from '../../lib/tenant';
@@ -365,49 +365,43 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
               e.stopPropagation();
               onSelect();
             }}
+            title={isSelected ? 'The golden session: click to unset' : 'Set as the golden session'}
+            aria-pressed={isSelected}
             style={{
-              padding: '2px 10px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '5px 8px',
               borderRadius: 'var(--radius)',
-              background: isSelected ? '#a79ff0' : 'transparent',
-              border: isSelected ? 'none' : '1px solid var(--border)',
-              color: isSelected ? '#14161f' : 'var(--text-primary)',
-              fontSize: '12px',
-              fontWeight: 500,
+              background: isSelected ? 'rgba(167, 159, 240, 0.18)' : 'transparent',
+              border: `1px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border)'}`,
               cursor: 'pointer',
               transition: 'all 0.2s',
-              whiteSpace: 'nowrap',
             }}
           >
-            {isSelected ? 'golden ✓' : 'set golden'}
+            <img src="/favicon.svg" alt="" width={16} height={16} style={{ display: 'block', opacity: isSelected ? 1 : 0.4 }} />
           </button>
 
           {session.status === 'complete' && onRemove && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                Modal.confirm({
-                  title: 'Remove this session?',
-                  content: 'It is hidden from this view only. The stored session is not deleted and comes back after a reload.',
-                  okText: 'Remove',
-                  okType: 'danger',
-                  onOk: onRemove,
-                });
+                onRemove();
               }}
-              title="Remove session"
+              title="Hide this session (it is not deleted and comes back after a reload)"
+              aria-label="Hide session"
               style={{
-                padding: '2px 8px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '5px 8px',
                 borderRadius: 'var(--radius)',
                 background: 'transparent',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                color: '#ef4444',
-                fontSize: '13px',
-                fontWeight: 600,
+                border: '1px solid var(--border)',
+                color: 'var(--text-tertiary)',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                lineHeight: 1,
               }}
             >
-              ×
+              <EyeOff size={15} />
             </button>
           )}
 
