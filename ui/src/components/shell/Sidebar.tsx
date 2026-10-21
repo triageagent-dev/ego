@@ -3,6 +3,7 @@ import { css } from '@emotion/react';
 import { Radio, Play, FileJson, History, Coins, Gauge, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useTraceContext } from '../../context/TraceContext';
 import type { ViewType } from '../../lib/types';
+import { SidebarFailed } from './SidebarFailed';
 import { SidebarFlags } from './SidebarFlags';
 import { SidebarUsage } from './SidebarUsage';
 import { TABS, tabForView } from './routes';
@@ -67,6 +68,7 @@ export const Sidebar: React.FC = () => {
       </div>
 
       <SidebarFlags collapsed={collapsed} />
+      <SidebarFailed collapsed={collapsed} />
 
       <SidebarUsage collapsed={collapsed} />
 

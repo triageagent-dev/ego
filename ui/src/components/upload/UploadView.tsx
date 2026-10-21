@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Segmented } from 'antd';
 import { css } from '@emotion/react';
-import { Play, Pencil, Settings } from 'lucide-react';
+import { Play, Pencil } from 'lucide-react';
 import { NewGoldenForm } from './NewGoldenForm';
-import { EvalSettingsForm } from '../settings/EvalSettingsForm';
 import { MetricGroup, useMetricGroups } from './MetricSelector';
 import { SessionPicker } from './SessionPicker';
 import { formatStarted } from '../../lib/trace-helpers';
@@ -223,29 +222,6 @@ const goldenMetaStyle = css`
   font-size: 11px;
 `;
 
-const settingsButtonStyle = css`
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 7px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover {
-    color: var(--text-primary);
-    background: var(--bg-elevated);
-  }
-`;
-
-const settingsButtonOnStyle = css`
-  color: var(--accent-primary);
-  border-color: var(--accent-primary);
-  background: rgba(167, 159, 240, 0.12);
-`;
-
 const cardOpenStyle = css`
   background: var(--bg-elevated);
   border-color: var(--accent-primary);
@@ -367,9 +343,8 @@ const noteStyle = css`
   font-size: 11px;
 `;
 
-// The open card: the sources (traces and golden set), a metric category's name, or the settings.
+// The open card: the sources (traces and golden set) or a metric category's name.
 const SOURCES = 'sources';
-const SETTINGS = 'settings';
 
 
 export const UploadView: React.FC = () => {
@@ -386,8 +361,6 @@ export const UploadView: React.FC = () => {
   }, []);
   const [picked, setPicked] = useState('');
   const section = picked || SOURCES;
-  // The settings are not a step of the list: they open from the icon in the header, over the details.
-  const [settingsOpen, setSettingsOpen] = useState(false);
   // Where the golden set comes from: one the server keeps, a session of its own, or one written here.
   const [goldenFrom, setGoldenFrom] = useState<'sets' | 'session' | 'new'>('sets');
   const [evalSets, setEvalSets] = useState<EvalSetSummary[] | null>(null);
@@ -434,12 +407,9 @@ export const UploadView: React.FC = () => {
   const card = (id: string, title: string, extra: React.ReactNode, chips: React.ReactNode, desc?: React.ReactNode, side?: React.ReactNode) => (
     <button
       key={id}
-      css={[cardStyle, !settingsOpen && section === id && cardOpenStyle]}
-      onClick={() => {
-        setPicked(id);
-        setSettingsOpen(false);
-      }}
-      aria-pressed={!settingsOpen && section === id}
+      css={[cardStyle, section === id && cardOpenStyle]}
+      onClick={() => setPicked(id)}
+      aria-pressed={section === id}
     >
       <span css={cardMainStyle} style={side ? undefined : { gridColumn: '1 / -1' }}>
         <span css={cardTitleStyle}>{title}{extra}</span>
@@ -576,14 +546,7 @@ export const UploadView: React.FC = () => {
         </>
       );
     }
-    return (
-      <>
-        <h2 css={detailsTitleStyle}>settings</h2>
-        <p css={detailsHintStyle}>The judge that scores and the score a trace needs to pass.</p>
-
-        <EvalSettingsForm showTrajectory={state.selectedEvaluatorNames.includes('tool_trajectory_avg_score')} />
-      </>
-    );
+    return null;
   };
 
   return (
@@ -593,15 +556,6 @@ export const UploadView: React.FC = () => {
         <p css={subtitleStyle}>
           traces + a golden set, scored by the metrics you pick
         </p>
-        <button
-          css={[settingsButtonStyle, settingsOpen && settingsButtonOnStyle]}
-          onClick={() => setSettingsOpen((o) => !o)}
-          title={`Settings: ${state.judgeModel} · pass ≥ ${state.threshold}`}
-          aria-label="Settings"
-          aria-pressed={settingsOpen}
-        >
-          <Settings size={15} />
-        </button>
       </PageTitle>
 
       {state.errors.length > 0 && (
@@ -698,7 +652,7 @@ export const UploadView: React.FC = () => {
           </div>
         </div>
 
-        <aside css={detailsStyle}>{detailsOf(settingsOpen ? SETTINGS : section)}</aside>
+        <aside css={detailsStyle}>{detailsOf(section)}</aside>
       </div>
 
       {state.evalSetFile && (

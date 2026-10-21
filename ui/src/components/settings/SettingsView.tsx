@@ -7,7 +7,7 @@ import type { LimitItem } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
 import { ModeSwitch } from '../shell/ModeSwitch';
 import { VersionLink } from '../shell/VersionLink';
-import { cardStyle, cardTitleStyle, errorStyle, pageStyle, subtitleStyle, titleStyle } from '../ui/page';
+import { errorStyle, pageStyle, subtitleStyle, titleStyle } from '../ui/page';
 import { EvalSettingsForm } from './EvalSettingsForm';
 
 // 1,234,567 -> 1.2M
@@ -74,22 +74,22 @@ export const SettingsView: React.FC = () => {
 
       <div css={columnsStyle}>
         <div>
-          <section css={cardStyle}>
-            <h2 css={cardTitleStyle}>evaluation</h2>
+          <section css={sectionStyle}>
+            <h2 css={sectionTitleStyle}>evaluation</h2>
             <p css={hintStyle}>Used by every evaluation you start; kept in this browser.</p>
             <EvalSettingsForm showTrajectory />
           </section>
 
-          <section css={cardStyle}>
-            <h2 css={cardTitleStyle}>interface</h2>
+          <section css={sectionStyle}>
+            <h2 css={sectionTitleStyle}>interface</h2>
             <div css={lineStyle}>
               <span css={rowLabelStyle}>Style</span>
               <ModeSwitch />
             </div>
           </section>
 
-          <section css={cardStyle}>
-            <h2 css={cardTitleStyle}>account</h2>
+          <section css={sectionStyle}>
+            <h2 css={sectionTitleStyle}>account</h2>
             <div css={lineStyle}>
               <span css={rowLabelStyle}>Signed in as</span>
               <span css={rowValueStyle}>{me?.authenticated ? me.username : 'no sign-in on this server'}</span>
@@ -108,8 +108,8 @@ export const SettingsView: React.FC = () => {
         </div>
 
         <div>
-          <section css={cardStyle}>
-            <h2 css={cardTitleStyle}>caps and limits · read only</h2>
+          <section css={sectionStyle}>
+            <h2 css={sectionTitleStyle}>caps and limits · read only</h2>
             <p css={hintStyle}>Set when the server starts or in its online configuration; not changed here.</p>
             {error && <div css={errorStyle}>{error}</div>}
             {limits === null && !error && <div css={noteStyle}>Loading…</div>}
@@ -125,6 +125,23 @@ export const SettingsView: React.FC = () => {
     </div>
   );
 };
+
+// A section is a plain box with its heading inside, above the content.
+const sectionStyle = css`
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+`;
+
+const sectionTitleStyle = css`
+  margin: 0 0 8px;
+  color: var(--accent-cyan);
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: lowercase;
+`;
 
 const headerRowStyle = css`
   margin-bottom: 4px;
