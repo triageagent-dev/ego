@@ -2,10 +2,10 @@ import { useSyncExternalStore } from 'react';
 import { store, stored } from './stored';
 
 // Sessions the reader flagged for quick access, shown in the sidebar. Kept per browser, with the label each had when
-// it was flagged so the sidebar can name it without loading it. A sixth flag replaces the oldest.
+// it was flagged so the sidebar can name it without loading it. An eighth flag replaces the oldest.
 const KEY = 'ego.flagged';
 const CHANGED = 'ego:flagged';
-export const MAX_FLAGGED = 5;
+export const MAX_FLAGGED = 7;
 
 export interface Flag {
   id: string;

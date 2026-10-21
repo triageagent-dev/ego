@@ -392,7 +392,7 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
               e.stopPropagation();
               toggleFlag(session.sessionId, flagLabel);
             }}
-            title={flagged ? 'Flagged: click to remove it from the sidebar' : 'Flag this session for quick access in the sidebar (up to 5)'}
+            title={flagged ? 'Flagged: click to remove it from the sidebar' : 'Flag this session for quick access in the sidebar (up to 7)'}
             aria-label={flagged ? 'Remove the flag' : 'Flag session'}
             aria-pressed={flagged}
             style={{
