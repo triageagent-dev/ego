@@ -35,17 +35,19 @@ export const LabelButtons: React.FC<LabelButtonsProps> = ({ sessionId, metric, l
 
   return (
     <span css={groupStyle} onClick={e => e.stopPropagation()}>
-      <button css={[btnStyle, latest?.verdict === 'agree' && onStyle]} disabled={busy}
-        onClick={() => label('agree')} title="Agree: the judge's score is right" aria-label="agree">
-        <ThumbIcon up />
-      </button>
-      <button css={[btnStyle, latest?.verdict === 'disagree' && onStyle]} disabled={busy}
-        onClick={() => label('disagree')} title="Disagree: the judge's score is wrong" aria-label="disagree">
-        <ThumbIcon />
-      </button>
+      <span css={thumbsStyle}>
+        <button css={[btnStyle, latest?.verdict === 'agree' && onStyle]} disabled={busy}
+          onClick={() => label('agree')} title="Agree: the judge's score is right" aria-label="agree">
+          <ThumbIcon up />
+        </button>
+        <button css={[btnStyle, latest?.verdict === 'disagree' && onStyle]} disabled={busy}
+          onClick={() => label('disagree')} title="Disagree: the judge's score is wrong" aria-label="disagree">
+          <ThumbIcon />
+        </button>
+      </span>
       <input css={noteStyle} placeholder="note (optional)" maxLength={1000} value={note}
         onChange={e => setNote(e.target.value)} onKeyDown={e => e.stopPropagation()} />
-      {/* Always rendered: the row must fill all six grid cells, or the next row starts in the wrong column. */}
+      {/* Always rendered: the row must fill all five grid cells, or the next row starts in the wrong column. */}
       <span css={dimStyle}>
         {latest ? `${latest.by ? `${latest.by} ` : ''}${latest.verdict}d${latest.note ? `: ${latest.note}` : ''}` : null}
       </span>
@@ -119,17 +121,22 @@ const panelStyle = css`
   padding: 8px 0;
   margin-bottom: 8px;
   border-bottom: 1px solid var(--border);
-  font-size: 12px;
+  font-size: 12.5px;
   display: grid;
-  /* metric | score | agree | disagree | note | verdict */
-  grid-template-columns: max-content max-content max-content max-content minmax(160px, 420px) 1fr;
+  /* metric | score | thumbs | note | verdict */
+  grid-template-columns: max-content max-content max-content minmax(160px, 420px) 1fr;
   align-items: center;
   column-gap: 8px;
-  row-gap: 6px;
+  row-gap: 8px;
+`;
+
+const thumbsStyle = css`
+  display: inline-flex;
+  gap: 4px;
 `;
 
 const headStyle = css`
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-tertiary);
@@ -149,7 +156,8 @@ const metricStyle = css`
 const scoreStyle = css`
   font-family: var(--font-mono);
   color: var(--text-primary);
-  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 `;
 
 const btnStyle = css`
@@ -159,7 +167,7 @@ const btnStyle = css`
   background: transparent;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 11.5px;
   cursor: pointer;
   &:hover:not(:disabled) {
     color: var(--text-primary);
@@ -179,7 +187,7 @@ const noteStyle = css`
   border: 1px solid var(--border-default);
   background: transparent;
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 11.5px;
 `;
 
 const dimStyle = css`
