@@ -7,6 +7,8 @@ import react from '@vitejs/plugin-react'
 const backend = process.env.EGO_DEV_BACKEND ?? 'http://localhost:8001'
 
 export default defineConfig({
+  // The map ships beside the bundle (ego is open source), so a minified stack trace in production can be read.
+  build: { sourcemap: true },
   server: {
     proxy: {
       '/api': backend,
