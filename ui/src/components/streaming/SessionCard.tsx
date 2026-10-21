@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import type { ConversationElement } from './LiveConversationPanel';
 import { formatSpanDuration, formatStarted, modelsLabel } from '../../lib/trace-helpers';
 import { tenantName, useTenantNames } from '../../lib/tenant';
@@ -133,6 +133,18 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
   const modelLabel = modelsLabel(allModels);
   const agentLabel = session.agents?.join(' · ') ?? '';
   useTenantNames();
+  // Hiding is shown, not just done: the row turns red, then folds away, so it is clear which one went.
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [leaving, setLeaving] = useState<'' | 'mark' | 'fold'>('');
+  const hide = () => {
+    if (leaving || !onRemove) return;
+    setLeaving('mark');
+    setTimeout(() => {
+      if (rowRef.current) rowRef.current.style.height = `${rowRef.current.offsetHeight}px`;
+      requestAnimationFrame(() => setLeaving('fold'));
+    }, 220);
+    setTimeout(onRemove, 220 + 260);
+  };
   const tenantLabel = session.tenants?.map(tenantName).join(' · ') ?? '';
 
   const providerName = session.invocations?.[0]?.modelInfo?.provider || null;
@@ -149,14 +161,18 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
 
   return (
     <div
+      ref={rowRef}
       style={{
-        background: isOpen ? 'var(--bg-elevated)' : 'var(--card-bg)',
+        background: leaving ? 'rgba(239, 68, 68, 0.16)' : isOpen ? 'var(--bg-elevated)' : 'var(--card-bg)',
         borderRadius: 'var(--radius)',
-        border: isSelected ? '1px solid var(--accent-magenta)' : isOpen ? '1px solid var(--accent-primary)' : '1px solid var(--border-default)',
-        padding: '8px 12px',
+        border: leaving ? '1px solid #ef4444' : isSelected ? '1px solid var(--accent-magenta)' : isOpen ? '1px solid var(--accent-primary)' : '1px solid var(--border-default)',
+        padding: leaving === 'fold' ? '0 12px' : '8px 12px',
         minWidth: 0,
-        transition: 'all 0.2s',
+        transition: leaving === 'fold' ? 'height 0.26s ease, padding 0.26s ease, opacity 0.26s ease, transform 0.26s ease' : 'all 0.2s',
         boxShadow: 'none',
+        overflow: leaving ? 'hidden' : undefined,
+        pointerEvents: leaving ? 'none' : undefined,
+        ...(leaving === 'fold' ? { height: 0, opacity: 0, transform: 'translateX(24px)', borderWidth: 0 } : {}),
       }}
     >
       <div
@@ -392,7 +408,7 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onRemove();
+                hide();
               }}
               title="Hide this session (it is not deleted and comes back after a reload)"
               aria-label="Hide session"
