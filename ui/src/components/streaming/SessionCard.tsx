@@ -155,7 +155,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
         marginBottom: '0',
       }}>
         <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             {tenantLabel && (
               <span
                 title="tenant"
@@ -271,24 +271,19 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
                 {totalCacheCreation > 0 ? `${totalCacheCreation.toLocaleString()} created` : ''}
               </span>
             )}
+
+            {details.length > 0 && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', columnGap: '6px', fontSize: '12px', color: 'var(--text-tertiary)', marginLeft: '2px' }}>
+                {details.map((d, i) => (
+                  <Fragment key={d.key}>
+                    {i > 0 && <span aria-hidden>·</span>}
+                    <span style={d.error ? { color: '#ef4444', fontWeight: 600 } : { color: 'var(--text-secondary)' }}>{d.text}</span>
+                  </Fragment>
+                ))}
+              </span>
+            )}
           </div>
 
-          <p style={{
-            fontSize: '12px',
-            color: 'var(--text-tertiary)',
-            margin: 0,
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            columnGap: '6px',
-          }}>
-            {details.map((d, i) => (
-              <Fragment key={d.key}>
-                {i > 0 && <span aria-hidden>·</span>}
-                <span style={d.error ? { color: '#ef4444', fontWeight: 600 } : { color: 'var(--text-secondary)' }}>{d.text}</span>
-              </Fragment>
-            ))}
-          </p>
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
