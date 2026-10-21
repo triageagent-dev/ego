@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button, Select, Slider } from 'antd';
 import { css } from '@emotion/react';
 import { Play, Pencil } from 'lucide-react';
 import { FileDropZone } from './FileDropZone';
 import { MetricGroup, useMetricGroups } from './MetricSelector';
 import { SessionPicker } from './SessionPicker';
+import { ago, blurbFor, groupStats } from './metricInsights';
+import { listRuns } from '../../api/client';
+import type { Run } from '../../lib/types';
 import { SessionTraceFile } from '../../lib/sessionFiles';
 import { EvalSetEditorDrawer } from './EvalSetEditorDrawer';
 import { TraceEditorDrawer } from './TraceEditorDrawer';
@@ -108,7 +111,7 @@ const splitStyle = css`
 `;
 
 const listStyle = css`
-  flex: 0 0 380px;
+  flex: 0 0 540px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -116,9 +119,9 @@ const listStyle = css`
 `;
 
 const cardStyle = css`
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px 14px;
   padding: 8px 12px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
@@ -133,6 +136,41 @@ const cardStyle = css`
   &:hover {
     background: var(--bg-elevated);
   }
+`;
+
+const cardMainStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+`;
+
+// What the group is for and what past runs say about it, beside the metrics.
+const cardSideStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-default);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+`;
+
+const sideWhenStyle = css`
+  color: var(--text-muted);
+`;
+
+const sideWarnStyle = css`
+  color: #fb923c;
+`;
+
+const sideStatsStyle = css`
+  margin-top: auto;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
 `;
 
 const cardOpenStyle = css`
@@ -277,12 +315,23 @@ type JudgeModelProvider = typeof JUDGE_MODELS[number]['provider'];
 export const UploadView: React.FC = () => {
   const { state, actions } = useTraceContext();
   const groups = useMetricGroups();
+  // The finished runs, for what they already say about each metric group.
+  const [runs, setRuns] = useState<Run[]>([]);
+  useEffect(() => {
+    let active = true;
+    listRuns({ limit: 200 }).then((r) => active && setRuns(r)).catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
   const [picked, setPicked] = useState('');
   const section = picked || SOURCES;
   const [evalSetDrawerOpen, setEvalSetDrawerOpen] = useState(false);
   const [traceEditorIndex, setTraceEditorIndex] = useState<number | null>(null);
 
   const fromSessions = state.evaluationOrigin === 'streaming';
+  // How many metrics would start to work with a golden set.
+  const goldenMetrics = groups.reduce((n, [, ms]) => n + ms.filter((m) => m.requiresEvalSet).length, 0);
   const canRunEvaluation =
     state.traceFiles.length > 0 &&
     state.selectedEvaluatorNames.length > 0 &&
@@ -290,16 +339,19 @@ export const UploadView: React.FC = () => {
 
   const traceCount = state.traceFiles.length;
 
-  const card = (id: string, title: string, extra: React.ReactNode, chips: React.ReactNode, desc?: React.ReactNode) => (
+  const card = (id: string, title: string, extra: React.ReactNode, chips: React.ReactNode, desc?: React.ReactNode, side?: React.ReactNode) => (
     <button
       key={id}
       css={[cardStyle, section === id && cardOpenStyle]}
       onClick={() => setPicked(id)}
       aria-pressed={section === id}
     >
-      <span css={cardTitleStyle}>{title}{extra}</span>
-      <span css={chipsStyle}>{chips}</span>
-      {desc && <span css={descStyle}>{desc}</span>}
+      <span css={cardMainStyle} style={side ? undefined : { gridColumn: '1 / -1' }}>
+        <span css={cardTitleStyle}>{title}{extra}</span>
+        <span css={chipsStyle}>{chips}</span>
+        {desc && <span css={descStyle}>{desc}</span>}
+      </span>
+      {side && <span css={cardSideStyle}>{side}</span>}
     </button>
   );
 
@@ -505,11 +557,22 @@ export const UploadView: React.FC = () => {
                 {state.evalSetFile ? `golden: ${state.evalSetFile.name}` : 'no golden set'}
               </span>
             </>,
-            'The traces to score, and a golden conversation to compare them with if you have one.',
+            null,
+            <>
+              <span>The traces to score, and a golden conversation to compare them with.</span>
+              <span css={sideWhenStyle}>
+                {goldenMetrics > 0 && !state.evalSetFile
+                  ? `A golden set unlocks ${goldenMetrics} metric${goldenMetrics === 1 ? '' : 's'} that compare with one.`
+                  : 'Score a few dozen recent sessions rather than one, so a single odd run does not decide.'}
+              </span>
+            </>,
           )}
           {groups.map(([name, metrics]) => {
             const picked = new Set(state.selectedEvaluatorNames);
             const on = metrics.filter((m) => picked.has(m.name)).length;
+            const stats = groupStats(metrics, runs);
+            const blurb = blurbFor(name, metrics);
+            const missingGolden = !state.evalSetFile && metrics.some((m) => picked.has(m.name) && m.requiresEvalSet);
             return card(
               name,
               name,
@@ -522,6 +585,24 @@ export const UploadView: React.FC = () => {
                   <span css={picked.has(m.name) ? descOnStyle : undefined}>{m.name}</span>
                 </React.Fragment>
               )),
+              <>
+                <span>{blurb.what}</span>
+                <span css={sideWhenStyle}>{blurb.when}</span>
+                {missingGolden && <span css={sideWarnStyle}>Ticked here, but no golden set is chosen.</span>}
+                {stats.errored > 0.2 && (
+                  <span css={sideWarnStyle}>{Math.round(stats.errored * 100)}% of its past results errored; check keys and access.</span>
+                )}
+                <span css={sideStatsStyle}>
+                  {stats.runs === 0
+                    ? 'not run yet'
+                    : [
+                        `${stats.runs} run${stats.runs === 1 ? '' : 's'}`,
+                        stats.pass !== null ? `pass ${Math.round(stats.pass * 100)}%` : null,
+                        stats.avg !== null ? `avg ${stats.avg.toFixed(2)}` : null,
+                        stats.lastAt ? `${ago(stats.lastAt)} ago` : null,
+                      ].filter(Boolean).join(' · ')}
+                </span>
+              </>,
             );
           })}
           {card(
@@ -532,7 +613,11 @@ export const UploadView: React.FC = () => {
               <span css={chipStyle}>{state.judgeModel}</span>
               <span css={chipStyle}>pass ≥ {state.threshold}</span>
             </>,
-            'The model that judges, and the score a trace needs to pass.',
+            null,
+            <>
+              <span>The model that judges, and the score a trace needs to pass.</span>
+              <span css={sideWhenStyle}>Keep both the same from run to run, so the scores stay comparable.</span>
+            </>,
           )}
 
           <div style={{ marginTop: 6 }}>
