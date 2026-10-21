@@ -7,11 +7,9 @@ import { setSelectedTenant, useSelectedTenant, useTenantOptions } from '../../li
 import { ConnectionDot } from './ConnectionDot';
 import { ModeSwitch } from './ModeSwitch';
 import { TenantPicker } from './TenantPicker';
-import { VersionLink } from './VersionLink';
 
-// The classic header's account menu: who is signed in, with the interface style, the link to the server and the
-// version under it, and the way out. It is there without a sign-in too (a local server has none), as the home of
-// the style switch and the status.
+// The classic header's account menu: the tenant picker, the interface style and the way out. It is there without a
+// sign-in too (a local server has none), as the home of the style switch.
 export const AccountMenu: React.FC = () => {
   const me = useMe();
   const conn = useConnection();
@@ -82,13 +80,6 @@ export const AccountMenu: React.FC = () => {
           <div css={rowStyle}>
             <span css={mutedStyle}>interface</span>
             <ModeSwitch />
-          </div>
-          <div css={rowStyle}>
-            <span css={mutedStyle}>server</span>
-            <span css={statusStyle}>
-              <ConnectionDot />
-              <VersionLink />
-            </span>
           </div>
           {(signedIn || canSignIn) && <div css={dividerStyle} />}
           {signedIn && (
@@ -171,12 +162,6 @@ const rowStyle = css`
 
 const mutedStyle = css`
   color: var(--text-tertiary);
-`;
-
-const statusStyle = css`
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
 `;
 
 const noAccessStyle = css`
