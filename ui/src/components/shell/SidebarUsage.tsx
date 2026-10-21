@@ -1,14 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { css } from '@emotion/react';
-import { getUsage } from '../../api/client';
+import { getOnlineStatus, getUsage, listRuns } from '../../api/client';
+import { passRate } from '../runs/runHistory';
+import type { Run, UsageSeries } from '../../lib/types';
 import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
 import { useSelectedTenant } from '../../lib/tenant';
 import { useTraceContext } from '../../context/TraceContext';
 
-interface Totals {
+interface Usage {
   tokens: number;
   calls: number;
   cost: number;
+}
+
+interface Figures {
+  usage?: Usage;
+  scored?: number;
+  // The average pass rate of the latest runs; null when none has a decided result.
+  pass?: number | null;
 }
 
 const REFRESH_MS = 5 * 60_000;
@@ -28,28 +37,42 @@ function shortCost(usd: number): string {
   return formatCostUsd(usd);
 }
 
-// The last 24 hours of LLM usage in three numbers, for the empty part of the sidebar. A click opens the usage view.
-// Nothing is shown where the role has no usage view or the server keeps no ledger.
+function usageTotals(series: UsageSeries): Usage {
+  const t: Usage = { tokens: 0, calls: 0, cost: 0 };
+  for (const b of series.buckets) {
+    t.tokens += b.inputTokens + b.outputTokens;
+    t.calls += b.calls;
+    t.cost += estimateCostUsd(b.model, b.inputTokens, b.outputTokens) ?? 0;
+  }
+  return t;
+}
+
+function averagePassRate(runs: Run[]): number | null {
+  const rates = runs.map(passRate).filter((r): r is number => r !== null);
+  return rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
+}
+
+type Row = [label: string, value: string, title: string];
+
+// The LLM usage of the last 24 hours, the sessions quality scored in that time, and the pass rate of the latest
+// runs, for the empty part of the sidebar. Each part is left out where the role cannot see it or the server does not
+// keep it. A click opens the view the numbers come from.
 export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) => {
   const { actions } = useTraceContext();
   const tenant = useSelectedTenant();
-  const [totals, setTotals] = useState<Totals | null>(null);
+  const [figures, setFigures] = useState<Figures>({});
 
   useEffect(() => {
     let active = true;
     const load = () =>
-      getUsage(24)
-        .then((series) => {
-          if (!active) return;
-          const t: Totals = { tokens: 0, calls: 0, cost: 0 };
-          for (const b of series.buckets) {
-            t.tokens += b.inputTokens + b.outputTokens;
-            t.calls += b.calls;
-            t.cost += estimateCostUsd(b.model, b.inputTokens, b.outputTokens) ?? 0;
-          }
-          setTotals(t);
-        })
-        .catch(() => active && setTotals(null));
+      void Promise.allSettled([getUsage(24), getOnlineStatus(), listRuns({ limit: 200 })]).then(([u, o, r]) => {
+        if (!active) return;
+        setFigures({
+          usage: u.status === 'fulfilled' ? usageTotals(u.value) : undefined,
+          scored: o.status === 'fulfilled' ? o.value.sessionsScored24h : undefined,
+          pass: r.status === 'fulfilled' ? averagePassRate(r.value) : undefined,
+        });
+      });
     load();
     const id = setInterval(load, REFRESH_MS);
     return () => {
@@ -58,31 +81,52 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
     };
   }, [tenant]);
 
-  if (!totals) return null;
-  const rows: Array<[string, string, string]> = [
-    ['tokens', short(totals.tokens), `${totals.tokens.toLocaleString()} tokens`],
-    ['calls', short(totals.calls), `${totals.calls.toLocaleString()} LLM calls`],
-    ['cost', shortCost(totals.cost), 'estimated from list prices, not billed'],
-  ];
+  const day: Row[] = [];
+  if (figures.usage) {
+    day.push(['tokens', short(figures.usage.tokens), `${figures.usage.tokens.toLocaleString()} tokens`]);
+    day.push(['calls', short(figures.usage.calls), `${figures.usage.calls.toLocaleString()} LLM calls`]);
+    day.push(['cost', shortCost(figures.usage.cost), 'estimated from list prices, not billed']);
+  }
+  if (figures.scored != null) day.push(['scored', short(figures.scored), 'sessions scored by online evaluation (quality)']);
+  const runs: Row[] = [];
+  if (figures.pass != null) runs.push(['pass', `${Math.round(figures.pass * 100)}%`, 'average pass rate of the latest runs']);
+  if (day.length === 0 && runs.length === 0) return null;
+
+  const rowsOf = (list: Row[]) =>
+    list.map(([label, value, title]) => (
+      <span key={label} css={[rowStyle, collapsed && collapsedRowStyle]} title={title}>
+        <span css={valueStyle}>{value}</span>
+        <span css={labelStyle}>{label}</span>
+      </span>
+    ));
+
   return (
-    <button
-      css={[boxStyle, collapsed && collapsedBoxStyle]}
-      onClick={() => actions.setCurrentView('usage')}
-      title="LLM usage, last 24 hours. Open usage."
-    >
-      <span css={headingStyle}>24h</span>
-      {rows.map(([label, value, title]) => (
-        <span key={label} css={[rowStyle, collapsed && collapsedRowStyle]} title={title}>
-          <span css={valueStyle}>{value}</span>
-          <span css={labelStyle}>{label}</span>
-        </span>
-      ))}
-    </button>
+    <div css={[boxStyle, collapsed && collapsedBoxStyle]}>
+      {day.length > 0 && (
+        <button css={sectionStyle} onClick={() => actions.setCurrentView(figures.usage ? 'usage' : 'quality')} title="Last 24 hours. Open usage.">
+          <span css={headingStyle}>24h</span>
+          {rowsOf(day)}
+        </button>
+      )}
+      {runs.length > 0 && (
+        <button css={sectionStyle} onClick={() => actions.setCurrentView('runs')} title="Open runs.">
+          <span css={headingStyle}>runs</span>
+          {rowsOf(runs)}
+        </button>
+      )}
+    </div>
   );
 };
 
 const boxStyle = css`
   margin: auto 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--font-display);
+`;
+
+const sectionStyle = css`
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
@@ -90,7 +134,7 @@ const boxStyle = css`
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
   background: transparent;
-  font-family: var(--font-display);
+  font-family: inherit;
   text-align: left;
   cursor: pointer;
 
@@ -101,9 +145,12 @@ const boxStyle = css`
 
 const collapsedBoxStyle = css`
   margin: auto 4px 10px;
-  padding: 6px 2px;
-  align-items: center;
-  text-align: center;
+
+  button {
+    padding: 6px 2px;
+    align-items: center;
+    text-align: center;
+  }
 `;
 
 const headingStyle = css`
