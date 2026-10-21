@@ -225,7 +225,7 @@ const noticeStyle = css`
   padding: 14px 18px;
   border-radius: var(--radius);
   margin-bottom: 24px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+  background: var(--bg-surface) 100%);
   border: 1px solid var(--border-default);
   color: var(--text-secondary);
   font-size: 0.875rem;

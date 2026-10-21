@@ -202,7 +202,6 @@ const labelStyles = css`
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-secondary);
-  letter-spacing: 0.5px;
 `;
 
 const traceIdCodeStyles = css`
@@ -276,30 +275,29 @@ const statusBadgeStyles = (status: string) => css`
   border-radius: var(--radius);
   font-size: 0.875rem;
   font-weight: 600;
-  letter-spacing: 0.5px;
 
   ${status === 'PASSED' && `
     background: rgba(124, 255, 107, 0.1);
     color: var(--status-success);
-    box-shadow: 0 0 16px rgba(124, 255, 107, 0.3);
+    box-shadow: none;
   `}
 
   ${status === 'FAILED' && `
     background: rgba(255, 87, 87, 0.1);
     color: var(--status-failure);
-    box-shadow: 0 0 16px rgba(255, 87, 87, 0.3);
+    box-shadow: none;
   `}
 
   ${status === 'PARTIAL' && `
     background: rgba(255, 179, 71, 0.1);
     color: var(--status-warning);
-    box-shadow: 0 0 16px rgba(255, 179, 71, 0.3);
+    box-shadow: none;
   `}
 
   ${status === 'ERRORED' && `
     background: rgba(255, 87, 87, 0.1);
     color: var(--status-failure);
-    box-shadow: 0 0 16px rgba(255, 87, 87, 0.3);
+    box-shadow: none;
   `}
 `;
 

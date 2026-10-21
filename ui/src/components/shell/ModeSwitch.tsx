@@ -31,7 +31,7 @@ const btnStyle = css`
   background: transparent;
   color: var(--text-tertiary);
   font: inherit;
-  font-size: 11.5px;
+  font-size: 12px;
   cursor: pointer;
 
   &:hover {

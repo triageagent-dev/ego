@@ -29,11 +29,10 @@ function MetadataItem({ label, children }: { label: string; children: React.Reac
   return (
     <div>
       <div style={{
-        fontSize: '11px',
+        fontSize: '12px',
         color: 'var(--text-tertiary)',
         marginBottom: '4px',
         fontWeight: 600,
-        textTransform: 'uppercase' as const,
       }}>
         {label}
       </div>
@@ -101,7 +100,7 @@ export function SessionMetadata({ session, liveStats, modelName }: SessionMetada
             {totalTokens.toLocaleString()}
           </span>
           <span style={{
-            fontSize: '11px',
+            fontSize: '12px',
             color: 'var(--text-tertiary)',
             marginLeft: '6px',
           }}>
@@ -129,6 +128,14 @@ export function SessionMetadata({ session, liveStats, modelName }: SessionMetada
 
       {provider && (
         <MetadataItem label="Provider">{provider}</MetadataItem>
+      )}
+
+      {modelName && (
+        <MetadataItem label="Model">{modelName}</MetadataItem>
+      )}
+
+      {session.invocations && session.invocations.length > 0 && (
+        <MetadataItem label="Turns">{session.invocations.length}</MetadataItem>
       )}
 
       {session.startedAt && (

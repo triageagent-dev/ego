@@ -30,7 +30,7 @@ const selectorStyle = css`
 
   .category-title {
     color: var(--accent-magenta);
-    font-size: 11.5px;
+    font-size: 12px;
     text-transform: lowercase;
     margin-bottom: 6px;
   }
@@ -62,7 +62,7 @@ const selectorStyle = css`
 
   .metric-description {
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: 12px;
     margin-left: 24px;
     line-height: 1.3;
     overflow-wrap: break-word;
@@ -81,7 +81,7 @@ const selectorStyle = css`
   }
 
   .metric-badge {
-    font-size: 10px;
+    font-size: 12px;
     padding: 2px 6px;
     border-radius: var(--radius);
     font-weight: 500;
@@ -128,7 +128,7 @@ const selectorStyle = css`
 
   .selector-note {
     margin-top: 10px;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
   }
 

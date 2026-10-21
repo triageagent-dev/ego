@@ -124,7 +124,7 @@ const toolUseStyles = css`
 
   &:hover {
     background: var(--bg-surface);
-    box-shadow: 0 0 12px rgba(124, 255, 107, 0.2);
+    box-shadow: none;
   }
 `;
 
@@ -139,7 +139,7 @@ const toolResponseStyles = (hasError?: boolean) => css`
 
   &:hover {
     background: var(--bg-surface);
-    box-shadow: 0 0 12px ${hasError ? 'rgba(255, 87, 87, 0.2)' : 'rgba(255, 159, 67, 0.2)'};
+    box-shadow: none;
   }
 `;
 

@@ -70,15 +70,15 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
           marginBottom: '20px',
         }}>
           <span style={{
-            fontSize: '11px', fontWeight: 600, color: '#b5abfc',
+            fontSize: '12px', fontWeight: 600, color: '#b5abfc',
             background: 'rgba(181, 171, 252, 0.1)', padding: '4px 10px',
-            borderRadius: 'var(--radius)', textTransform: 'uppercase', letterSpacing: '0.5px',
+            borderRadius: 'var(--radius)',
           }}>
             {item.model || 'Unknown model'}
           </span>
           {totalTokens > 0 && (
             <span style={{
-              fontSize: '11px', fontWeight: 600, color: '#10b981',
+              fontSize: '12px', fontWeight: 600, color: '#10b981',
               background: 'rgba(16, 185, 129, 0.1)', padding: '4px 10px', borderRadius: 'var(--radius)',
             }}>
               {totalTokens.toLocaleString()} tokens
@@ -86,7 +86,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
           )}
           {item.startTime && (
             <span style={{
-              fontSize: '11px', color: 'var(--text-tertiary)',
+              fontSize: '12px', color: 'var(--text-tertiary)',
               background: 'var(--bg-primary)', padding: '4px 10px', borderRadius: 'var(--radius)', fontWeight: 600,
             }}>
               {new Date(item.startTime).toLocaleString('en-US', {
@@ -97,8 +97,8 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
         </div>
 
         <div style={{
-          fontSize: '11px', fontWeight: 700, color: 'var(--text-tertiary)',
-          marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px',
+          fontSize: '12px', fontWeight: 700, color: 'var(--text-tertiary)',
+          marginBottom: '12px',
         }}>
           Session ID
         </div>
@@ -110,8 +110,8 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
         </div>
 
         <div style={{
-          fontSize: '11px', fontWeight: 700, color: 'var(--text-tertiary)',
-          marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px',
+          fontSize: '12px', fontWeight: 700, color: 'var(--text-tertiary)',
+          marginBottom: '16px',
         }}>
           Conversation
         </div>
@@ -128,14 +128,14 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
                 }}
               >
                 <div style={{
-                  fontSize: '11px', fontWeight: 700, color: '#a79ff0',
-                  marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px',
+                  fontSize: '12px', fontWeight: 700, color: '#a79ff0',
+                  marginBottom: '12px',
                 }}>
                   Turn {idx + 1}
                 </div>
 
                 <div style={{ marginBottom: '12px' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>User</div>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '6px' }}>User</div>
                   <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius)', borderLeft: '3px solid #a79ff0' }}>
                     {inv.userText || '(no text)'}
                   </div>
@@ -143,7 +143,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
 
                 {inv.toolCalls.length > 0 && (
                   <div style={{ marginBottom: '12px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Tool Calls</div>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '6px' }}>Tool Calls</div>
                     {inv.toolCalls.map((tc, i) => {
                       const tr = inv.toolResponses?.find(r => r.id === tc.id || r.name === tc.name);
                       return (
@@ -158,7 +158,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
 
                 {inv.agentText && (
                   <div>
-                    <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Agent</div>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '6px' }}>Agent</div>
                     <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius)', borderLeft: '3px solid #10b981' }}>
                       {inv.agentText}
                     </div>
@@ -177,7 +177,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
                   <ToolResultMessage response={el.data?.response} isError={el.data?.isError} timestamp={el.timestamp} />
                 ) : (
                   <>
-                    <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '4px' }}>
                       {el.type === 'user_input' ? 'User' : 'Agent'}
                     </div>
                     <div style={{
@@ -213,8 +213,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
         gap: '20px',
       }}>
         <div style={{
-          fontSize: '11px', fontWeight: 700, color: 'var(--text-tertiary)',
-          textTransform: 'uppercase', letterSpacing: '0.5px',
+          fontSize: '12px', fontWeight: 700, color: 'var(--text-tertiary)',
         }}>
           Annotation
         </div>
@@ -293,7 +292,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
               fontWeight: 600,
               cursor: firstPass ? 'pointer' : 'not-allowed',
               transition: 'all 0.2s',
-              boxShadow: firstPass ? '0 0 16px rgba(181, 171, 252, 0.25)' : 'none',
+              boxShadow: 'none',
             }}
           >
             Save Annotation
@@ -312,7 +311,7 @@ export function AnnotationDetailPanel({ item, onSave, onClose }: AnnotationDetai
             border: '1px solid rgba(16, 185, 129, 0.2)',
             borderRadius: 'var(--radius)',
           }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: '#10b981', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: '#10b981', marginBottom: '6px' }}>
               Current annotation
             </div>
             <div style={{ fontSize: '20px', lineHeight: 1 }}>

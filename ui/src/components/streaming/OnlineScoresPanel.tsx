@@ -138,7 +138,6 @@ const thumbsStyle = css`
 const headStyle = css`
   font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
   color: var(--text-tertiary);
   margin-bottom: 4px;
   grid-column: 1 / -1;

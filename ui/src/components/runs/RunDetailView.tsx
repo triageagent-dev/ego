@@ -572,9 +572,7 @@ const configTableStyle = css`
     text-align: left;
     color: var(--text-tertiary);
     font-weight: 600;
-    text-transform: uppercase;
     font-size: 0.6875rem;
-    letter-spacing: 0.5px;
     padding: 6px 12px 6px 0;
   }
 
@@ -670,8 +668,6 @@ const diffGridStyle = css`
 
 const diffLabelStyle = css`
   font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   color: var(--text-tertiary);
   margin-bottom: 4px;
 `;
@@ -707,8 +703,6 @@ const sentenceLabelBadgeStyle = css`
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   flex-shrink: 0;
 `;
 

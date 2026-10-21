@@ -175,7 +175,7 @@ const metricItemStyles = (statusColor: string) => css`
 
   &:hover {
     background: var(--bg-surface);
-    box-shadow: 0 0 12px ${statusColor}33;
+    box-shadow: none;
   }
 `;
 
@@ -222,7 +222,6 @@ const statusTextStyles = (color: string) => css`
   font-size: 0.75rem;
   font-weight: 600;
   color: ${color};
-  letter-spacing: 0.5px;
 `;
 
 const perInvocationScoresStyles = css`

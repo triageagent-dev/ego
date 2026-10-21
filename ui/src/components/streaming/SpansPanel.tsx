@@ -30,13 +30,13 @@ function AttrValue({ value }: { value: string }) {
     return (
       <span onClick={() => setOpen(true)} style={{ cursor: 'pointer', wordBreak: 'break-word' }} title="Click to expand">
         {value.replace(/\s+/g, ' ').slice(0, LONG_VALUE)}…{' '}
-        <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>({value.length.toLocaleString()} chars)</span>
+        <span style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>({value.length.toLocaleString()} chars)</span>
       </span>
     );
   }
   return (
     <div>
-      <div onClick={() => setOpen(false)} style={{ cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: '11px', marginBottom: '4px' }}>collapse</div>
+      <div onClick={() => setOpen(false)} style={{ cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: '12px', marginBottom: '4px' }}>collapse</div>
       <PrettyText text={value} />
     </div>
   );
@@ -76,12 +76,12 @@ function SpanRow({ span }: { span: SessionSpan }) {
           background: open ? 'var(--bg-primary)' : 'transparent', fontSize: '12px',
         }}
       >
-        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', width: '10px' }}>{open ? '▾' : '▸'}</span>
+        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', width: '10px' }}>{open ? '▾' : '▸'}</span>
         <span style={{ fontFamily: 'monospace', color: err ? '#ef4444' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
           {span.operation_name || span.span_id}
         </span>
         {err && (
-          <span style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444', background: 'rgba(239, 68, 68, 0.12)', padding: '1px 6px', borderRadius: 'var(--radius)' }}>ERROR</span>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#ef4444', background: 'rgba(239, 68, 68, 0.12)', padding: '1px 6px', borderRadius: 'var(--radius)' }}>ERROR</span>
         )}
         <span style={{ fontFamily: 'monospace', color: 'var(--text-tertiary)', flexShrink: 0 }}>{fmtDuration(span.duration)}</span>
       </div>
@@ -127,7 +127,7 @@ export function SpansPanel({ sessionId, spanCount }: { sessionId: string; spanCo
           tabIndex={0}
           onClick={toggle}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
-          style={{ cursor: 'pointer', userSelect: 'none', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}
+          style={{ cursor: 'pointer', userSelect: 'none', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}
         >
           {open ? '▾' : '▸'} Spans{spans ? ` (${spans.length})` : spanCount ? ` (${spanCount})` : ''}
         </span>

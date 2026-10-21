@@ -204,7 +204,7 @@ export function AnnotationQueueView() {
         {selectedGoldenId && (
           <div style={{
             padding: '20px 24px',
-            background: 'linear-gradient(135deg, rgba(167, 159, 240, 0.08) 0%, rgba(181, 171, 252, 0.08) 100%)',
+            background: 'var(--bg-surface) 100%)',
             borderRadius: 'var(--radius)',
             marginBottom: '20px',
             border: '2px solid rgba(167, 159, 240, 0.2)',
@@ -213,7 +213,7 @@ export function AnnotationQueueView() {
             alignItems: 'center',
           }}>
             <div>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#a79ff0', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#a79ff0', marginBottom: '6px' }}>
                 {completedItems.length > 1 ? 'Golden Run Selected' : 'EvalSet Selected'}
               </div>
               <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
@@ -239,7 +239,7 @@ export function AnnotationQueueView() {
                   cursor: isPreparingEvaluation ? 'not-allowed' : 'pointer',
                   opacity: isPreparingEvaluation ? 0.4 : 1,
                   transition: 'all 0.3s ease',
-                  boxShadow: isPreparingEvaluation ? 'none' : '0 0 20px rgba(181, 171, 252, 0.3)',
+                  boxShadow: 'none',
                   whiteSpace: 'nowrap',
                 }}
               >

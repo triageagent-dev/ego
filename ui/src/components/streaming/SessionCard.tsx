@@ -121,15 +121,10 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
     session.invocations?.[0]?.modelInfo?.models?.[0] ||
     session.models?.[0] ||
     '';
-  const extraModels = Math.max((session.models?.length ?? 0) - 1, 0);
   const agentLabel = session.agents?.join(' · ') ?? '';
   useTenantNames();
   const tenantLabel = session.tenants?.map(tenantName).join(' · ') ?? '';
 
-  const providerName = session.invocations?.[0]?.modelInfo?.provider || null;
-
-  const totalCacheCreation = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheCreationTokens || 0), 0) || 0;
-  const totalCacheRead = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheReadTokens || 0), 0) || 0;
 
   return (
     <div
@@ -163,11 +158,11 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
               <span
                 title="tenant"
                 style={{
-                  fontSize: '12.5px',
+                  fontSize: '13px',
                   fontWeight: 500,
                   color: 'var(--accent-magenta)',
                   background: 'rgba(255, 106, 198, 0.1)',
-                  padding: '1px 7px',
+                  padding: '3px 10px',
                   borderRadius: 'var(--radius)',
                 }}
               >
@@ -179,11 +174,11 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
               <span
                 title="gen_ai.agent.name"
                 style={{
-                  fontSize: '12.5px',
+                  fontSize: '13px',
                   fontWeight: 500,
                   color: 'var(--accent-cyan)',
                   background: 'rgba(103, 232, 249, 0.1)',
-                  padding: '1px 7px',
+                  padding: '3px 10px',
                   borderRadius: 'var(--radius)',
                 }}
               >
@@ -191,101 +186,15 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
               </span>
             )}
 
-            {modelName && (
-            <span style={{
-              fontSize: '12.5px',
-              fontWeight: 500,
-              color: '#b5abfc',
-              background: 'rgba(181, 171, 252, 0.1)',
-              padding: '1px 7px',
-              borderRadius: 'var(--radius)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}>
-              {modelName}{extraModels > 0 && ` +${extraModels}`}
+            <span style={{ fontSize: '14px', color: 'var(--text-tertiary)' }}>
+              {[
+                totalTokens > 0 ? `${totalTokens.toLocaleString()} tokens` : null,
+                session.durationMs != null && session.durationMs > 0 ? formatSpanDuration(session.durationMs) : null,
+                session.startedAt
+                  ? new Date(session.startedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+                  : null,
+              ].filter(Boolean).join(' · ')}
             </span>
-            )}
-
-            {providerName && (
-              <span style={{
-                fontSize: '12.5px',
-                fontWeight: 500,
-                color: '#3b82f6',
-                background: 'rgba(59, 130, 246, 0.1)',
-                padding: '1px 7px',
-                borderRadius: 'var(--radius)',
-              }}>
-                {providerName}
-              </span>
-            )}
-
-            {session.invocations && session.invocations.length > 0 && (
-              <span style={{
-                fontSize: '12.5px',
-                fontWeight: 500,
-                color: 'var(--text-primary)',
-                background: 'rgba(148, 163, 184, 0.18)',
-                padding: '1px 7px',
-                borderRadius: 'var(--radius)',
-              }}>
-                {session.invocations.length} turns
-              </span>
-            )}
-
-            {totalTokens > 0 && (
-              <span style={{
-                fontSize: '12.5px',
-                fontWeight: 500,
-                color: '#10b981',
-                background: 'rgba(16, 185, 129, 0.1)',
-                padding: '1px 7px',
-                borderRadius: 'var(--radius)',
-              }}>
-                {totalTokens.toLocaleString()} tokens
-              </span>
-            )}
-
-            {session.status === 'complete' && session.durationMs != null && (
-              <span title="Span window: earliest span start to latest span end" style={{
-                fontSize: '12.5px',
-                fontWeight: 500,
-                color: '#fff',
-                background: 'var(--accent-primary)',
-                padding: '1px 7px',
-                borderRadius: 'var(--radius)',
-                fontVariantNumeric: 'tabular-nums',
-              }}>
-                {formatSpanDuration(session.durationMs)}
-              </span>
-            )}
-
-            {session.startedAt && (
-              <span style={{
-                fontSize: '12.5px',
-                fontWeight: 500,
-                color: 'var(--text-primary)',
-                background: 'rgba(148, 163, 184, 0.18)',
-                padding: '1px 7px',
-                borderRadius: 'var(--radius)',
-              }}>
-                {new Date(session.startedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-              </span>
-            )}
-
-            {(totalCacheCreation > 0 || totalCacheRead > 0) && (
-              <span style={{
-                fontSize: '12.5px',
-                fontWeight: 500,
-                color: '#f59e0b',
-                background: 'rgba(245, 158, 11, 0.1)',
-                padding: '1px 7px',
-                borderRadius: 'var(--radius)',
-              }}>
-                cache {totalCacheRead > 0 ? `${totalCacheRead.toLocaleString()} read` : ''}
-                {totalCacheCreation > 0 && totalCacheRead > 0 ? ' / ' : ''}
-                {totalCacheCreation > 0 ? `${totalCacheCreation.toLocaleString()} created` : ''}
-              </span>
-            )}
 
             {queueNames && queueNames.length > 0 && queueNames.map(name => (
               <span key={name} style={{
@@ -383,7 +292,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
                           onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-primary)')}
                           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                         >
-                          {q.name} <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>({q.items.length})</span>
+                          {q.name} <span style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>({q.items.length})</span>
                         </button>
                       ))}
                       <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '6px 0' }} />
@@ -614,7 +523,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
       {expanded && session.invocations && session.invocations.length > 0 && conversationElements.length === 0 && (
         <details style={{ marginTop: '16px' }}>
           <summary style={{
-            fontSize: '11px',
+            fontSize: '12px',
             color: 'var(--text-tertiary)',
             cursor: 'pointer',
             fontWeight: 600,
@@ -640,11 +549,9 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <span style={{
-                  fontSize: '11px',
+                  fontSize: '12px',
                   color: '#a79ff0',
                   fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
                 }}>
                   Turn {idx + 1}
                   {inv.modelInfo?.turnStartedAt != null && (
@@ -658,7 +565,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
                   <div style={{ display: 'flex', gap: '6px' }}>
                     {inv.modelInfo.inputTokens && (
                       <span style={{
-                        fontSize: '10px',
+                        fontSize: '12px',
                         color: 'var(--text-tertiary)',
                         background: 'var(--card-bg)',
                         padding: '1px 6px',
@@ -670,7 +577,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
                     )}
                     {inv.modelInfo.outputTokens && (
                       <span style={{
-                        fontSize: '10px',
+                        fontSize: '12px',
                         color: 'var(--text-tertiary)',
                         background: 'var(--card-bg)',
                         padding: '1px 6px',
@@ -686,12 +593,10 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
 
               <div style={{ marginBottom: '12px' }}>
                 <div style={{
-                  fontSize: '10px',
+                  fontSize: '12px',
                   color: '#6b7280',
                   marginBottom: '6px',
                   fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.3px',
                 }}>
                   User
                 </div>
@@ -707,12 +612,10 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
               {inv.toolCalls && inv.toolCalls.length > 0 && (
                 <div style={{ marginBottom: '12px' }}>
                   <div style={{
-                    fontSize: '10px',
+                    fontSize: '12px',
                     color: '#6b7280',
                     marginBottom: '6px',
                     fontWeight: 600,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.3px',
                   }}>
                     Tools
                   </div>
@@ -740,12 +643,10 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
               {inv.agentText && (
                 <div>
                   <div style={{
-                    fontSize: '10px',
+                    fontSize: '12px',
                     color: '#6b7280',
                     marginBottom: '6px',
                     fontWeight: 600,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.3px',
                   }}>
                     Agent
                   </div>

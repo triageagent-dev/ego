@@ -66,7 +66,7 @@ const wrapStyle = css`
   align-items: center;
   gap: 6px;
   color: var(--text-tertiary);
-  font-size: 11.5px;
+  font-size: 12px;
 `;
 
 const selectStyle = css`

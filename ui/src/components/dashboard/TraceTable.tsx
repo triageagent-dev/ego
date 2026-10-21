@@ -64,9 +64,7 @@ const tableStyle = css`
     color: var(--text-primary);
     font-weight: 600;
     border-bottom: 2px solid var(--border-default);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    font-size: 12px;
     padding: 12px 16px;
   }
 
@@ -128,7 +126,7 @@ const tableStyle = css`
   .score-badge {
     padding: 4px 8px;
     border-radius: var(--radius);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
   }
 
@@ -148,10 +146,8 @@ const tableStyle = css`
   }
 
   .diff-badge {
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
     color: var(--status-failure);
     background: rgba(255, 87, 87, 0.12);
     border: 1px solid rgba(255, 87, 87, 0.3);
@@ -458,24 +454,20 @@ export const TraceTable: React.FC<TraceTableProps> = ({
               }}
             >
               <div style={{
-                fontSize: '11px',
+                fontSize: '12px',
                 fontWeight: 700,
                 color: '#a79ff0',
                 marginBottom: '12px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
               }}>
                 Turn {idx + 1}
               </div>
 
               <div style={{ marginBottom: '12px' }}>
                 <div style={{
-                  fontSize: '10px',
+                  fontSize: '12px',
                   fontWeight: 600,
                   color: 'var(--text-tertiary)',
                   marginBottom: '6px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.3px',
                 }}>
                   User Input
                 </div>
@@ -495,12 +487,10 @@ export const TraceTable: React.FC<TraceTableProps> = ({
               {toolCalls.length > 0 && (
                 <div style={{ marginBottom: '12px' }}>
                   <div style={{
-                    fontSize: '10px',
+                    fontSize: '12px',
                     fontWeight: 600,
                     color: 'var(--text-tertiary)',
                     marginBottom: '6px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.3px',
                   }}>
                     Tool Calls
                   </div>
@@ -527,12 +517,10 @@ export const TraceTable: React.FC<TraceTableProps> = ({
 
               <div>
                 <div style={{
-                  fontSize: '10px',
+                  fontSize: '12px',
                   fontWeight: 600,
                   color: 'var(--text-tertiary)',
                   marginBottom: '6px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.3px',
                 }}>
                   Agent Response
                 </div>

@@ -86,7 +86,7 @@ const usernameStyle = css`
 
 const noAccessStyle = css`
   color: var(--status-failure);
-  font-size: 11.5px;
+  font-size: 12px;
 `;
 
 const logoutFormStyle = css`

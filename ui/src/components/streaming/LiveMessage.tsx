@@ -17,13 +17,11 @@ function MessageBlock({ label, color, text, extra }: { label: string; color: str
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
         style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', minWidth: 0 }}
       >
-        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', width: '10px' }}>{open ? '\u25BE' : '\u25B8'}</span>
+        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', width: '10px' }}>{open ? '\u25BE' : '\u25B8'}</span>
         <span style={{
-          fontSize: '10px',
+          fontSize: '12px',
           color,
           fontWeight: 700,
-          textTransform: 'uppercase' as const,
-          letterSpacing: '0.5px',
           display: 'flex',
           alignItems: 'center',
           gap: '6px',
@@ -37,7 +35,7 @@ function MessageBlock({ label, color, text, extra }: { label: string; color: str
             {preview}
           </span>
         )}
-        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', flexShrink: 0, marginLeft: open ? 'auto' : 0 }}>
+        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', flexShrink: 0, marginLeft: open ? 'auto' : 0 }}>
           {text.length.toLocaleString()} chars
         </span>
       </div>
@@ -101,7 +99,7 @@ export function ToolCallMessage({ name, args, latencyMs, resultBytes }: ToolCall
       </div>
       {(latencyMs != null || resultBytes != null) && (
         <span style={{
-          fontSize: '10px',
+          fontSize: '12px',
           color: 'var(--text-tertiary)',
           fontFamily: 'monospace',
           whiteSpace: 'nowrap',
@@ -140,7 +138,7 @@ export function ToolResultMessage({ response, isError }: ToolResultMessageProps)
     }}>
       <div
         style={{
-          fontSize: '11px',
+          fontSize: '12px',
           color,
           fontFamily: 'monospace',
           fontWeight: 400,
@@ -167,7 +165,7 @@ interface AgentMessageProps {
 export function AgentMessage({ text, isStreaming }: AgentMessageProps) {
   if (!text) {
     return (
-      <div style={{ marginBottom: '12px', fontSize: '10px', color: '#10b981', fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>
+      <div style={{ marginBottom: '12px', fontSize: '12px', color: '#10b981', fontWeight: 700 }}>
         Agent <em style={{ color: 'var(--text-tertiary)', textTransform: 'none', fontWeight: 400 }}>Thinking...</em>
       </div>
     );

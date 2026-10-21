@@ -80,7 +80,7 @@ export const segmentStyle = css`
 
 export const segLabelStyle = css`
   padding: 0 8px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
 `;
 
@@ -147,10 +147,8 @@ export const tileStyle = css`
 `;
 
 export const tileLabelStyle = css`
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 `;
 
 export const tileValueStyle = css`
@@ -161,7 +159,7 @@ export const tileValueStyle = css`
 `;
 
 export const tileSubStyle = css`
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
 `;
 

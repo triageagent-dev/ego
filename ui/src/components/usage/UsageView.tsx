@@ -509,8 +509,6 @@ const tableStyle = css`
     font-weight: 600;
     font-size: 0.72rem;
     color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
     padding: 8px 10px;
     border-bottom: 1px solid var(--border-default);
     white-space: nowrap;

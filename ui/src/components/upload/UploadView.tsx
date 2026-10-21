@@ -118,7 +118,7 @@ const uploadViewStyle = css`
   }
 
   .setting-hint {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-secondary);
     margin-top: 0px;
   }
@@ -244,7 +244,7 @@ export const UploadView: React.FC = () => {
                     onClick={() => setTraceEditorIndex(idx)}
                     style={{
                       color: 'var(--text-secondary)',
-                      fontSize: '11px',
+                      fontSize: '12px',
                       padding: '3px 6px',
                       backgroundColor: 'var(--bg-surface)',
                       borderRadius: 'var(--radius)',
@@ -273,7 +273,7 @@ export const UploadView: React.FC = () => {
                     alignItems: 'center',
                     gap: '8px',
                     color: 'var(--accent-primary)',
-                    fontSize: '11px'
+                    fontSize: '12px'
                   }}>
                     <div className="spinner" />
                     Extracting trace metadata...
@@ -286,7 +286,7 @@ export const UploadView: React.FC = () => {
                     backgroundColor: 'var(--bg-surface)',
                     borderRadius: 'var(--radius)',
                     color: 'var(--status-success)',
-                    fontSize: '11px'
+                    fontSize: '12px'
                   }}>
                     ✓ {state.traceMetadata.size} trace(s) ready
                   </div>
@@ -310,7 +310,7 @@ export const UploadView: React.FC = () => {
                     onClick={() => setEvalSetDrawerOpen(true)}
                     style={{
                       color: 'var(--text-secondary)',
-                      fontSize: '11px',
+                      fontSize: '12px',
                       padding: '3px 6px',
                       backgroundColor: 'var(--bg-surface)',
                       borderRadius: 'var(--radius)',
@@ -368,7 +368,7 @@ export const UploadView: React.FC = () => {
                       onClick={() => setTraceEditorIndex(idx)}
                       style={{
                         color: 'var(--text-secondary)',
-                        fontSize: '11px',
+                        fontSize: '12px',
                         padding: '3px 6px',
                         backgroundColor: 'var(--bg-surface)',
                         borderRadius: 'var(--radius)',
@@ -397,7 +397,7 @@ export const UploadView: React.FC = () => {
                       alignItems: 'center',
                       gap: '8px',
                       color: 'var(--accent-primary)',
-                      fontSize: '11px'
+                      fontSize: '12px'
                     }}>
                       <div className="spinner" />
                       Extracting trace metadata...
@@ -410,7 +410,7 @@ export const UploadView: React.FC = () => {
                       backgroundColor: 'var(--bg-surface)',
                       borderRadius: 'var(--radius)',
                       color: 'var(--status-success)',
-                      fontSize: '11px'
+                      fontSize: '12px'
                     }}>
                       ✓ {state.traceMetadata.size} trace(s) ready
                     </div>
@@ -446,7 +446,7 @@ export const UploadView: React.FC = () => {
                     onClick={() => setEvalSetDrawerOpen(true)}
                     style={{
                       color: 'var(--text-secondary)',
-                      fontSize: '11px',
+                      fontSize: '12px',
                       padding: '3px 6px',
                       backgroundColor: 'var(--bg-surface)',
                       borderRadius: 'var(--radius)',
@@ -515,7 +515,7 @@ export const UploadView: React.FC = () => {
                 : provider === 'anthropic' ? 'ANTHROPIC_API_KEY'
                 : 'OPENAI_API_KEY';
               return (
-                <span style={{ fontSize: '11px', color: 'var(--status-failure)', marginTop: 2 }}>
+                <span style={{ fontSize: '12px', color: 'var(--status-failure)', marginTop: 2 }}>
                   {keyName} is not set - this model will fail
                 </span>
               );

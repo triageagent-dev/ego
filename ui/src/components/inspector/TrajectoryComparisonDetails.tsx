@@ -115,7 +115,6 @@ const headerStyles = css`
   font-weight: 600;
   color: var(--status-failure);
   margin-bottom: 12px;
-  letter-spacing: 0.5px;
 `;
 
 const comparisonCardStyles = css`
@@ -153,8 +152,6 @@ const labelStyles = css`
   font-size: 0.688rem;
   font-weight: 600;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 `;
 
 const toolListStyles = css`
