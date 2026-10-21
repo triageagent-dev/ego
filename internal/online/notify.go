@@ -175,7 +175,7 @@ type DigestRow struct {
 }
 
 // DigestText renders the daily digest.
-func DigestText(rows []DigestRow, budget BudgetStatus, open int, link string) string {
+func DigestText(rows []DigestRow, labels []AgreementRow, budget BudgetStatus, open int, link string) string {
 	var b strings.Builder
 	b.WriteString("**Agent quality, last 24h**\n")
 	sort.Slice(rows, func(i, j int) bool {
@@ -200,6 +200,15 @@ func DigestText(rows []DigestRow, budget BudgetStatus, open int, link string) st
 			delta = fmt.Sprintf(" (%+.2f)", r.Mean-r.Prev)
 		}
 		fmt.Fprintf(&b, "%s · `%s` %.2f%s, n=%d\n", scope, chatText(r.Key.Metric), r.Mean, delta, r.N)
+	}
+	sort.Slice(labels, func(i, j int) bool { return labels[i].Metric < labels[j].Metric })
+	for _, l := range labels {
+		rate, _ := l.Rate()
+		fmt.Fprintf(&b, "Judge agreement · `%s` %.2f (%d agree, %d disagree, last 7d)", chatText(l.Metric), rate, l.Agree, l.Disagree)
+		if l.Gated {
+			b.WriteString(" - below the floor, not used for findings")
+		}
+		b.WriteString("\n")
 	}
 	fmt.Fprintf(&b, "Judge spend today: %s tokens", humanInt(budget.Spent.JudgeTokens))
 	if budget.Caps.JudgeTokensPerDay > 0 {

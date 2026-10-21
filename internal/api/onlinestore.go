@@ -76,6 +76,21 @@ func ensureOnlineSchema(db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_online_corrections_state ON online_corrections(state, created_ms)`,
 		`CREATE INDEX IF NOT EXISTS idx_online_corrections_finding ON online_corrections(finding_id)`,
+		`CREATE TABLE IF NOT EXISTS online_labels (
+			label_id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL,
+			tenant TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			metric TEXT NOT NULL,
+			judge_score REAL NOT NULL,
+			verdict TEXT NOT NULL,
+			score REAL,
+			note TEXT NOT NULL,
+			"by" TEXT NOT NULL,
+			created_ms INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_online_labels_metric ON online_labels(metric, created_ms)`,
+		`CREATE INDEX IF NOT EXISTS idx_online_labels_session ON online_labels(session_id)`,
 		`CREATE TABLE IF NOT EXISTS online_state (
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
@@ -305,6 +320,25 @@ func (s *SQLiteStore) SetOnlineState(key, value string) error {
 	return err
 }
 
+// OnlineStatePrefix returns every state key that starts with prefix, with its value.
+func (s *SQLiteStore) OnlineStatePrefix(prefix string) (map[string]string, error) {
+	// substr rather than LIKE: metric names carry underscores, which LIKE reads as wildcards.
+	rows, err := s.db.Query(`SELECT key, value FROM online_state WHERE substr(key, 1, ?) = ?`, len(prefix), prefix)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
+		}
+		out[k] = v
+	}
+	return out, rows.Err()
+}
+
 // PruneOnline deletes online rows older than cutoff; resolved alerts too.
 func (s *SQLiteStore) PruneOnline(cutoff time.Time) error {
 	ms := cutoff.UnixMilli()
@@ -314,6 +348,7 @@ func (s *SQLiteStore) PruneOnline(cutoff time.Time) error {
 		`DELETE FROM online_alerts WHERE status = 'resolved' AND updated_ms < ?`,
 		`DELETE FROM online_findings WHERE state IN ('resolved', 'stale') AND updated_ms < ?`,
 		`DELETE FROM online_corrections WHERE state != 'pending' AND created_ms < ?`,
+		`DELETE FROM online_labels WHERE created_ms < ?`,
 	} {
 		if _, err := s.db.Exec(q, ms); err != nil {
 			return err

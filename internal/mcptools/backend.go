@@ -44,4 +44,7 @@ type Backend interface {
 	RegisterCorrection(ctx context.Context, in CorrectionInput) (*online.Correction, error)
 	// Corrections answers list_corrections; state "" or "all" is every state.
 	Corrections(ctx context.Context, kind, state string) ([]online.Correction, error)
+	// LabelSession answers label_session: it stores a verdict on a session's online score. The label's author is
+	// the caller's own identity, which the backend knows; the tool cannot name one.
+	LabelSession(ctx context.Context, in LabelInput) (*online.Label, error)
 }

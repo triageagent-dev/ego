@@ -49,14 +49,19 @@ type OnlineEngine struct {
 	// worker is single, so one counter is enough.
 	judgeTokens atomic.Int64
 
-	mu       sync.Mutex
-	counts   map[string]int64
-	alerts   map[online.SeriesKey]*online.Alert
-	runs     map[string]*onlineHourRun
-	judges   map[string]judge.Model
-	jev      *decision.Client
-	jevErr   error
-	jevBuilt bool
+	mu     sync.Mutex
+	counts map[string]int64
+	alerts map[online.SeriesKey]*online.Alert
+	runs   map[string]*onlineHourRun
+	judges map[string]judge.Model
+	// rjudges and recalTokens serve the anchor passes of onlinelabels.go: models of their own, so the scoring
+	// worker's token counter is not shared across goroutines.
+	rjudges        map[string]judge.Model
+	recalTokens    atomic.Int64
+	lSkippedBudget atomic.Int64
+	jev            *decision.Client
+	jevErr         error
+	jevBuilt       bool
 	// The findings pass (onlinefindings.go). fmu serialises read-modify-write of finding and correction rows between
 	// the detector goroutine and the correction endpoint; it is never held across a model call or a notification.
 	fmu              sync.Mutex
@@ -65,9 +70,11 @@ type OnlineEngine struct {
 	fWritten         atomic.Int64
 	fSkippedBudget   atomic.Int64
 	fSkippedEvidence atomic.Int64
-	fTokensTotal     atomic.Int64
-	fSpendDay        string
-	fSpendToday      int64
+	// fSkippedUncalibrated counts findings not written because the metric's judge is gated by the label agreement.
+	fSkippedUncalibrated atomic.Int64
+	fTokensTotal         atomic.Int64
+	fSpendDay            string
+	fSpendToday          int64
 	// newJudge builds a judge model; tests replace it.
 	newJudge func(ctx context.Context, model string, onUsage func(int64)) (judge.Model, error)
 	lastTick time.Time
@@ -94,6 +101,7 @@ func NewOnlineEngine(cfg *online.Config, store *SQLiteStore, sessions *SessionSt
 		alerts:     map[online.SeriesKey]*online.Alert{},
 		runs:       map[string]*onlineHourRun{},
 		judges:     map[string]judge.Model{},
+		rjudges:    map[string]judge.Model{},
 	}
 	e.newJudge = func(ctx context.Context, model string, onUsage func(int64)) (judge.Model, error) {
 		m, err := judge.NewGenAIModel(ctx, "", model)
@@ -506,6 +514,7 @@ func (e *OnlineEngine) Tick(ctx context.Context) {
 	e.finishStaleRuns(false)
 	e.detect(ctx, now)
 	e.findingsMaintain(ctx, now)
+	e.recalibrate(ctx, now)
 	e.digest(ctx, now)
 	if now.Sub(e.lastTick) > 24*time.Hour {
 		if !e.lastTick.IsZero() {
@@ -634,7 +643,7 @@ func (e *OnlineEngine) digest(ctx context.Context, now time.Time) {
 	e.mu.Lock()
 	open := len(e.alerts)
 	e.mu.Unlock()
-	text := online.DigestText(out, e.budget.Status(now), open, e.cfg.PublicURL)
+	text := online.DigestText(out, e.digestAgreement(now), e.budget.Status(now), open, e.cfg.PublicURL)
 	if err := e.notifier.Digest(ctx, text); err != nil {
 		logx.Errorf("online: digest: %v", err)
 		return
@@ -655,9 +664,15 @@ type onlineStatusDTO struct {
 	OpenAlerts int                 `json:"openAlerts"`
 	Sinks      []string            `json:"sinks"`
 	Findings   findingsStatusDTO   `json:"findings"`
+	Labels     labelsStatusDTO     `json:"labels"`
 }
 
+// status is the unrestricted view; statusFor limits the labels to what info may see.
 func (e *OnlineEngine) status() onlineStatusDTO {
+	return e.statusFor(RoleInfo{Role: RoleAdmin, IsAdmin: true})
+}
+
+func (e *OnlineEngine) statusFor(info RoleInfo) onlineStatusDTO {
 	st := onlineStatusDTO{
 		Sampling: e.cfg.Sampling,
 		Detector: e.cfg.Detector,
@@ -680,6 +695,7 @@ func (e *OnlineEngine) status() onlineStatusDTO {
 	st.OpenAlerts = len(e.alerts)
 	e.mu.Unlock()
 	st.Findings = e.findingsStatus()
+	st.Labels = e.labelsStatus(info)
 	return st
 }
 
@@ -722,7 +738,7 @@ func onlineStatusHandler(e *OnlineEngine) http.HandlerFunc {
 			writeOnlineUnavailable(w)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": e.status(), "error": nil})
+		writeJSON(w, http.StatusOK, map[string]any{"data": e.statusFor(narrowedInfo(r)), "error": nil})
 	}
 }
 

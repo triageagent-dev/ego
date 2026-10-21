@@ -757,6 +757,33 @@ export interface OnlineStatus {
   counts: Record<string, number>;
   openAlerts: number;
   sinks: string[];
+  // Absent on a server from before findings and labels.
+  findings?: {
+    enabled: boolean;
+    written: number;
+    skipped: { budget: number; noEvidence: number; uncalibrated: number };
+    tokens: number;
+  };
+  labels?: OnlineLabelsStatus;
+}
+
+// Judge agreement per metric over the last 7 days (docs/rsi.md, section 4).
+export interface OnlineLabelsMetric {
+  agree: number;
+  disagree: number;
+  // null when the window holds no labels.
+  agreement: number | null;
+  // True when people disagree with this metric's judge too often for it to drive findings.
+  gated: boolean;
+  // Mean absolute difference between the last anchor re-score and the labelled scores.
+  drift?: number;
+  driftN?: number;
+  driftAt?: string;
+}
+
+export interface OnlineLabelsStatus {
+  perMetric: Record<string, OnlineLabelsMetric>;
+  skipped: { budget: number };
 }
 
 export interface OnlineSeriesPoint {
@@ -784,4 +811,96 @@ export interface OnlineAlert {
     suspect?: string;
     worst?: string[];
   };
+}
+
+// Findings and corrections (GET /api/online/findings, /corrections). The wire shape is snake_case, as in the MCP
+// tools. See docs/rsi.md.
+export type OnlineFindingState = 'open' | 'corrected' | 'resolved' | 'stale';
+export type OnlineCorrectionState = 'pending' | 'verified' | 'failed';
+
+export interface OnlineVerificationWindow {
+  mean: number;
+  n: number;
+}
+
+export interface OnlineVerification {
+  before: OnlineVerificationWindow;
+  after: OnlineVerificationWindow;
+  window_end: string;
+  reason?: string;
+}
+
+export interface OnlineFinding {
+  finding_id: string;
+  tenant: string;
+  kind: string;
+  metric: string;
+  state: OnlineFindingState;
+  alert_id?: string;
+  created_at: string;
+  updated_at: string;
+  diagnosis: {
+    failure_mode: string;
+    summary: string;
+    suggested_correction: string;
+    confidence: 'low' | 'medium' | 'high';
+    evidence: { session_id: string; excerpt: string; why: string }[];
+  };
+  sessions: string[];
+  window: { from: string; to: string; n: number; mean: number; below: number };
+  model: string;
+  model_error?: string;
+  history: {
+    correction_id: string;
+    what: string;
+    version?: string;
+    by?: string;
+    state: OnlineCorrectionState;
+    at: string;
+  }[];
+}
+
+export interface OnlineCorrection {
+  correction_id: string;
+  finding_id?: string;
+  tenant: string;
+  kind: string;
+  metric?: string;
+  version?: string;
+  state: OnlineCorrectionState;
+  created_at: string;
+  verified_at?: string;
+  what: string;
+  by?: string;
+  verification: OnlineVerification;
+}
+
+// A person's verdict on a judge's score (POST/GET /api/online/labels).
+export interface OnlineLabel {
+  label_id: string;
+  session_id: string;
+  tenant: string;
+  kind: string;
+  metric: string;
+  judge_score: number;
+  verdict: 'agree' | 'disagree';
+  score?: number;
+  note?: string;
+  by?: string;
+  created_at: string;
+}
+
+export interface OnlineLabelInput {
+  sessionId: string;
+  metric: string;
+  verdict: 'agree' | 'disagree';
+  score?: number;
+  note?: string;
+}
+
+// One metric of GET /api/online/sessions/{id}/explain, reduced to what the labels need.
+export interface OnlineSessionScore {
+  metric: string;
+  score: number | null;
+  status: string;
 }

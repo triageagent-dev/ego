@@ -315,7 +315,7 @@ func TestNotifier_DiscordAndWebhook(t *testing.T) {
 }
 
 func TestDigestText(t *testing.T) {
-	text := DigestText([]DigestRow{{Key: SeriesKey{Kind: "rca", Metric: "m"}, Mean: 0.8, Prev: 0.9, N: 10, PrevN: 9}},
+	text := DigestText([]DigestRow{{Key: SeriesKey{Kind: "rca", Metric: "m"}, Mean: 0.8, Prev: 0.9, N: 10, PrevN: 9}}, nil,
 		BudgetStatus{Caps: Budget{JudgeTokensPerDay: 2_000_000, JevCallsPerDay: 100}, Spent: Cost{JudgeTokens: 150_000, JevCalls: 7}}, 1, "")
 	for _, want := range []string{"rca · `m` 0.80 (-0.10), n=10", "150k tokens of 2.0M", "7 Jev calls of 100", "Open alerts: 1"} {
 		if !strings.Contains(text, want) {

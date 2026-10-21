@@ -22,6 +22,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
+# skills/embed.go embeds the agent skill into the binary, so the build needs those files.
+COPY skills ./skills
 # ui/embed.go's go:embed all:dist needs both the Go source and a built
 # dist/ present before `go build` - the Go source comes straight from the
 # repo, the assets from the "ui" stage above (ko builds this same package

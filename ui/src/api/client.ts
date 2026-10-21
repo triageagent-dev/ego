@@ -16,6 +16,11 @@ import type {
   OnlineStatus,
   OnlineSeriesPoint,
   OnlineAlert,
+  OnlineFinding,
+  OnlineCorrection,
+  OnlineLabel,
+  OnlineLabelInput,
+  OnlineSessionScore,
 } from '../lib/types';
 import { config } from '../config';
 import { withTenant } from '../lib/tenant';
@@ -392,6 +397,47 @@ export async function getOnlineAlerts(state: 'open' | 'all' = 'open'): Promise<O
   if (response.status === 503) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load quality alerts: ${httpStatusLabel(response)}`);
   return unwrap<OnlineAlert[]>(response);
+}
+
+export async function getOnlineFindings(): Promise<OnlineFinding[]> {
+  const response = await fetch(withTenant(`${config.api.endpoints.onlineFindings}?state=all`));
+  if (response.status === 503) throw new StorageUnavailableError();
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to load findings'));
+  return unwrap<OnlineFinding[]>(response);
+}
+
+export async function getOnlineCorrections(): Promise<OnlineCorrection[]> {
+  const response = await fetch(withTenant(`${config.api.endpoints.onlineCorrections}?state=all`));
+  if (response.status === 503) throw new StorageUnavailableError();
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to load corrections'));
+  return unwrap<OnlineCorrection[]>(response);
+}
+
+// The labels of one session, newest first.
+export async function getOnlineLabels(sessionId: string): Promise<OnlineLabel[]> {
+  const response = await fetch(`${config.api.endpoints.onlineLabels}?session=${encodeURIComponent(sessionId)}`);
+  if (response.status === 503) throw new StorageUnavailableError();
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to load labels'));
+  return unwrap<OnlineLabel[]>(response);
+}
+
+export async function postOnlineLabel(input: OnlineLabelInput): Promise<OnlineLabel> {
+  const response = await fetch(config.api.endpoints.onlineLabels, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to save the label'));
+  return unwrap<OnlineLabel>(response);
+}
+
+// The online scores of one session, or null when it was never scored (or online evaluation is off, or the
+// caller may not see it): the session card then has nothing to label.
+export async function getOnlineSessionScores(sessionId: string): Promise<OnlineSessionScore[] | null> {
+  const response = await fetch(`${config.api.endpoints.online}/sessions/${encodeURIComponent(sessionId)}/explain`);
+  if (!response.ok) return null;
+  const ev = await unwrap<{ metrics: OnlineSessionScore[] }>(response);
+  return ev.metrics ?? [];
 }
 
 // One row of GET /api/streaming/session-spans - a span

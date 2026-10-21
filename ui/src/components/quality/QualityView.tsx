@@ -12,9 +12,10 @@ import {
   Legend,
 } from 'chart.js';
 import { RefreshCw } from 'lucide-react';
-import { getOnlineAlerts, getOnlineSeries, getOnlineStatus, StorageUnavailableError } from '../../api/client';
+import { getOnlineAlerts, getOnlineCorrections, getOnlineFindings, getOnlineSeries, getOnlineStatus, StorageUnavailableError } from '../../api/client';
+import { sessionLink } from '../shell/routes';
 import { useSelectedTenant } from '../../lib/tenant';
-import type { OnlineAlert, OnlineSeriesPoint, OnlineStatus } from '../../lib/types';
+import type { OnlineAlert, OnlineCorrection, OnlineFinding, OnlineFindingState, OnlineSeriesPoint, OnlineStatus } from '../../lib/types';
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
 
@@ -32,6 +33,8 @@ const RANGES: { label: string; hours: number }[] = [
 // Same categorical slots as the Usage view.
 const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9'];
 const REFRESH_MS = 60_000;
+
+const FINDING_STATES: OnlineFindingState[] = ['open', 'corrected', 'resolved', 'stale'];
 
 function scopeOf(p: { tenant: string; kind: string }): string {
   return p.tenant ? `${p.tenant} · ${p.kind}` : p.kind;
@@ -53,6 +56,10 @@ export const QualityView: React.FC = () => {
   const [status, setStatus] = useState<OnlineStatus | null>(null);
   const [series, setSeries] = useState<OnlineSeriesPoint[]>([]);
   const [alerts, setAlerts] = useState<OnlineAlert[]>([]);
+  const [findings, setFindings] = useState<OnlineFinding[]>([]);
+  const [corrections, setCorrections] = useState<OnlineCorrection[]>([]);
+  const [findingState, setFindingState] = useState<OnlineFindingState>('open');
+  const [openFinding, setOpenFinding] = useState<string | null>(null);
   const [scope, setScope] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
@@ -63,14 +70,20 @@ export const QualityView: React.FC = () => {
     setLoading(true);
     try {
       // The judge budget is not per tenant, so a tenant-limited user is refused it; the rest of the view still loads.
-      const [st, se, al] = await Promise.all([
+      // Findings and corrections are an extra: a server without them, or a role that cannot read them, still
+      // gets the rest of the view.
+      const [st, se, al, fi, co] = await Promise.all([
         getOnlineStatus().catch((e) => (e instanceof StorageUnavailableError ? Promise.reject(e) : null)),
         getOnlineSeries(hours),
         getOnlineAlerts('all'),
+        getOnlineFindings().catch(() => [] as OnlineFinding[]),
+        getOnlineCorrections().catch(() => [] as OnlineCorrection[]),
       ]);
       setStatus(st);
       setSeries(se);
       setAlerts(al);
+      setFindings(fi);
+      setCorrections(co);
       setError(null);
       setNotConfigured(false);
     } catch (e) {
@@ -115,6 +128,8 @@ export const QualityView: React.FC = () => {
   const counts = status ? Object.entries(status.counts).sort((a, b) => b[1] - a[1]) : [];
   const sampled = counts.filter(([k]) => k.startsWith('sampled_')).reduce((s, [, v]) => s + v, 0);
   const openAlerts = alerts.filter(a => a.status === 'open');
+  const shownFindings = findings.filter(f => f.state === findingState);
+  const agreement = status?.labels ? Object.entries(status.labels.perMetric).sort((a, b) => a[0].localeCompare(b[0])) : [];
 
   return (
     <div css={pageStyle}>
@@ -178,6 +193,117 @@ export const QualityView: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </section>
+
+          <section css={cardStyle}>
+            <h2 css={cardTitleStyle}>Findings</h2>
+            <div css={[filterRowStyle, findingFilterStyle]}>
+              <div css={segmentStyle} role="group" aria-label="Finding state">
+                {FINDING_STATES.map(st => (
+                  <button key={st} css={[segBtnStyle, findingState === st && segActiveStyle]} onClick={() => setFindingState(st)}>
+                    {st} {findings.filter(f => f.state === st).length}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {shownFindings.length === 0 ? (
+              <p css={emptyStyle}>No {findingState} findings.</p>
+            ) : (
+              <div css={tableWrapStyle}>
+                <table css={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th>Kind</th><th>Metric</th><th>Failure mode</th><th>Confidence</th><th>Created</th><th css={numStyle}>Sessions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shownFindings.map(f => (
+                      <React.Fragment key={f.finding_id}>
+                        <tr css={clickRowStyle} onClick={() => setOpenFinding(openFinding === f.finding_id ? null : f.finding_id)}>
+                          <td>{scopeOf(f)}</td>
+                          <td css={monoStyle}>{f.metric}</td>
+                          <td css={wrapCellStyle}>{f.diagnosis.failure_mode}</td>
+                          <td>{f.diagnosis.confidence}</td>
+                          <td>{new Date(f.created_at).toLocaleString()}</td>
+                          <td css={numStyle}>{f.sessions.length}</td>
+                        </tr>
+                        {openFinding === f.finding_id && (
+                          <tr>
+                            <td colSpan={6} css={detailStyle}>
+                              <p>{f.diagnosis.summary}</p>
+                              {f.diagnosis.suggested_correction && (
+                                <p><b>Suggested correction.</b> {f.diagnosis.suggested_correction}</p>
+                              )}
+                              <p css={dimStyle}>
+                                window mean {f.window.mean.toFixed(2)} over {f.window.n} sessions
+                                {f.model ? ` · diagnosed by ${f.model}` : ' · written from the evidence alone'}
+                              </p>
+                              <div>
+                                <b>Evidence sessions.</b>{' '}
+                                {f.sessions.map(id => (
+                                  <a key={id} css={sessionLinkStyle} href={sessionLink(id)} title={f.diagnosis.evidence.find(e => e.session_id === id)?.why}>{id}</a>
+                                ))}
+                              </div>
+                              {f.history.length > 0 && (
+                                <div css={dimStyle}>
+                                  Tried: {f.history.map(h => `${h.what} (${h.state})`).join('; ')}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section css={cardStyle}>
+            <h2 css={cardTitleStyle}>Corrections</h2>
+            {corrections.length === 0 ? (
+              <p css={emptyStyle}>No corrections registered.</p>
+            ) : (
+              <div css={tableWrapStyle}>
+                <table css={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th>Kind</th><th>What</th><th>Version</th><th>State</th><th css={numStyle}>Before</th><th css={numStyle}>After</th><th>Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {corrections.map(c => (
+                      <tr key={c.correction_id}>
+                        <td>{scopeOf(c)}</td>
+                        <td css={wrapCellStyle} title={c.verification.reason}>{c.what}</td>
+                        <td css={monoStyle}>{c.version || '–'}</td>
+                        <td><span css={[tagStyle, c.state === 'failed' && openTagStyle]}>{c.state}</span></td>
+                        <td css={numStyle}>{c.verification.before.mean.toFixed(2)} <span css={dimStyle}>n={c.verification.before.n}</span></td>
+                        <td css={numStyle}>{c.verification.after.n > 0 ? c.verification.after.mean.toFixed(2) : '–'} <span css={dimStyle}>n={c.verification.after.n}</span></td>
+                        <td>{new Date(c.created_at).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section css={cardStyle}>
+            <h2 css={cardTitleStyle}>Judge agreement</h2>
+            {agreement.length === 0 ? (
+              <p css={emptyStyle}>No labels in the last 7 days. Agree or disagree with a score on a session's card.</p>
+            ) : (
+              <div css={[tilesStyle, agreementTilesStyle]}>
+                {agreement.map(([metric, m]) => (
+                  <Tile key={metric} label={metric}
+                    value={m.agreement === null ? '–' : `${Math.round(m.agreement * 100)}%`}
+                    sub={`${m.agree} agree · ${m.disagree} disagree${m.drift !== undefined ? ` · drift ${m.drift.toFixed(2)} (n=${m.driftN ?? 0})` : ''}`}
+                    badge={m.gated ? 'gated' : undefined} />
+                ))}
               </div>
             )}
           </section>
@@ -267,10 +393,10 @@ export const QualityView: React.FC = () => {
   );
 };
 
-const Tile: React.FC<{ label: string; value: string; sub: string }> = ({ label, value, sub }) => (
+const Tile: React.FC<{ label: string; value: string; sub: string; badge?: string }> = ({ label, value, sub, badge }) => (
   <div css={tileStyle}>
     <div css={tileLabelStyle}>{label}</div>
-    <div css={tileValueStyle}>{value}</div>
+    <div css={tileValueStyle}>{value} {badge && <span css={[tagStyle, openTagStyle]} title="People disagree with this judge too often for it to write findings">{badge}</span>}</div>
     <div css={tileSubStyle}>{sub}</div>
   </div>
 );
@@ -365,4 +491,37 @@ const chipStyle = css`
   background: var(--bg-elevated);
   color: var(--text-secondary);
   b { color: var(--text-primary); font-family: var(--font-mono); font-weight: 500; margin-left: 4px; }
+`;
+
+const findingFilterStyle = css`
+  margin-bottom: 6px;
+`;
+
+const clickRowStyle = css`
+  cursor: pointer;
+`;
+
+const wrapCellStyle = css`
+  white-space: normal !important;
+  min-width: 220px;
+  max-width: 480px;
+`;
+
+const detailStyle = css`
+  white-space: normal !important;
+  background: var(--bg-elevated);
+  p { margin: 0 0 6px; }
+`;
+
+const sessionLinkStyle = css`
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  margin-right: 10px;
+  white-space: nowrap;
+`;
+
+// The agreement tiles sit inside their card, which already has the border.
+const agreementTilesStyle = css`
+  border: none;
+  margin-bottom: 0;
 `;

@@ -134,7 +134,12 @@ flapping.
   `GET /api/online/sessions/{id}/explain`: the data behind the MCP tools `get_quality`,
   `explain_regression` and `explain_session` (`docs/rsi.md`).
 - A **Quality** view in the sidebar shows the trend per kind and metric, the
-  alerts, and the budget gauge.
+  alerts, and the budget gauge, then the findings, the corrections and the judge agreement of `docs/rsi.md`.
+- **Labels.** A person can agree or disagree with a judge's score (`POST /api/online/labels`, the buttons on an
+  expanded session card, the `label_session` MCP tool). Agreement per metric over seven days is in
+  `/api/online/status` and the daily digest; a metric whose judge people mostly disagree with writes no findings,
+  and labelled sessions are re-scored every `findings.recalibrateEvery` to report judge drift. See
+  `docs/rsi.md`, section 4.
 
 These need `--session-db`. Without it, they return 503 and the loop does not
 start.
@@ -147,8 +152,7 @@ start.
    endpoint, Quality view.
 3. Consumer side: an agent reads quality alerts as input to its self-tuning
    loop. The diagnosis, correction and verification half lives in this repo now:
-   see `docs/rsi.md` (findings and corrections are implemented, the labels and
-   the skill follow).
-4. Judge cascade (1 sample, then 5 when the score is borderline), a calibration
-   anchor set re-scored daily for judge drift, and annotation-queue agreement as
-   a metric.
+   see `docs/rsi.md` (findings, corrections, labels and the skill are implemented).
+4. Judge cascade (1 sample, then 5 when the score is borderline). The calibration
+   anchor set (labelled sessions re-scored for judge drift) and label agreement
+   as a measure of the judge moved to `docs/rsi.md`, section 4.

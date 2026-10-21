@@ -4,6 +4,7 @@ import { SpansPanel } from './SpansPanel';
 import { LiveConversationPanel } from './LiveConversationPanel';
 import type { ConversationElement } from './LiveConversationPanel';
 import { SessionMetadata } from './SessionMetadata';
+import { OnlineScoresPanel } from './OnlineScoresPanel';
 import { formatSpanDuration, formatTurnTime } from '../../lib/trace-helpers';
 import type { AnnotationQueue } from '../../lib/types';
 import { tenantName, useTenantNames } from '../../lib/tenant';
@@ -763,6 +764,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
         </details>
       )}
 
+      {expanded && session.status === 'complete' && <OnlineScoresPanel sessionId={session.sessionId} />}
       {expanded && <SpansPanel sessionId={session.sessionId} />}
     </div>
   );

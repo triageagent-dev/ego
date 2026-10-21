@@ -353,3 +353,11 @@ func (b *REST) Corrections(ctx context.Context, kind, state string) ([]online.Co
 	}
 	return out, nil
 }
+
+func (b *REST) LabelSession(ctx context.Context, in LabelInput) (*online.Label, error) {
+	var out online.Label
+	if err := b.post(ctx, "/api/online/labels", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

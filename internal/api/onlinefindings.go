@@ -38,6 +38,8 @@ type findingsStatusDTO struct {
 	Skipped struct {
 		Budget     int64 `json:"budget"`
 		NoEvidence int64 `json:"noEvidence"`
+		// Uncalibrated counts series left alone because people disagree with their metric's judge too often.
+		Uncalibrated int64 `json:"uncalibrated"`
 	} `json:"skipped"`
 	Tokens int64 `json:"tokens"`
 }
@@ -48,6 +50,7 @@ func (e *OnlineEngine) findingsStatus() findingsStatusDTO {
 	st.Written = e.fWritten.Load()
 	st.Skipped.Budget = e.fSkippedBudget.Load()
 	st.Skipped.NoEvidence = e.fSkippedEvidence.Load()
+	st.Skipped.Uncalibrated = e.fSkippedUncalibrated.Load()
 	st.Tokens = e.fTokensTotal.Load()
 	return st
 }
@@ -74,6 +77,15 @@ func (e *OnlineEngine) recordFindingsSpend(now time.Time, tokens int64) {
 		return
 	}
 	e.fTokensTotal.Add(tokens)
+	e.persistSpend(now, tokens)
+}
+
+// persistSpend adds judge tokens that online_evals does not hold (findings, anchor re-scoring) to today's total,
+// which survives a restart.
+func (e *OnlineEngine) persistSpend(now time.Time, tokens int64) {
+	if tokens <= 0 {
+		return
+	}
 	day := now.UTC().Format("2006-01-02")
 	e.mu.Lock()
 	if e.fSpendDay != day {
@@ -250,6 +262,11 @@ func (e *OnlineEngine) diagnose(ctx context.Context, now time.Time, in online.Pr
 // the budget is spent; both are counted.
 func (e *OnlineEngine) writeFinding(ctx context.Context, now time.Time, key online.SeriesKey, alertID string, existing *online.Finding) {
 	cfg := e.cfg.Findings
+	// A judge that people keep disagreeing with must not drive corrections (docs/rsi.md, section 4).
+	if e.uncalibrated(key.Metric, now) {
+		e.fSkippedUncalibrated.Add(1)
+		return
+	}
 	from := now.Add(-cfg.Window.D())
 	samples, err := e.store.OnlineSamplesFor(key.Tenant, key.Kind, key.Metric, "", from.UnixMilli(), now.UnixMilli()+1)
 	if err != nil {

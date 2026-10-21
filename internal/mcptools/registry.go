@@ -11,6 +11,7 @@ import (
 
 	"github.com/triageagent-dev/ego/internal/adk"
 	"github.com/triageagent-dev/ego/internal/online"
+	"github.com/triageagent-dev/ego/skills"
 )
 
 // ServerVersion is reported to MCP clients during initialize; it is not otherwise meaningful.
@@ -35,11 +36,27 @@ type Options struct {
 	EvaluateTraces server.ToolHandlerFunc
 }
 
-// NewServer builds an MCP server with every tool of the registry.
+// RSILoopPrompt is the name of the MCP prompt that carries the skill.
+const RSILoopPrompt = "rsi_loop"
+
+// NewServer builds an MCP server with every tool and prompt of the registry.
 func NewServer(b Backend, o Options) *server.MCPServer {
-	s := server.NewMCPServer("ego", ServerVersion, server.WithToolCapabilities(false))
+	s := server.NewMCPServer("ego", ServerVersion, server.WithToolCapabilities(false), server.WithPromptCapabilities(false))
 	s.AddTools(Tools(b, o)...)
+	s.AddPrompt(Prompt(), rsiLoopHandler)
 	return s
+}
+
+// Prompt is the rsi_loop prompt: the text of skills/ego-rsi/SKILL.md, so any MCP client can load the loop from the
+// server without the repository. Like the tools it is defined once here and served on both transports.
+func Prompt() mcp.Prompt {
+	return mcp.NewPrompt(RSILoopPrompt,
+		mcp.WithPromptDescription("How an agent checks its own quality in ego and corrects itself: read the findings, change yourself, register the correction, wait for ego's verification."))
+}
+
+func rsiLoopHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+	return mcp.NewGetPromptResult("The ego self-correction loop",
+		[]mcp.PromptMessage{mcp.NewPromptMessage(mcp.RoleUser, mcp.NewTextContent(skills.EgoRSI))}), nil
 }
 
 // Tools is the registry: each tool is defined here once, whatever the transport.
@@ -175,6 +192,25 @@ func Tools(b Backend, o Options) []server.ServerTool {
 			mcp.WithString("tenant",
 				mcp.Description("The tenant. Implied by the finding, or by a token limited to one tenant.")),
 		), Handler: registerCorrectionHandler(b)},
+
+		server.ServerTool{Tool: mcp.NewTool("label_session",
+			mcp.WithDescription("Record a person's verdict on a judge's score: agree or disagree with the online score of "+
+				"one metric on one session, optionally with the score you think is right and a note. ego measures how "+
+				"often people agree with each metric's judge; a metric whose judge people mostly disagree with stops "+
+				"producing findings. Labels are for people reading the evidence: do not label sessions you produced. "+
+				"Fails when the session has no online score for the metric."),
+			mcp.WithString("session_id", mcp.Required(),
+				mcp.Description("An online-scored session.")),
+			mcp.WithString("metric", mcp.Required(),
+				mcp.Description("The metric whose score you judge, as explain_session lists it.")),
+			mcp.WithString("verdict", mcp.Required(),
+				mcp.Enum("agree", "disagree"),
+				mcp.Description("agree or disagree with the judge's score.")),
+			mcp.WithNumber("score",
+				mcp.Description("The score you think is right, between 0 and 1. Omit to only agree or disagree.")),
+			mcp.WithString("note",
+				mcp.Description("Why, in a sentence (at most 1000 characters).")),
+		), Handler: labelSessionHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("list_corrections",
 			mcp.WithDescription("The corrections registered for your tenants, newest first, each with its verification: the "+
@@ -395,6 +431,33 @@ func registerCorrectionHandler(b Backend) server.ToolHandlerFunc {
 			Version:   req.GetString("version", ""),
 			By:        req.GetString("by", ""),
 		})
+		if err != nil {
+			return toolError(err)
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func labelSessionHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		sessionID, err := req.RequireString("session_id")
+		if err != nil {
+			return toolError(err)
+		}
+		metric, err := req.RequireString("metric")
+		if err != nil {
+			return toolError(err)
+		}
+		verdict, err := req.RequireString("verdict")
+		if err != nil {
+			return toolError(err)
+		}
+		in := LabelInput{SessionID: sessionID, Metric: metric, Verdict: verdict, Note: req.GetString("note", "")}
+		if _, given := req.GetArguments()["score"]; given {
+			score := req.GetFloat("score", 0)
+			in.Score = &score
+		}
+		out, err := b.LabelSession(ctx, in)
 		if err != nil {
 			return toolError(err)
 		}

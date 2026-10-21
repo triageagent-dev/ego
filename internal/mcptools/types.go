@@ -19,6 +19,16 @@ type CorrectionInput struct {
 	By        string `json:"by,omitempty"`
 }
 
+// LabelInput is the argument of label_session (and the body of POST /api/online/labels). Score is the score the
+// person says is right; omit it to only agree or disagree with the judge's.
+type LabelInput struct {
+	SessionID string   `json:"sessionId"`
+	Metric    string   `json:"metric"`
+	Verdict   string   `json:"verdict"`
+	Score     *float64 `json:"score,omitempty"`
+	Note      string   `json:"note,omitempty"`
+}
+
 // ParseSince reads the `since` argument of get_findings and GET /api/online/findings: an RFC 3339 time, or a
 // duration such as "24h" counted back from now. Empty means no limit.
 func ParseSince(s string, now time.Time) (time.Time, error) {

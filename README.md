@@ -80,6 +80,10 @@ Container only: `docker run -p 8001:8001 -p 4318:4318 -e EGO_NO_AUTH=true -e EGO
   alerts on regressions.
 - **See what it costs**: a token usage ledger built from `gen_ai.usage.*` on LLM spans.
 
+**Self-correction (RSI).** ego diagnoses low scores into findings, hands them to the agent over MCP at `/mcp` with
+the token it already sends traces with, records the corrections the agent makes and verifies that the scores
+recovered. See [docs/rsi.md](docs/rsi.md) and the agent-side skill in [skills/ego-rsi](skills/ego-rsi).
+
 > Work in progress. Interfaces can change between releases. [docs/STATUS.md](docs/STATUS.md) lists what is
 > supported, known simplifications and what is out of scope.
 

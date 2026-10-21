@@ -1,6 +1,6 @@
 # RSI: the agent corrects itself
 
-- **Status**: Phases 1 and 2 implemented (2026-10-21); phase 3 open
+- **Status**: Implemented (2026-10-21)
 - **Scope**: ego (`serve`, `mcp`). Builds on `docs/online-evaluation.md`.
 
 Online evaluation closes at a notification: **sample → score → detect → notify**. A person reads the
@@ -146,6 +146,17 @@ A finding is written by the **findings pass** (`internal/online/findings.go`, wi
 - **UI.** The session inspector gets agree/disagree on each online score; the Quality view lists findings,
   corrections and the per-metric agreement.
 
+**As built (phase 3).**
+- `POST /api/online/labels` answers 404, not 400, for a session with no online score for the metric and for a session of a tenant the caller may not see, so a refusal does not say which. A score of `null` (an errored metric) counts as no score. `GET` also takes `session=`, which the session card uses.
+- A session can be labelled more than once (a changed mind is a newer row). Agreement and anchors use the newest label of each (session, metric), so one session counts once however often it was labelled.
+- Agreement and the gate look at the labels of every tenant, because they judge the metric's judge. A tenant-limited caller of the status sees counts from its own tenants' labels, the global `gated` flag, and no drift (drift is not attributable to a tenant).
+- `labels.perMetric[metric]` has `gated` always, `agreement: null` when the window has no labels, and `drift`, `driftN`, `driftAt` once an anchor pass has produced one (a metric whose labels have aged out of the window still shows its last drift). `labels.skipped.budget` counts anchor passes cut short by the budget; `findings.skipped.uncalibrated` counts findings not written because of the gate (a gated alert is counted again on each tick).
+- The gate applies to every finding write, alert refreshes included. `findings.enabled: false` keeps labels, agreement and anchor re-scoring running.
+- An anchor pass re-scores a session with its whole profile (same evaluators, same `maxInvocations`), not only the labelled metric, so the reserve and settle are the profile's own and every labelled metric of that session gets a new score from one run. The session's profile is the one recorded when it was scored; a session whose trace has left memory or whose profile left the config is skipped and goes to the back of the queue.
+- The last re-score time of each anchor is kept in `online_state` (`anchor/<metric>/<session>`), the last drift in `drift/<metric>`, and the pass time in `labels_recalibrated_ms`. A pass cut short by the budget does not set the pass time, so the next tick retries it. Judge tokens of a pass are added to the day's persisted extra spend (shared with findings); Jev calls of a pass are metered in the budget but not persisted across a restart.
+- `label_session` takes the author from the caller's identity (`by` is empty in the no-login mode); it is not an argument. The `rsi_loop` prompt is registered by `mcptools.NewServer`, so stdio and `/mcp` serve the same text from `skills/embed.go`.
+- The UI offers the buttons on the expanded card of a completed session, not in a separate queue (the Sessions tab's "annotation queue" is a golden-session picker kept in the browser).
+
 ## 5. Config
 
 In the online config file (section 2 of `docs/online-evaluation.md`), all optional:
@@ -181,4 +192,4 @@ verified. Helm renders it from `online.findings` values.
    sinks, MCP `register_correction` + `list_corrections`. **Implemented (2026-10-21).**
 3. Labels store, API, agreement gate, anchor re-scoring, MCP `label_session`; Quality view and inspector; the
    skill and the `rsi_loop` prompt; docs (`STATUS.md`, `online-evaluation.md` phase 3 moves here, README
-   paragraph).
+   paragraph). **Implemented (2026-10-21).**
