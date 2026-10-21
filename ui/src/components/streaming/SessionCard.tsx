@@ -1,5 +1,4 @@
 import { Fragment } from 'react';
-import { Eye } from 'lucide-react';
 import type { ConversationElement } from './LiveConversationPanel';
 import { formatSpanDuration, formatStarted, modelsLabel } from '../../lib/trace-helpers';
 import { tenantName, useTenantNames } from '../../lib/tenant';
@@ -25,6 +24,14 @@ interface Invocation {
     errorTypes?: string[];
   };
 }
+
+// The hide button's mark: an eyelid arc over a ring pupil, drawn open at the bottom.
+const HideIcon: React.FC<{ size: number }> = ({ size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} aria-hidden="true" style={{ display: 'block' }}>
+    <path d="M3 12.5A9.2 9.2 0 0 1 21 12.5" />
+    <circle cx="12" cy="16" r="2.6" />
+  </svg>
+);
 
 export interface SessionCardProps {
   /** The session whose details are open in the side panel. */
@@ -401,7 +408,7 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
                 transition: 'all 0.2s',
               }}
             >
-              <Eye size={15} />
+              <HideIcon size={16} />
             </button>
           )}
 
