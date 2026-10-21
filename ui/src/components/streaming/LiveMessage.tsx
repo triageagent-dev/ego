@@ -1,11 +1,10 @@
 import { useState, type ReactNode } from 'react';
 import { PrettyText } from './PrettyText';
 
-// User and agent messages collapse one by one (a
-// prompt can be thousands of words); collapsed, the header shows a one-line
-// preview and the length. Expanded text goes through PrettyText.
+// User and agent messages open by default and collapse one by one (a prompt can be thousands of words); collapsed,
+// the header shows a one-line preview and the length. Text goes through PrettyText.
 function MessageBlock({ label, color, text, extra }: { label: string; color: string; text: string; extra?: ReactNode }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const preview = text.replace(/\s+/g, ' ').trim();
   return (
     <div style={{ marginBottom: '12px' }}>
