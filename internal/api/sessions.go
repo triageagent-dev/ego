@@ -287,6 +287,7 @@ type sessionCompleteEvent struct {
 // optionally archived to a SQLiteStore so sessions survive a restart.
 type SessionStore struct {
 	mu               sync.Mutex
+	indexing         sync.WaitGroup // the session-index backfill LoadPersisted starts; Close waits for it
 	sessions         map[string]*Session
 	order            []string
 	hub              *sseHub
@@ -487,7 +488,9 @@ func (s *SessionStore) LoadPersisted() error {
 		logx.Infof("restored %d session(s) from archive", len(snapshots))
 	}
 	// An archive written before the session list was paged has no index rows yet; add them without holding up start.
+	s.indexing.Add(1)
 	go func() {
+		defer s.indexing.Done()
 		if n, err := s.store.BackfillSessionIndex(s.usageTenantAttr); err != nil {
 			logx.Warnf("session archive: indexing for the session list: %v", err)
 		} else if n > 0 {
@@ -794,6 +797,7 @@ func (s *SessionStore) Close() error {
 	if s.store == nil {
 		return nil
 	}
+	s.indexing.Wait()
 	if err := s.flushPersist(); err != nil {
 		logx.Errorf("session archive: final snapshot failed: %v", err)
 	}
