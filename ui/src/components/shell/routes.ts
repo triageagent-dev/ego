@@ -9,7 +9,7 @@ export interface Tab {
 }
 
 export const TABS: Tab[] = [
-  { key: '1', label: 'sessions', view: 'streaming', also: ['annotation-queue'] },
+  { key: '1', label: 'sessions', view: 'streaming' },
   { key: '2', label: 'evaluate', view: 'upload', also: ['dashboard', 'inspector', 'comparison'] },
   { key: '3', label: 'runs', view: 'runs' },
   { key: '4', label: 'usage', view: 'usage' },

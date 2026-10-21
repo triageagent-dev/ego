@@ -172,7 +172,7 @@ A label is the truth about one score, and ego counts it as such:
 - An anchor pass re-scores a session with its whole profile (same evaluators, same `maxInvocations`), not only the labelled metric, so the reserve and settle are the profile's own and every labelled metric of that session gets a new score from one run. The session's profile is the one recorded when it was scored; a session whose trace has left memory or whose profile left the config is skipped and goes to the back of the queue.
 - The last re-score time of each anchor is kept in `online_state` (`anchor/<metric>/<session>`), the last drift in `drift/<metric>`, and the pass time in `labels_recalibrated_ms`. A pass cut short by the budget does not set the pass time, so the next tick retries it. Judge tokens of a pass are added to the day's persisted extra spend (shared with findings); Jev calls of a pass are metered in the budget but not persisted across a restart.
 - `label_session` takes the author from the caller's identity (`by` is empty in the no-login mode); it is not an argument. The `rsi_loop` prompt is registered by `mcptools.NewServer`, so stdio and `/mcp` serve the same text from `skills/embed.go`.
-- The UI offers the buttons on the expanded card of a completed session, not in a separate queue (the Sessions tab's "annotation queue" is a golden-session picker kept in the browser).
+- The UI offers the buttons on the expanded card of a completed session, not in a separate queue.
 
 ## 5. Config
 

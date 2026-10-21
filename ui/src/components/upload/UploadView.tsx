@@ -205,19 +205,6 @@ export const UploadView: React.FC = () => {
   return (
     <div css={uploadViewStyle}>
       <div className="header">
-        <div className="header-nav">
-          <div style={{ display: 'flex', gap: '8px' }}>
-            {state.annotationQueues.some(q => q.items.length > 0) && (
-              <button
-                className="nav-button"
-                onClick={() => actions.setCurrentView('annotation-queue')}
-                style={{ borderColor: 'rgba(181, 171, 252, 0.4)', color: '#b5abfc' }}
-              >
-                Annotation Queues
-              </button>
-            )}
-          </div>
-        </div>
         <h1 className="title">Evaluate</h1>
         <p className="subtitle">
           traces + a golden set, scored by the metrics you pick

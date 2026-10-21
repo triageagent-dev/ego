@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { Modal } from 'antd';
 import { SpansPanel } from './SpansPanel';
 import { LiveConversationPanel } from './LiveConversationPanel';
@@ -6,7 +6,6 @@ import type { ConversationElement } from './LiveConversationPanel';
 import { SessionMetadata } from './SessionMetadata';
 import { OnlineScoresPanel } from './OnlineScoresPanel';
 import { formatSpanDuration, formatTurnTime, modelsLabel } from '../../lib/trace-helpers';
-import type { AnnotationQueue } from '../../lib/types';
 import { tenantName, useTenantNames } from '../../lib/tenant';
 
 interface Invocation {
@@ -68,34 +67,14 @@ interface SessionCardProps {
       evalStatus: string;
     }>;
   };
-  annotationQueues?: AnnotationQueue[];
-  onAddToQueue?: (queueId: string) => void;
-  onCreateAndAddToQueue?: (name: string) => void;
-  queueNames?: string[];
   /** When set, renders a "Compare" checkbox for opting this session into the
    * evaluation run alongside the golden session. Absent for the golden
    * session itself and for sessions that aren't complete yet. */
   compareOption?: { checked: boolean; onToggle: () => void };
 }
 
-export function SessionCard({ defaultExpanded, session, isSelected, onSelect, onRemove, evaluationResult, annotationQueues, onAddToQueue, onCreateAndAddToQueue, queueNames, compareOption }: SessionCardProps) {
+export function SessionCard({ defaultExpanded, session, isSelected, onSelect, onRemove, evaluationResult, compareOption }: SessionCardProps) {
   const [expanded, setExpanded] = useState(!!defaultExpanded);
-  const [showQueuePicker, setShowQueuePicker] = useState(false);
-  const [newQueueName, setNewQueueName] = useState('');
-  const [showNewQueueInput, setShowNewQueueInput] = useState(false);
-  const queuePickerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (queuePickerRef.current && !queuePickerRef.current.contains(e.target as Node)) {
-        setShowQueuePicker(false);
-        setShowNewQueueInput(false);
-        setNewQueueName('');
-      }
-    };
-    if (showQueuePicker) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showQueuePicker]);
 
   const conversationElements = session.liveElements || [];
   const liveStats = session.liveStats || {
@@ -292,20 +271,6 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
                 {totalCacheCreation > 0 ? `${totalCacheCreation.toLocaleString()} created` : ''}
               </span>
             )}
-
-            {queueNames && queueNames.length > 0 && queueNames.map(name => (
-              <span key={name} style={{
-                fontSize: '12.5px',
-                fontWeight: 500,
-                color: '#b5abfc',
-                background: 'rgba(181, 171, 252, 0.12)',
-                border: '1px solid rgba(181, 171, 252, 0.3)',
-                padding: '1px 6px',
-                borderRadius: 'var(--radius)',
-              }}>
-                📋 {name}
-              </span>
-            ))}
           </div>
 
           <p style={{
@@ -327,132 +292,6 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-          {session.status === 'complete' && onAddToQueue && (
-            <div style={{ position: 'relative' }} ref={queuePickerRef}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowQueuePicker(!showQueuePicker);
-                }}
-                style={{
-                  padding: '2px 9px', borderRadius: 'var(--radius)',
-                  background: showQueuePicker ? 'rgba(181, 171, 252, 0.15)' : 'transparent',
-                  border: '1px solid rgba(181, 171, 252, 0.4)',
-                  color: '#b5abfc', fontSize: '12px', fontWeight: 500,
-                  cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap',
-                }}
-              >
-                + queue
-              </button>
-
-              {showQueuePicker && (
-                <div style={{
-                  position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 100,
-                  background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
-                  borderRadius: 'var(--radius)', padding: '8px', minWidth: '200px',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-                }}>
-                  {(annotationQueues || []).length > 0 && (
-                    <div>
-                      {(annotationQueues || []).map(q => (
-                        <button
-                          key={q.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onAddToQueue(q.id);
-                            setShowQueuePicker(false);
-                          }}
-                          style={{
-                            display: 'block', width: '100%', padding: '8px 10px',
-                            borderRadius: 'var(--radius)', background: 'transparent', border: 'none',
-                            color: 'var(--text-primary)', fontSize: '13px', fontWeight: 500,
-                            cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s',
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-primary)')}
-                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                        >
-                          {q.name} <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>({q.items.length})</span>
-                        </button>
-                      ))}
-                      <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '6px 0' }} />
-                    </div>
-                  )}
-
-                  {showNewQueueInput ? (
-                    <div style={{ padding: '4px 2px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <input
-                        autoFocus
-                        value={newQueueName}
-                        onChange={(e) => setNewQueueName(e.target.value)}
-                        onKeyDown={(e) => {
-                          e.stopPropagation();
-                          if (e.key === 'Enter' && newQueueName.trim() && onCreateAndAddToQueue) {
-                            onCreateAndAddToQueue(newQueueName.trim());
-                            setNewQueueName('');
-                            setShowNewQueueInput(false);
-                            setShowQueuePicker(false);
-                          }
-                          if (e.key === 'Escape') setShowNewQueueInput(false);
-                        }}
-                        placeholder="Queue name"
-                        style={{
-                          padding: '6px 10px', borderRadius: 'var(--radius)',
-                          border: '1px solid var(--border-default)',
-                          background: 'var(--bg-primary)', color: 'var(--text-primary)',
-                          fontSize: '12px', outline: 'none', width: '100%', boxSizing: 'border-box',
-                        }}
-                      />
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (newQueueName.trim() && onCreateAndAddToQueue) {
-                              onCreateAndAddToQueue(newQueueName.trim());
-                              setNewQueueName('');
-                              setShowNewQueueInput(false);
-                              setShowQueuePicker(false);
-                            }
-                          }}
-                          style={{
-                            flex: 1, padding: '6px', borderRadius: 'var(--radius)',
-                            background: 'var(--accent-primary)', border: 'none',
-                            color: '#fff', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-                          }}
-                        >
-                          Create
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setShowNewQueueInput(false); setNewQueueName(''); }}
-                          style={{
-                            padding: '6px 8px', borderRadius: 'var(--radius)', background: 'transparent',
-                            border: '1px solid var(--border)', color: 'var(--text-secondary)',
-                            fontSize: '12px', cursor: 'pointer',
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setShowNewQueueInput(true); }}
-                      style={{
-                        display: 'block', width: '100%', padding: '8px 10px',
-                        borderRadius: 'var(--radius)', background: 'transparent', border: 'none',
-                        color: '#b5abfc', fontSize: '13px', fontWeight: 600,
-                        cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(181, 171, 252, 0.08)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      + New queue
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
           {evaluationResult && (
             <div style={{ display: 'flex', gap: '4px' }}>
               {evaluationResult.metricResults.map((mr) => (

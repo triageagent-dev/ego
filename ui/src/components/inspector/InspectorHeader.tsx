@@ -109,22 +109,6 @@ export const InspectorHeader: React.FC<InspectorHeaderProps> = ({
       </div>
 
       <div css={rightSectionStyles}>
-        {state.annotationQueues.some(q => q.items.length > 0) && (
-          <button
-            onClick={() => actions.setCurrentView('annotation-queue')}
-            css={css`
-              display: flex; align-items: center; gap: 8px;
-              padding: 8px 14px; border-radius: var(--radius);
-              border: 1px solid rgba(181, 171, 252, 0.4);
-              background: transparent; color: #b5abfc;
-              font-size: 0.875rem; font-weight: 500; cursor: pointer;
-              transition: all 0.2s ease;
-              &:hover { background: rgba(181, 171, 252, 0.08); }
-            `}
-          >
-            Annotation Queues
-          </button>
-        )}
         <Button
           icon={<FileJson size={16} />}
           onClick={handleCreateEvalSet}

@@ -234,7 +234,6 @@ export interface TraceTableRow {
   conversionWarnings: string[];
   error?: string;
   performanceMetrics?: PerformanceMetrics;
-  annotation?: Annotation;
 }
 
 // Evaluation API config
@@ -281,7 +280,7 @@ export interface EvalSetSummary {
 }
 
 // View types
-export type ViewType = 'upload' | 'dashboard' | 'inspector' | 'comparison' | 'builder' | 'streaming' | 'annotation-queue' | 'runs' | 'usage' | 'quality';
+export type ViewType = 'upload' | 'dashboard' | 'inspector' | 'comparison' | 'builder' | 'streaming' | 'runs' | 'usage' | 'quality';
 
 // Persisted run history (durable storage, GET /api/runs)
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -654,36 +653,6 @@ export interface SpanEditMapping {
   toolSpanIds: string[];
   userInputAttrKey: string;
   finalResponseAttrKey: string;
-}
-
-// Annotation queue types
-export type FirstPassLabel = 'looks_correct' | 'doesnt_look_correct';
-
-export interface Annotation {
-  firstPass: FirstPassLabel;
-  comment: string;
-  annotatedAt: string;
-}
-
-export interface AnnotationQueueItem {
-  sessionId: string;
-  traceId: string;
-  agentName?: string;
-  startTime?: string;
-  model?: string;
-  totalTokens?: number;
-  annotation?: Annotation;
-  invocations?: StreamingInvocation[];
-  liveElements?: ConversationElement[];
-  liveStats?: { totalInputTokens: number; totalOutputTokens: number; model?: string };
-  metadata?: Record<string, any>;
-}
-
-export interface AnnotationQueue {
-  id: string;
-  name: string;
-  items: AnnotationQueueItem[];
-  createdAt: string;
 }
 
 // Token usage ledger (GET /api/usage, GET /api/usage/calls). One cell per (time bucket, service, tenant, call kind, model).

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { TraceContext } from './TraceContext';
 import type { TraceState } from './TraceContext';
-import type { ViewType, EvalConfig, EvalSet, EvalSetMetadata, EvalCase, LiveSession, AnnotationQueue, Annotation } from '../lib/types';
+import type { ViewType, EvalConfig, EvalSet, EvalSetMetadata, EvalCase, LiveSession } from '../lib/types';
 import { evaluateTracesStreaming, convertTraces, getConfig, healthCheck } from '../api/client';
 import { buildEvalConfig } from '../lib/eval-config';
 
@@ -33,9 +33,6 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
     goldenTraceId: null,
     version: null,
     streamingSessions: new Map(),
-    annotationQueues: [],
-    currentAnnotationQueueId: null,
-    pendingAnnotations: new Map(),
     builderEvalSet: null,
     builderSelectedTraceIds: [],
   });
@@ -226,24 +223,12 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
                   sessionId: prev.traceMetadata.get(tr.traceId)?.sessionId,
                 }));
 
-                const mergedRows = new Map(prev.tableRows);
-                if (prev.pendingAnnotations.size > 0) {
-                  for (const [traceId, row] of mergedRows) {
-                    const annotation = prev.pendingAnnotations.get(traceId);
-                    if (annotation) {
-                      mergedRows.set(traceId, { ...row, annotation });
-                    }
-                  }
-                }
-
                 return {
                   ...prev,
                   isEvaluating: false,
                   progressMessage: '',
                   results: resultsWithSessionId,
                   errors: Array.isArray(result?.errors) ? result.errors : [],
-                  tableRows: mergedRows,
-                  pendingAnnotations: new Map(),
                 };
               });
             },
@@ -304,66 +289,6 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
           goldenTraceId: null,
           currentView: 'upload',
         })),
-
-      createAnnotationQueue: (name: string) => {
-        const id = `queue_${Date.now()}`;
-        const queue: AnnotationQueue = {
-          id,
-          name,
-          items: [],
-          createdAt: new Date().toISOString(),
-        };
-        setState((prev) => ({ ...prev, annotationQueues: [...prev.annotationQueues, queue] }));
-        return id;
-      },
-
-      addToAnnotationQueue: (queueId: string, session: LiveSession) => {
-        setState((prev) => {
-          const queues = prev.annotationQueues.map((q) => {
-            if (q.id !== queueId) return q;
-            if (q.items.some((item) => item.sessionId === session.sessionId)) return q;
-            const totalTokens =
-              (session.liveStats?.totalInputTokens ?? 0) +
-              (session.liveStats?.totalOutputTokens ?? 0);
-            const newItem = {
-              sessionId: session.sessionId,
-              traceId: session.traceId,
-              agentName: session.metadata?.agentName,
-              startTime: session.startedAt,
-              model: session.liveStats?.model || session.metadata?.model,
-              totalTokens: totalTokens > 0 ? totalTokens : undefined,
-              invocations: session.invocations,
-              liveElements: session.liveElements,
-              liveStats: session.liveStats,
-              metadata: session.metadata,
-            };
-            return { ...q, items: [...q.items, newItem] };
-          });
-          return { ...prev, annotationQueues: queues };
-        });
-      },
-
-      annotateQueueItem: (queueId: string, sessionId: string, annotation: Annotation) => {
-        setState((prev) => ({
-          ...prev,
-          annotationQueues: prev.annotationQueues.map((q) =>
-            q.id === queueId
-              ? {
-                  ...q,
-                  items: q.items.map((item) =>
-                    item.sessionId === sessionId ? { ...item, annotation } : item
-                  ),
-                }
-              : q
-          ),
-        }));
-      },
-
-      setCurrentAnnotationQueueId: (id: string | null) =>
-        setState((prev) => ({ ...prev, currentAnnotationQueueId: id })),
-
-      setPendingAnnotations: (annotations: Map<string, Annotation>) =>
-        setState((prev) => ({ ...prev, pendingAnnotations: annotations })),
 
       // Builder actions
       setBuilderEvalSet: (evalSet: EvalSet | null) =>

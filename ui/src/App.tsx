@@ -6,7 +6,6 @@ import { DashboardView } from './components/dashboard/DashboardView';
 import { InspectorView } from './components/inspector/InspectorView';
 import { BuilderView } from './components/builder/BuilderView';
 import { LiveStreamingView } from './components/streaming/LiveStreamingView';
-import { AnnotationQueueView } from './components/annotation-queue/AnnotationQueueView';
 import { RunsView } from './components/runs/RunsView';
 import { UsageView } from './components/usage/UsageView';
 import { QualityView } from './components/quality/QualityView';
@@ -100,7 +99,6 @@ function AppContent() {
         {state.currentView === 'inspector' && <InspectorView />}
         {state.currentView === 'builder' && <BuilderView />}
         {state.currentView === 'streaming' && <LiveStreamingView />}
-        {state.currentView === 'annotation-queue' && <AnnotationQueueView />}
         {state.currentView === 'runs' && <RunsView />}
         {state.currentView === 'usage' && <UsageView />}
         {state.currentView === 'quality' && <QualityView />}

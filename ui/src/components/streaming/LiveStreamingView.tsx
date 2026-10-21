@@ -170,24 +170,6 @@ export function LiveStreamingView() {
     setComparisonSessionIds(new Set());
   }, [selectedGoldenId]);
 
-  const totalQueuedSessions = state.annotationQueues.reduce((sum, q) => sum + q.items.length, 0);
-
-  const handleAddToQueue = (session: LiveSession, queueId: string) => {
-    actions.addToAnnotationQueue(queueId, session);
-    actions.setCurrentAnnotationQueueId(queueId);
-  };
-
-  const handleCreateAndAddToQueue = (session: LiveSession, name: string) => {
-    const id = actions.createAnnotationQueue(name);
-    actions.addToAnnotationQueue(id, session);
-    actions.setCurrentAnnotationQueueId(id);
-  };
-
-  const getQueueNamesForSession = (sessionId: string): string[] =>
-    state.annotationQueues
-      .filter(q => q.items.some(item => item.sessionId === sessionId))
-      .map(q => q.name);
-
   // The live feed is a WebSocket rather than SSE: gateways buffer
   // long-lived SSE responses. See config.ts's uiUpdatesWs and
   // internal/api/wsupdates.go.
@@ -927,40 +909,6 @@ export function LiveStreamingView() {
         )}
       </div>
 
-      {totalQueuedSessions > 0 && (
-        <div style={{
-          padding: '16px 20px',
-          background: 'linear-gradient(135deg, rgba(181, 171, 252, 0.08) 0%, rgba(167, 159, 240, 0.08) 100%)',
-          borderRadius: 'var(--radius)',
-          marginBottom: '16px',
-          border: '2px solid rgba(181, 171, 252, 0.2)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <div>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: '#b5abfc', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Annotation Queues
-            </div>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>
-              {totalQueuedSessions} session{totalQueuedSessions !== 1 ? 's' : ''} across {state.annotationQueues.length} queue{state.annotationQueues.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          <button
-            onClick={() => actions.setCurrentView('annotation-queue')}
-            style={{
-              padding: '8px 20px', borderRadius: 'var(--radius)',
-              background: 'rgba(181, 171, 252, 0.15)',
-              border: '1.5px solid rgba(181, 171, 252, 0.4)',
-              color: '#b5abfc', fontSize: '13px', fontWeight: 600,
-              cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap',
-            }}
-          >
-            Open Annotation Queues →
-          </button>
-        </div>
-      )}
-
       {selectedGoldenId && (
         <div style={{
           padding: '24px',
@@ -1076,10 +1024,6 @@ export function LiveStreamingView() {
                     onSelect={() => setSelectedGoldenId(
                       selectedGoldenId === session.sessionId ? null : session.sessionId
                     )}
-                    annotationQueues={state.annotationQueues}
-                    onAddToQueue={(queueId) => handleAddToQueue(session, queueId)}
-                    onCreateAndAddToQueue={(name) => handleCreateAndAddToQueue(session, name)}
-                    queueNames={getQueueNamesForSession(session.sessionId)}
                   />
                 ))}
               </div>
@@ -1120,10 +1064,6 @@ export function LiveStreamingView() {
                         return next;
                       });
                     }}
-                    annotationQueues={state.annotationQueues}
-                    onAddToQueue={(queueId) => handleAddToQueue(session, queueId)}
-                    onCreateAndAddToQueue={(name) => handleCreateAndAddToQueue(session, name)}
-                    queueNames={getQueueNamesForSession(session.sessionId)}
                     compareOption={
                       selectedGoldenId && selectedGoldenId !== session.sessionId
                         ? { checked: comparisonSessionIds.has(session.sessionId), onToggle: () => toggleComparisonSession(session.sessionId) }
