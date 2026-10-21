@@ -7,7 +7,7 @@ import { SessionMetadata } from './SessionMetadata';
 import { OnlineScoresPanel } from './OnlineScoresPanel';
 import { formatSpanDuration, formatTurnTime, modelsLabel } from '../../lib/trace-helpers';
 import type { AnnotationQueue } from '../../lib/types';
-import { sessionTitle, tenantName, useTenantNames } from '../../lib/tenant';
+import { tenantName, useTenantNames } from '../../lib/tenant';
 
 interface Invocation {
   invocationId: string;
@@ -291,15 +291,6 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             ))}
           </div>
 
-          <h3 style={{
-            fontSize: '14px',
-            fontWeight: 400,
-            color: 'var(--text-primary)',
-            margin: '0 0 2px 0',
-          }}>
-            <span title={session.sessionId}>{sessionTitle(session.sessionId, session.tenants)}</span>
-          </h3>
-
           <p style={{
             fontSize: '13px',
             color: 'var(--text-tertiary)',
@@ -582,6 +573,13 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
           </button>
         </div>
       </div>
+
+      {expanded && (
+        <div style={{ margin: '10px 0 0', fontSize: '13px', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
+          <span style={{ color: 'var(--text-tertiary)' }}>session </span>
+          <span style={{ fontFamily: 'monospace', userSelect: 'all' }}>{session.sessionId}</span>
+        </div>
+      )}
 
       {expanded && session.startedAt && (totalTokens > 0 || Object.keys(session.metadata).length > 0) && (
         <SessionMetadata

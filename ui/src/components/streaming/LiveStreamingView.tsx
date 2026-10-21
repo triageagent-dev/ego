@@ -1062,14 +1062,6 @@ export function LiveStreamingView() {
               {comparisonSessionIds.size > 0 ? 'Golden Run Selected' : 'EvalSet Selected'}
             </div>
             <p style={{
-              fontSize: '16px',
-              fontWeight: 600,
-              color: 'var(--text-primary)',
-              marginBottom: '6px',
-            }}>
-              {selectedGoldenId}
-            </p>
-            <p style={{
               fontSize: '14px',
               color: 'var(--text-secondary)',
               margin: 0,
