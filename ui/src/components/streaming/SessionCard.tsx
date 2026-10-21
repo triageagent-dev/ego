@@ -2,6 +2,8 @@ import { Fragment, useRef, useState } from 'react';
 import type { ConversationElement } from './LiveConversationPanel';
 import { formatSpanDuration, formatStarted, modelsLabel } from '../../lib/trace-helpers';
 import { tenantName, useTenantNames } from '../../lib/tenant';
+import { Flag } from 'lucide-react';
+import { toggleFlag, useFlagged } from '../../lib/flagged';
 
 interface Invocation {
   invocationId: string;
@@ -145,6 +147,8 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
     }, 220);
     setTimeout(onRemove, 220 + 260);
   };
+  const flagged = useFlagged().some((f) => f.id === session.sessionId);
+  const flagLabel = [session.startedAt ? formatStarted(session.startedAt) : '', session.rootSpanName || session.agents?.[0] || 'session'].filter(Boolean).join(' · ');
   const tenantLabel = session.tenants?.map(tenantName).join(' · ') ?? '';
 
   const providerName = session.invocations?.[0]?.modelInfo?.provider || null;
@@ -382,6 +386,29 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
               compare
             </label>
           )}
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleFlag(session.sessionId, flagLabel);
+            }}
+            title={flagged ? 'Flagged: click to remove it from the sidebar' : 'Flag this session for quick access in the sidebar (up to 5)'}
+            aria-label={flagged ? 'Remove the flag' : 'Flag session'}
+            aria-pressed={flagged}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '5px 8px',
+              borderRadius: 'var(--radius)',
+              background: flagged ? 'rgba(251, 191, 36, 0.14)' : 'transparent',
+              border: `1px solid ${flagged ? '#fbbf24' : 'var(--border)'}`,
+              color: flagged ? '#fbbf24' : 'var(--text-tertiary)',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            <Flag size={15} fill={flagged ? 'currentColor' : 'none'} />
+          </button>
 
           <button
             onClick={(e) => {
