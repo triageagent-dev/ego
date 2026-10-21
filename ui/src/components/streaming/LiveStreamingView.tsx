@@ -71,15 +71,12 @@ export function LiveStreamingView() {
   const { state, actions } = useTraceContext();
   const activeSessions = state.streamingSessions;
   const setActiveSessions = actions.setStreamingSessions;
-  // The range and the search text are remembered per browser, with the toggles and the tenant below.
-  const [timeRange, setTimeRange] = useState<TimeRangeKey>(() => {
-    const saved = stored('ego.timeRange');
-    return TIME_RANGES.find((r) => r.key === saved)?.key ?? '1h';
-  });
+  // The search text is remembered per browser, with the toggles and the tenant below; the range always starts at
+  // 1h, since a wide one lists thousands of sessions.
+  const [timeRange, setTimeRange] = useState<TimeRangeKey>('1h');
   const pickedTenant = useSelectedTenant();
   const [searchQuery, setSearchQuery] = useState(() => stored('ego.search') ?? '');
   const [debouncedQuery, setDebouncedQuery] = useState(() => stored('ego.search') ?? '');
-  useEffect(() => store('ego.timeRange', timeRange === '1h' ? '' : timeRange), [timeRange]);
   useEffect(() => store('ego.search', searchQuery), [searchQuery]);
   // A session linked to by id (#sessions?session=...): shown alone and opened.
   const [focusId, setFocusId] = useState<string | null>(() => parseHash(location.hash).params.get('session'));
@@ -648,8 +645,9 @@ export function LiveStreamingView() {
     .filter(s => s.status === 'complete')
     .sort(byStartedAtDesc);
   const allSessions = [...activeLiveSessions, ...completedSessions];
-  const pager = !focused && (pageIdx > 0 || nextCursor) ? (
+  const renderPager = (inline: boolean) => !focused && (pageIdx > 0 || nextCursor) ? (
     <CursorPager
+      inline={inline}
       page={pageIdx}
       total={listTotal?.n}
       approx={listTotal?.approx}
@@ -660,6 +658,9 @@ export function LiveStreamingView() {
       onNext={() => nextCursor && goToPage([...cursors, nextCursor])}
     />
   ) : null;
+  // In the filters row at the top, and again below the list, where the next page is wanted.
+  const pagerInRow = renderPager(true);
+  const pager = renderPager(false);
 
   return (
     <div style={{
@@ -736,6 +737,30 @@ export function LiveStreamingView() {
             scored only
           </button>
 
+          {completedSessions.length > 0 && (
+            <button
+              onClick={() => {
+                setClearedBefore(Date.now());
+                actions.clearAllSessions();
+                if (selectedGoldenId && completedSessions.some(s => s.sessionId === selectedGoldenId)) {
+                  setSelectedGoldenId(null);
+                }
+              }}
+              title="Hide the finished sessions on this page until they are loaded again"
+              style={{
+                padding: '3px 9px',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--border-default)',
+                background: 'transparent',
+                color: 'var(--text-tertiary)',
+                fontSize: '12px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              hide done
+            </button>
+          )}
           <input
             type="text"
             value={searchQuery}
@@ -783,30 +808,6 @@ export function LiveStreamingView() {
             ))}
           </div>
 
-          {completedSessions.length > 0 && (
-            <button
-              onClick={() => {
-                setClearedBefore(Date.now());
-                actions.clearAllSessions();
-                if (selectedGoldenId && completedSessions.some(s => s.sessionId === selectedGoldenId)) {
-                  setSelectedGoldenId(null);
-                }
-              }}
-              title="Hide the finished sessions on this page until they are loaded again"
-              style={{
-                padding: '3px 9px',
-                borderRadius: 'var(--radius)',
-                border: '1px solid var(--border-default)',
-                background: 'transparent',
-                color: 'var(--text-tertiary)',
-                fontSize: '12px',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              hide done
-            </button>
-          )}
           {focusId && (
             <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
               showing one session{' '}
@@ -818,6 +819,7 @@ export function LiveStreamingView() {
               </button>
             </span>
           )}
+          {pagerInRow && <div style={{ marginLeft: 'auto' }}>{pagerInRow}</div>}
         </div>
       </div>
 
@@ -870,7 +872,6 @@ export function LiveStreamingView() {
 
       {allSessions.length === 0 ? (
         <>
-        {pager}
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
           {debouncedQuery || pickedTenant
             ? 'no sessions match'
@@ -897,7 +898,6 @@ export function LiveStreamingView() {
         </>
       ) : (
         <div>
-          {pager}
           {activeLiveSessions.length > 0 && (
             <div>
               <h2 style={{

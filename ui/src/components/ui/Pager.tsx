@@ -49,16 +49,18 @@ interface CursorPagerProps {
   total?: number;
   approx?: boolean;
   pageSize?: number;
+  // Sits in a row of other controls: no padding of its own.
+  inline?: boolean;
 }
 
 // Pager for a list the server pages with a cursor: pages are walked one at a time, newest first, and the page count
 // comes from the total the server counted.
-export const CursorPager: React.FC<CursorPagerProps> = ({ page, hasNext, onFirst, onPrev, onNext, total, approx, pageSize = PAGE_SIZE }) => {
+export const CursorPager: React.FC<CursorPagerProps> = ({ page, hasNext, onFirst, onPrev, onNext, total, approx, pageSize = PAGE_SIZE, inline }) => {
   if (page === 0 && !hasNext) return null;
   const more = approx ? '+' : '';
   const pages = total ? Math.max(Math.ceil(total / pageSize), page + 1) : null;
   return (
-    <nav css={pagerStyle} aria-label="Pagination">
+    <nav css={[pagerStyle, inline && inlinePagerStyle]} aria-label="Pagination">
       <button onClick={onFirst} disabled={page === 0} title="Newest">«</button>
       <button onClick={onPrev} disabled={page === 0} title="Newer">‹</button>
       <span>
@@ -69,6 +71,10 @@ export const CursorPager: React.FC<CursorPagerProps> = ({ page, hasNext, onFirst
     </nav>
   );
 };
+
+const inlinePagerStyle = css`
+  padding: 0;
+`;
 
 const pagerStyle = css`
   display: flex;
