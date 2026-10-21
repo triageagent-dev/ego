@@ -4,11 +4,14 @@ import { SessionCard } from './SessionCard';
 import { config } from '../../config';
 import { onServerDown, onServerUp, setFeed } from '../../lib/connection';
 import { parseHash } from '../shell/routes';
-import { Pager, PAGE_SIZE, clampPage } from '../ui/Pager';
+import { Pager, clampPage } from '../ui/Pager';
 import { inTenant, tenantName, useSelectedTenant } from '../../lib/tenant';
 import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
 
 type TimeRangeKey = '1h' | '6h' | '12h' | 'day' | '7d' | 'all';
+
+// Finished sessions per page: cards are tall, so a page of 50 reads as endless scrolling.
+const SESSIONS_PAGE = 20;
 
 const TIME_RANGES: Array<{ key: TimeRangeKey; label: string; ms: number | null }> = [
   { key: '1h', label: '1h', ms: 60 * 60 * 1000 },
@@ -66,7 +69,7 @@ export function LiveStreamingView() {
   const { state, actions } = useTraceContext();
   const activeSessions = state.streamingSessions;
   const setActiveSessions = actions.setStreamingSessions;
-  const [timeRange, setTimeRange] = useState<TimeRangeKey>('all');
+  const [timeRange, setTimeRange] = useState<TimeRangeKey>('1h');
   const [donePage, setDonePage] = useState(0);
   const pickedTenant = useSelectedTenant();
   const [searchQuery, setSearchQuery] = useState('');
@@ -767,8 +770,8 @@ export function LiveStreamingView() {
     .sort(byStartedAtDesc);
   const allSessions = [...activeLiveSessions, ...completedSessions];
   // Finished sessions are shown a page at a time; live ones always are all shown.
-  const donePageIdx = clampPage(donePage, completedSessions.length);
-  const visibleCompleted = completedSessions.slice(donePageIdx * PAGE_SIZE, (donePageIdx + 1) * PAGE_SIZE);
+  const donePageIdx = clampPage(donePage, completedSessions.length, SESSIONS_PAGE);
+  const visibleCompleted = completedSessions.slice(donePageIdx * SESSIONS_PAGE, (donePageIdx + 1) * SESSIONS_PAGE);
 
   return (
     <div style={{
@@ -1118,6 +1121,7 @@ export function LiveStreamingView() {
               }}>
                 done ({completedSessions.length})
               </h2>
+              <Pager total={completedSessions.length} page={donePageIdx} onChange={setDonePage} pageSize={SESSIONS_PAGE} />
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px' }}>
                 {visibleCompleted.map(session => (
                   <SessionCard
@@ -1151,7 +1155,7 @@ export function LiveStreamingView() {
                   />
                 ))}
               </div>
-              <Pager total={completedSessions.length} page={donePageIdx} onChange={setDonePage} />
+              <Pager total={completedSessions.length} page={donePageIdx} onChange={setDonePage} pageSize={SESSIONS_PAGE} />
             </div>
           )}
         </div>
