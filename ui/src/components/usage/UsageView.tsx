@@ -17,6 +17,7 @@ import { tenantNames, useSelectedTenant, useTenantNames } from '../../lib/tenant
 import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
 import type { UsageBucket, UsageSeries, UsageSession } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
+import { store, stored } from '../../lib/stored';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -139,8 +140,23 @@ function bucketLabel(start: number, bucketMs: number): string {
 }
 
 export const UsageView: React.FC = () => {
-  const [hours, setHours] = useState(24 * 7);
-  const [dim, setDim] = useState<Dimension>('kind');
+  // The range and the grouping are remembered per browser; the range starts at 24h.
+  const [hours, setHoursState] = useState(() => {
+    const saved = Number(stored('ego.usage.hours'));
+    return RANGES.find((r) => r.hours === saved)?.hours ?? 24;
+  });
+  const [dim, setDimState] = useState<Dimension>(() => {
+    const saved = stored('ego.usage.dim');
+    return DIMENSIONS.find((d) => d.key === saved)?.key ?? 'kind';
+  });
+  const setHours = (h: number) => {
+    setHoursState(h);
+    store('ego.usage.hours', String(h));
+  };
+  const setDim = (d: Dimension) => {
+    setDimState(d);
+    store('ego.usage.dim', d);
+  };
   const [series, setSeries] = useState<UsageSeries | null>(null);
   const [sessions, setSessions] = useState<UsageSession[]>([]);
   const [error, setError] = useState<string | null>(null);
