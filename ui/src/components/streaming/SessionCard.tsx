@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { EyeOff } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import type { ConversationElement } from './LiveConversationPanel';
 import { formatSpanDuration, formatStarted, modelsLabel } from '../../lib/trace-helpers';
 import { tenantName, useTenantNames } from '../../lib/tenant';
@@ -401,7 +401,7 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
                 transition: 'all 0.2s',
               }}
             >
-              <EyeOff size={15} />
+              <Eye size={15} />
             </button>
           )}
 
