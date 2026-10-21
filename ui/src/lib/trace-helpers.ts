@@ -92,12 +92,25 @@ export function formatSpanDuration(ms: number): string {
   return `${Math.floor(totalSeconds / 60)}m ${String(totalSeconds % 60).padStart(2, '0')}s`;
 }
 
-// A model id as the row shows it: without the provider path, the date stamp and the preview/latest marker,
-// which tell the reader nothing the provider badge and the full-name tooltip do not.
-export function shortModel(id: string): string {
+// A model id without the provider path, the date stamp and the preview/latest marker.
+function shortModel(id: string): string {
   const short = id
     .slice(id.lastIndexOf('/') + 1)
     .replace(/-(\d{8}|\d{4}-\d{2}-\d{2})$/, '')
     .replace(/-(preview|latest)(-\d{2}-\d{2,4})?$/, '');
   return short || id;
+}
+
+// What the session row shows for the models it used: the id as is for one, and for several the short names with
+// the leading part they share written once: `gemini-3-flash / pro`.
+export function modelsLabel(ids: string[]): string {
+  if (ids.length <= 1) return ids[0] ?? '';
+  const names = [...new Set(ids.map(shortModel))];
+  if (names.length === 1) return names[0];
+  const parts = names.map((n) => n.split('-'));
+  // gpt-4o next to gpt-4o-mini: collapsing would leave `4o-mini`, which reads as a different model.
+  if (names.some((a) => names.some((b) => a !== b && b.startsWith(`${a}-`)))) return names.join(' / ');
+  let shared = 0;
+  while (parts.every((p) => p.length > shared + 1 && p[shared] === parts[0][shared])) shared++;
+  return [names[0], ...parts.slice(1).map((p) => p.slice(shared).join('-'))].join(' / ');
 }

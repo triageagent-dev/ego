@@ -5,7 +5,7 @@ import { LiveConversationPanel } from './LiveConversationPanel';
 import type { ConversationElement } from './LiveConversationPanel';
 import { SessionMetadata } from './SessionMetadata';
 import { OnlineScoresPanel } from './OnlineScoresPanel';
-import { formatSpanDuration, formatTurnTime, shortModel } from '../../lib/trace-helpers';
+import { formatSpanDuration, formatTurnTime, modelsLabel } from '../../lib/trace-helpers';
 import type { AnnotationQueue } from '../../lib/types';
 import { sessionTitle, tenantName, useTenantNames } from '../../lib/tenant';
 
@@ -123,7 +123,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
     '';
   // Every model the session used, not the first and a count: `a / b`.
   const allModels = (session.models?.length ?? 0) > 1 ? session.models! : modelName ? [modelName] : [];
-  const modelLabel = allModels.map(shortModel).join(' / ');
+  const modelLabel = modelsLabel(allModels);
   const agentLabel = session.agents?.join(' · ') ?? '';
   useTenantNames();
   const tenantLabel = session.tenants?.map(tenantName).join(' · ') ?? '';
