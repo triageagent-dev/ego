@@ -2,7 +2,7 @@ import { Fragment, useRef, useState } from 'react';
 import type { ConversationElement } from './LiveConversationPanel';
 import { formatSpanDuration, formatStarted, modelsLabel } from '../../lib/trace-helpers';
 import { tenantName, useTenantNames } from '../../lib/tenant';
-import { Flag } from 'lucide-react';
+import { Flag, GitCompare } from 'lucide-react';
 import { toggleFlag, useFlagged } from '../../lib/flagged';
 
 interface Invocation {
@@ -361,30 +361,28 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
           )}
 
           {compareOption && (
-            <label
-              onClick={(e) => e.stopPropagation()}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                compareOption.onToggle();
+              }}
+              title={compareOption.checked ? 'Compared with the golden session: click to leave it out' : 'Compare with the golden session'}
+              aria-label={compareOption.checked ? 'Leave out of the comparison' : 'Compare with the golden session'}
+              aria-pressed={compareOption.checked}
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
-                fontSize: '12px',
-                fontWeight: 600,
-                color: compareOption.checked ? '#a79ff0' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                padding: '2px 8px',
+                padding: '5px 8px',
                 borderRadius: 'var(--radius)',
-                background: compareOption.checked ? 'rgba(167, 159, 240, 0.1)' : 'transparent',
-                border: `1px solid ${compareOption.checked ? 'rgba(167, 159, 240, 0.4)' : 'var(--border)'}`,
+                background: compareOption.checked ? 'rgba(167, 159, 240, 0.18)' : 'transparent',
+                border: `1px solid ${compareOption.checked ? 'var(--accent-primary)' : 'var(--border)'}`,
+                color: compareOption.checked ? '#a79ff0' : 'var(--text-tertiary)',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
               }}
             >
-              <input
-                type="checkbox"
-                checked={compareOption.checked}
-                onChange={compareOption.onToggle}
-              />
-              compare
-            </label>
+              <GitCompare size={15} />
+            </button>
           )}
 
           <button
