@@ -11,6 +11,7 @@ import type {
   EvalSet,
   EvalSetSummary,
   UsageSeries,
+  LimitItem,
   UsageCall,
   UsageSession,
   OnlineStatus,
@@ -379,6 +380,12 @@ export async function getUsage(hours: number): Promise<UsageSeries> {
   if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load usage: ${httpStatusLabel(response)}`);
   return unwrap<UsageSeries>(response);
+}
+
+export async function getUsageLimits(): Promise<LimitItem[]> {
+  const response = await fetch(config.api.endpoints.usageLimits);
+  if (!response.ok) throw new Error(`Failed to load limits: ${httpStatusLabel(response)}`);
+  return unwrap<LimitItem[]>(response);
 }
 
 export async function getUsageSessions(hours: number, limit = 25): Promise<UsageSession[]> {

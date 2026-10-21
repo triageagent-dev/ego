@@ -33,6 +33,8 @@ export function parseHash(hash: string): { name: string; params: URLSearchParams
 
 export function viewForHash(hash: string): ViewType | null {
   const { name } = parseHash(hash);
+  // Settings is not a tab: it opens from the account menu.
+  if (name === 'settings') return 'settings';
   // The tab was called "tokens" before; old links keep working.
   return TABS.find((t) => t.label === (name === 'tokens' ? 'usage' : name))?.view ?? null;
 }

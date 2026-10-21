@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Segmented, Select, Slider } from 'antd';
+import { Button, Segmented } from 'antd';
 import { css } from '@emotion/react';
 import { Play, Pencil, Settings } from 'lucide-react';
 import { NewGoldenForm } from './NewGoldenForm';
+import { EvalSettingsForm } from '../settings/EvalSettingsForm';
 import { MetricGroup, useMetricGroups } from './MetricSelector';
 import { SessionPicker } from './SessionPicker';
 import { formatStarted } from '../../lib/trace-helpers';
@@ -370,19 +371,6 @@ const noteStyle = css`
 const SOURCES = 'sources';
 const SETTINGS = 'settings';
 
-const JUDGE_MODELS = [
-  { value: 'gemini-3.8-flash', provider: 'google' },
-  { value: 'gemini-3.5-flash', provider: 'google' },
-  { value: 'gemini-3.1-pro-preview', provider: 'google' },
-  { value: 'gemini-3-pro-preview', provider: 'google' },
-  { value: 'gemini-3-flash-preview', provider: 'google' },
-  { value: 'gemini-2.5-flash', provider: 'google' },
-  { value: 'gemini-2.0-flash', provider: 'google' },
-  { value: 'anthropic/claude-3.5-sonnet', provider: 'anthropic' },
-  { value: 'openai/gpt-4o', provider: 'openai' },
-] as const;
-
-type JudgeModelProvider = typeof JUDGE_MODELS[number]['provider'];
 
 export const UploadView: React.FC = () => {
   const { state, actions } = useTraceContext();
@@ -593,70 +581,7 @@ export const UploadView: React.FC = () => {
         <h2 css={detailsTitleStyle}>settings</h2>
         <p css={detailsHintStyle}>The judge that scores and the score a trace needs to pass.</p>
 
-        <div className="setting-item">
-          <label className="setting-label">Judge Model</label>
-          <Select
-            value={state.judgeModel}
-            onChange={actions.setJudgeModel}
-            options={JUDGE_MODELS.map(({ value }) => ({ label: value, value }))}
-            style={{ width: '100%' }}
-            size="small"
-          />
-          {state.apiKeyStatus && (
-            <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
-              {([
-                { label: 'GOOGLE_API_KEY', provider: 'google' as const },
-                { label: 'ANTHROPIC_API_KEY', provider: 'anthropic' as const },
-                { label: 'OPENAI_API_KEY', provider: 'openai' as const },
-              ] as const).map(({ label, provider }) => {
-                const ok = state.apiKeyStatus![provider];
-                return (
-                  <span key={provider} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: ok ? 'var(--status-success)' : 'var(--status-failure)' }}>
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: ok ? 'var(--status-success)' : 'var(--status-failure)', flexShrink: 0 }} />
-                    {label}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-          {(() => {
-            const selected = JUDGE_MODELS.find((m) => m.value === state.judgeModel);
-            const provider = selected?.provider as JudgeModelProvider | undefined;
-            if (!provider || !state.apiKeyStatus || state.apiKeyStatus[provider]) return null;
-            const keyName = provider === 'google' ? 'GOOGLE_API_KEY / GEMINI_API_KEY'
-              : provider === 'anthropic' ? 'ANTHROPIC_API_KEY'
-              : 'OPENAI_API_KEY';
-            return (
-              <span style={{ fontSize: '11px', color: 'var(--status-failure)', marginTop: 2 }}>
-                {keyName} is not set - this model will fail
-              </span>
-            );
-          })()}
-        </div>
-
-        <div className="setting-item" style={{ marginTop: 16 }}>
-          <label className="setting-label">Pass Threshold: {state.threshold}</label>
-          <Slider min={0} max={1} step={0.05} value={state.threshold} onChange={actions.setThreshold} />
-          <span className="setting-hint">Minimum score to pass</span>
-        </div>
-
-        {state.selectedEvaluatorNames.includes('tool_trajectory_avg_score') && (
-          <div className="setting-item" style={{ marginTop: 16 }}>
-            <label className="setting-label">Trajectory Match Type</label>
-            <Select
-              value={state.trajectoryMatchType}
-              onChange={actions.setTrajectoryMatchType}
-              options={[
-                { value: 'EXACT', label: 'EXACT - tools must match in exact order' },
-                { value: 'IN_ORDER', label: 'IN_ORDER - expected tools appear in order (extras allowed)' },
-                { value: 'ANY_ORDER', label: 'ANY_ORDER - expected tools appear in any order' },
-              ]}
-              style={{ width: '100%' }}
-              size="small"
-            />
-            <span className="setting-hint">How to compare tool call sequences for tool_trajectory_avg_score</span>
-          </div>
-        )}
+        <EvalSettingsForm showTrajectory={state.selectedEvaluatorNames.includes('tool_trajectory_avg_score')} />
       </>
     );
   };

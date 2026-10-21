@@ -5,6 +5,7 @@ import type { TraceState } from './TraceContext';
 import type { ViewType, EvalConfig, EvalSet, EvalSetMetadata, EvalCase, LiveSession } from '../lib/types';
 import { evaluateTracesStreaming, convertTraces, getConfig, healthCheck } from '../api/client';
 import { buildEvalConfig } from '../lib/eval-config';
+import { store, stored } from '../lib/stored';
 
 interface TraceProviderProps {
   children: ReactNode;
@@ -15,9 +16,13 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
     traceFiles: [],
     evalSetFile: null,
     selectedEvaluatorNames: [],
-    judgeModel: 'gemini-2.5-flash',
-    threshold: 0.8,
-    trajectoryMatchType: 'EXACT',
+    // The evaluation defaults are the reader's own, kept per browser (settings, in the account menu).
+    judgeModel: stored('ego.eval.judgeModel') || 'gemini-2.5-flash',
+    threshold: (() => {
+      const t = parseFloat(stored('ego.eval.threshold') ?? '');
+      return t >= 0 && t <= 1 ? t : 0.8;
+    })(),
+    trajectoryMatchType: stored('ego.eval.trajectoryMatchType') || 'EXACT',
     traceMetadata: new Map(),
     isLoadingMetadata: false,
     apiKeyStatus: null,
@@ -93,14 +98,20 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
             : [...prev.selectedEvaluatorNames, evaluatorName],
         })),
 
-      setJudgeModel: (model: string) =>
-        setState((prev) => ({ ...prev, judgeModel: model })),
+      setJudgeModel: (model: string) => {
+        store('ego.eval.judgeModel', model);
+        setState((prev) => ({ ...prev, judgeModel: model }));
+      },
 
-      setThreshold: (threshold: number) =>
-        setState((prev) => ({ ...prev, threshold })),
+      setThreshold: (threshold: number) => {
+        store('ego.eval.threshold', String(threshold));
+        setState((prev) => ({ ...prev, threshold }));
+      },
 
-      setTrajectoryMatchType: (matchType: string) =>
-        setState((prev) => ({ ...prev, trajectoryMatchType: matchType })),
+      setTrajectoryMatchType: (matchType: string) => {
+        store('ego.eval.trajectoryMatchType', matchType);
+        setState((prev) => ({ ...prev, trajectoryMatchType: matchType }));
+      },
 
       runEvaluation: async () => {
         const initialRows = new Map();

@@ -119,11 +119,6 @@ export const SessionPicker: React.FC<{
         >
           {useLabel ?? `Use ${ticked.size || ''} session${ticked.size === 1 ? '' : 's'}`}
         </Button>
-        {!single && sessions !== null && sessions.length > 0 && (
-          <Button size="small" onClick={() => setTicked(ticked.size ? new Set() : new Set(sessions.map((s) => s.sessionId)))}>
-            {ticked.size ? 'Clear' : 'Select page'}
-          </Button>
-        )}
         <span css={pagerStyle}>
           <Button size="small" disabled={cursors.length === 1} onClick={() => setCursors((c) => c.slice(0, -1))} aria-label="Newer sessions">‹</Button>
           <span css={pageNoStyle}>page {cursors.length}</span>

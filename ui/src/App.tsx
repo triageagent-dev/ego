@@ -15,6 +15,7 @@ import { Sidebar } from './components/shell/Sidebar';
 import { useUiMode } from './lib/mode';
 import { startConnectionMonitor } from './lib/connection';
 import { TABS, tabForView, viewForHash } from './components/shell/routes';
+import { SettingsView } from './components/settings/SettingsView';
 import { SessionExpiredBanner } from './components/SessionExpiredBanner';
 
 // The current tab lives in the URL hash (#runs), so a view can be linked and
@@ -49,6 +50,8 @@ function useShellNavigation() {
     const tab = tabForView(currentView);
     if (tab && viewForHash(location.hash) !== tab.view) {
       history.pushState(null, '', `#${tab.label}`);
+    } else if (currentView === 'settings' && viewForHash(location.hash) !== 'settings') {
+      history.pushState(null, '', '#settings');
     }
   }, [currentView]);
 
@@ -96,6 +99,7 @@ function AppContent() {
       {state.currentView === 'runs' && <RunsView />}
       {state.currentView === 'usage' && <UsageView />}
       {state.currentView === 'quality' && <QualityView />}
+      {state.currentView === 'settings' && <SettingsView />}
     </main>
   );
 

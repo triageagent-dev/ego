@@ -279,8 +279,19 @@ export interface EvalSetSummary {
   updatedAt: string;
 }
 
+// One cap or limit the server runs with (GET /api/usage/limits). limit 0 means none; used is absent when not counted.
+export interface LimitItem {
+  key: string;
+  label: string;
+  group: string;
+  limit: number;
+  used?: number;
+  unit: 'tokens' | 'calls' | 'count' | 'days';
+  note?: string;
+}
+
 // View types
-export type ViewType = 'upload' | 'dashboard' | 'inspector' | 'comparison' | 'builder' | 'streaming' | 'runs' | 'usage' | 'quality';
+export type ViewType = 'upload' | 'dashboard' | 'inspector' | 'comparison' | 'builder' | 'streaming' | 'runs' | 'usage' | 'quality' | 'settings';
 
 // Persisted run history (durable storage, GET /api/runs)
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
