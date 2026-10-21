@@ -6,6 +6,7 @@ import { onServerDown, onServerUp, setFeed } from '../../lib/connection';
 import { parseHash } from '../shell/routes';
 import { CursorPager } from '../ui/Pager';
 import { useSelectedTenant } from '../../lib/tenant';
+import { store, stored } from '../../lib/stored';
 import { SessionEvalSetFile, SessionTraceFile } from '../../lib/sessionFiles';
 import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
 
@@ -70,10 +71,16 @@ export function LiveStreamingView() {
   const { state, actions } = useTraceContext();
   const activeSessions = state.streamingSessions;
   const setActiveSessions = actions.setStreamingSessions;
-  const [timeRange, setTimeRange] = useState<TimeRangeKey>('1h');
+  // The range and the search text are remembered per browser, with the toggles and the tenant below.
+  const [timeRange, setTimeRange] = useState<TimeRangeKey>(() => {
+    const saved = stored('ego.timeRange');
+    return TIME_RANGES.find((r) => r.key === saved)?.key ?? '1h';
+  });
   const pickedTenant = useSelectedTenant();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => stored('ego.search') ?? '');
+  const [debouncedQuery, setDebouncedQuery] = useState(() => stored('ego.search') ?? '');
+  useEffect(() => store('ego.timeRange', timeRange === '1h' ? '' : timeRange), [timeRange]);
+  useEffect(() => store('ego.search', searchQuery), [searchQuery]);
   // A session linked to by id (#sessions?session=...): shown alone and opened.
   const [focusId, setFocusId] = useState<string | null>(() => parseHash(location.hash).params.get('session'));
   const loadSessionRef = useRef<(id: string) => void>(() => {});
@@ -911,61 +918,46 @@ export function LiveStreamingView() {
 
       {selectedGoldenId && (
         <div style={{
-          padding: '24px',
-          background: 'linear-gradient(135deg, rgba(167, 159, 240, 0.08) 0%, rgba(181, 171, 252, 0.08) 100%)',
-          borderRadius: 'var(--radius)',
-          marginBottom: '24px',
-          border: '2px solid rgba(167, 159, 240, 0.2)',
           display: 'flex',
-          justifyContent: 'space-between',
           alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '16px',
+          padding: '10px 14px',
+          marginBottom: '12px',
+          background: 'var(--card-bg)',
+          border: '1px solid var(--border-default)',
+          borderRadius: 'var(--radius)',
         }}>
-          <div>
-            <div style={{
-              fontSize: '12px',
-              fontWeight: 700,
-              color: '#a79ff0',
-              marginBottom: '8px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}>
-              {comparisonSessionIds.size > 0 ? 'Golden Run Selected' : 'EvalSet Selected'}
-            </div>
-            <p style={{
-              fontSize: '14px',
-              color: 'var(--text-secondary)',
-              margin: 0,
-            }}>
+          <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+            <span style={{ color: 'var(--text-primary)' }}>
               {comparisonSessionIds.size > 0
-                ? `Ready to evaluate ${comparisonSessionIds.size} session${comparisonSessionIds.size !== 1 ? 's' : ''} against this baseline`
-                : 'Evaluating this session on its own. Check "Compare" on a completed session below to add it.'}
-            </p>
+                ? `golden session and ${comparisonSessionIds.size} to compare`
+                : 'golden session selected'}
+            </span>
+            {comparisonSessionIds.size === 0 && ' · tick compare on other sessions to score them against it'}
             {evaluationError && (
-              <p role="alert" style={{ fontSize: '13px', color: 'var(--status-failure)', margin: '8px 0 0' }}>
+              <div role="alert" style={{ fontSize: '13px', color: 'var(--status-failure)', marginTop: '4px' }}>
                 {evaluationError}
-              </p>
+              </div>
             )}
           </div>
 
           <button
             onClick={handleContinueToEvaluation}
             style={{
-              height: '44px',
-              padding: '0 32px',
+              height: '30px',
+              padding: '0 16px',
               borderRadius: 'var(--radius)',
               background: 'var(--accent-primary)',
               border: 'none',
               color: '#fff',
-              fontSize: '15px',
-              fontWeight: 600,
+              fontSize: '14px',
+              fontWeight: 500,
               cursor: 'pointer',
               whiteSpace: 'nowrap',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
             }}
           >
-            Continue to Evaluation →
+            evaluate →
           </button>
         </div>
       )}
