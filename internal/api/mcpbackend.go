@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/triageagent-dev/ego/internal/mcptools"
+	"github.com/triageagent-dev/ego/internal/online"
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 )
 
@@ -204,4 +206,16 @@ func (b *mcpBackend) ExplainRegression(ctx context.Context, alertID string) (*mc
 
 func (b *mcpBackend) ExplainSession(ctx context.Context, sessionID string) (*mcptools.SessionEvidence, error) {
 	return b.online.ExplainSession(roleInfoOrOpen(ctx), sessionID)
+}
+
+func (b *mcpBackend) Findings(ctx context.Context, kind, state string, since time.Time) ([]online.Finding, error) {
+	return b.online.Findings(roleInfoOrOpen(ctx), kind, state, since)
+}
+
+func (b *mcpBackend) RegisterCorrection(ctx context.Context, in mcptools.CorrectionInput) (*online.Correction, error) {
+	return b.online.RegisterCorrection(roleInfoOrOpen(ctx), in)
+}
+
+func (b *mcpBackend) Corrections(ctx context.Context, kind, state string) ([]online.Correction, error) {
+	return b.online.Corrections(roleInfoOrOpen(ctx), kind, state)
 }

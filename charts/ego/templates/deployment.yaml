@@ -19,7 +19,7 @@ spec:
       {{- if .Values.online.enabled }}
       annotations:
         # Restart on a profile change: the config is read once at startup.
-        checksum/online: {{ .Values.online.config | toJson | sha256sum }}
+        checksum/online: {{ include "ego.onlineConfig" . | sha256sum }}
       {{- end }}
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}

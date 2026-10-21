@@ -164,6 +164,21 @@ func (s *Sampler) Decide(f Features, now time.Time) Decision {
 	return Decision{Sample: true, Lane: "base", Reasons: reasons}
 }
 
+// StartBurst boosts the next AfterChangeSessions sessions of (tenant, kind), as a new service.version does. A
+// correction is a change to the agent, so the sessions that show whether it worked should be scored first. The
+// tenant is the key scores are stored under (sender/label).
+func (s *Sampler) StartBurst(tenant, kind string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := tenant + "\x00" + kind
+	st := s.streams[key]
+	if st == nil {
+		st = &stream{versions: map[string]time.Time{}}
+		s.streams[key] = st
+	}
+	st.burst = s.cfg.AfterChangeSessions
+}
+
 func (s *Sampler) pruneLocked(now time.Time) {
 	if now.Sub(s.lastPrune) < 10*time.Minute {
 		return

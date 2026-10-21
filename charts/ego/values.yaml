@@ -190,3 +190,18 @@ online:
       minDrop: 0.1
     profiles: []
     sinks: []
+  # Findings and corrections (docs/rsi.md): a judge diagnosis of low-scoring
+  # series, and the verification of what an agent changed in answer. Rendered
+  # into the "findings" block of the online config. enabled: false writes no
+  # findings; corrections can still be registered and verified.
+  findings:
+    enabled: true
+    every: 6h
+    window: 24h
+    minSessions: 8
+    minScore: 0.7
+    maxSessions: 8
+    verifyWithin: 48h
+    # Used by the label gate and anchor re-scoring (later phase).
+    minAgreement: 0.7
+    recalibrateEvery: 24h

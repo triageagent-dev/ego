@@ -1,6 +1,6 @@
 # RSI: the agent corrects itself
 
-- **Status**: Proposed (2026-10-21)
+- **Status**: Phases 1 and 2 implemented (2026-10-21); phase 3 open
 - **Scope**: ego (`serve`, `mcp`). Builds on `docs/online-evaluation.md`.
 
 Online evaluation closes at a notification: **sample → score → detect → notify**. A person reads the
@@ -121,6 +121,15 @@ A finding is written by the **findings pass** (`internal/online/findings.go`, wi
 - **Notify.** `ego.correction.v1` events `verified` and `failed` through every sink; generic
   `EvalCorrectionVerified` (info) / `EvalCorrectionFailed` (warning).
 
+**As built (phase 2).**
+- Findings and corrections share one wire shape, the snake_case JSON of `online.Finding` / `online.Correction`, on REST, MCP and in the `data` column. The notification payloads stay camelCase.
+- The pass runs inside the detector tick (alert findings, verification, then the sweep when `findings.every` has passed, remembered in `online_state`), not on alert events, so a finding skipped for budget is retried on the next tick.
+- The sweep skips a series that has an `open` or `corrected` finding. An alert that opens on a series with an alert-less sweep finding adopts it instead of adding a second one.
+- A series whose sessions have no stored evidence (pruned) is skipped as `noEvidence`; a diagnosis the model cannot give (no model can be built, the budget has no judge allowance, an error, an unusable answer) is written from the evidence alone, the last two keeping the model's name with `model_error`.
+- `before` is the finding's window mean and n, fixed at registration; a correction with no finding uses the detector baseline span before it, pooled over every metric of the kind. With no baseline sessions at all the bar is `findings.minScore`.
+- `after` is the scores of the correction's series since it was registered, and only those at its `version` when given. `alert resolved` verifies only once `detector.minSamples` sessions exist after the correction. A finding with a second, still pending correction is not reopened by the first one failing.
+- `register_correction` takes an optional `tenant`, for roles that do not imply one; a finding that is `resolved` or `stale` takes no more corrections (409).
+
 ## 4. Labels
 
 - `POST /api/online/labels` body `{sessionId, metric, verdict: agree|disagree, score?, note?}`;
@@ -169,7 +178,7 @@ verified. Helm renders it from `online.findings` values.
 1. MCP in `serve` with sender-token auth, the tool registry package, tenant-limited runs, `get_quality`,
    `explain_regression`, `explain_session`; chart `rootPaths`. **Implemented (2026-10-21).**
 2. Findings pass, store, API, sinks, MCP `get_findings`; corrections store, API, sampling burst, verification,
-   sinks, MCP `register_correction` + `list_corrections`.
+   sinks, MCP `register_correction` + `list_corrections`. **Implemented (2026-10-21).**
 3. Labels store, API, agreement gate, anchor re-scoring, MCP `label_session`; Quality view and inspector; the
    skill and the `rsi_loop` prompt; docs (`STATUS.md`, `online-evaluation.md` phase 3 moves here, README
    paragraph).

@@ -5,7 +5,9 @@ package mcptools
 
 import (
 	"context"
+	"time"
 
+	"github.com/triageagent-dev/ego/internal/online"
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 )
 
@@ -34,4 +36,12 @@ type Backend interface {
 	ExplainRegression(ctx context.Context, alertID string) (*RegressionExplanation, error)
 	// ExplainSession answers explain_session; a session outside the caller's tenants is refused.
 	ExplainSession(ctx context.Context, sessionID string) (*SessionEvidence, error)
+
+	// Findings answers get_findings: the caller's tenants' findings, last updated first. state "" or "all" is every
+	// state; a zero since is no limit.
+	Findings(ctx context.Context, kind, state string, since time.Time) ([]online.Finding, error)
+	// RegisterCorrection answers register_correction.
+	RegisterCorrection(ctx context.Context, in CorrectionInput) (*online.Correction, error)
+	// Corrections answers list_corrections; state "" or "all" is every state.
+	Corrections(ctx context.Context, kind, state string) ([]online.Correction, error)
 }

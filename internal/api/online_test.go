@@ -167,6 +167,10 @@ func TestOnlineEngine_DetectsRegressionAndNotifies(t *testing.T) {
 		b, _ := io.ReadAll(r.Body)
 		var m map[string]any
 		_ = json.Unmarshal(b, &m)
+		// The findings pass shares the sink; this test is about the alerts.
+		if m["type"] != online.WebhookType {
+			return
+		}
 		mu.Lock()
 		posts = append(posts, m)
 		mu.Unlock()

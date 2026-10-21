@@ -62,7 +62,34 @@ func (b *BudgetMeter) Reserve(p Profile, now time.Time) (Cost, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.rollLocked(now)
-	est := b.estimateLocked(p)
+	return b.reserveLocked(b.estimateLocked(p))
+}
+
+// ReserveJudge books a judge call that belongs to no profile (the findings pass) under the same daily token cap.
+// name keys its own running estimate, so a call that costs more than the first guess is learned.
+func (b *BudgetMeter) ReserveJudge(name string, now time.Time) (Cost, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.rollLocked(now)
+	est, ok := b.estimate[name]
+	if !ok {
+		est = Cost{JudgeTokens: firstJudgeTokens}
+	}
+	return b.reserveLocked(est)
+}
+
+// SettleJudge is Settle for ReserveJudge: tokens is the actual spend, nil to release the reservation only.
+func (b *BudgetMeter) SettleJudge(name string, reserved Cost, tokens *int64, now time.Time) {
+	var actual *Cost
+	if tokens != nil {
+		actual = &Cost{JudgeTokens: *tokens}
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.settleLocked(name, reserved, actual, now)
+}
+
+func (b *BudgetMeter) reserveLocked(est Cost) (Cost, bool) {
 	if est.JudgeTokens > 0 && b.spent.JudgeTokens+b.reserved.JudgeTokens+est.JudgeTokens > b.caps.JudgeTokensPerDay {
 		return Cost{}, false
 	}
@@ -79,6 +106,10 @@ func (b *BudgetMeter) Reserve(p Profile, now time.Time) (Cost, bool) {
 func (b *BudgetMeter) Settle(p Profile, reserved Cost, actual *Cost, now time.Time) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.settleLocked(p.Key(), reserved, actual, now)
+}
+
+func (b *BudgetMeter) settleLocked(key string, reserved Cost, actual *Cost, now time.Time) {
 	b.reserved.JudgeTokens -= reserved.JudgeTokens
 	b.reserved.JevCalls -= reserved.JevCalls
 	b.rollLocked(now)
@@ -87,13 +118,13 @@ func (b *BudgetMeter) Settle(p Profile, reserved Cost, actual *Cost, now time.Ti
 	}
 	b.spent.JudgeTokens += actual.JudgeTokens
 	b.spent.JevCalls += actual.JevCalls
-	prev, ok := b.estimate[p.Key()]
+	prev, ok := b.estimate[key]
 	if !ok {
-		b.estimate[p.Key()] = *actual
+		b.estimate[key] = *actual
 		return
 	}
 	const a = 0.2
-	b.estimate[p.Key()] = Cost{
+	b.estimate[key] = Cost{
 		JudgeTokens: int64(float64(prev.JudgeTokens)*(1-a) + float64(actual.JudgeTokens)*a),
 		JevCalls:    int64(float64(prev.JevCalls)*(1-a) + float64(actual.JevCalls)*a + 0.5),
 	}

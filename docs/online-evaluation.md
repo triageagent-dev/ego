@@ -145,8 +145,10 @@ start.
    status and series endpoints, Helm values.
 2. Detector, `online_alerts`, Discord and webhook sinks, digest, alerts
    endpoint, Quality view.
-3. Consumer side (outside this repo): an agent reads quality alerts as input to
-   its self-tuning loop (guard, wake, observation).
+3. Consumer side: an agent reads quality alerts as input to its self-tuning
+   loop. The diagnosis, correction and verification half lives in this repo now:
+   see `docs/rsi.md` (findings and corrections are implemented, the labels and
+   the skill follow).
 4. Judge cascade (1 sample, then 5 when the score is borderline), a calibration
    anchor set re-scored daily for judge drift, and annotation-queue agreement as
    a metric.

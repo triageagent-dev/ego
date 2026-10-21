@@ -6,5 +6,5 @@ metadata:
   labels:
     {{- include "ego.labels" . | nindent 4 }}
 data:
-  online.json: {{ .Values.online.config | toJson | quote }}
+  online.json: {{ include "ego.onlineConfig" . | quote }}
 {{- end }}

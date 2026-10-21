@@ -57,6 +57,17 @@ type OnlineEngine struct {
 	jev      *decision.Client
 	jevErr   error
 	jevBuilt bool
+	// The findings pass (onlinefindings.go). fmu serialises read-modify-write of finding and correction rows between
+	// the detector goroutine and the correction endpoint; it is never held across a model call or a notification.
+	fmu              sync.Mutex
+	fjudge           judge.Model
+	findingsTokens   atomic.Int64 // the findings judge's usage hook adds here
+	fWritten         atomic.Int64
+	fSkippedBudget   atomic.Int64
+	fSkippedEvidence atomic.Int64
+	fTokensTotal     atomic.Int64
+	fSpendDay        string
+	fSpendToday      int64
 	// newJudge builds a judge model; tests replace it.
 	newJudge func(ctx context.Context, model string, onUsage func(int64)) (judge.Model, error)
 	lastTick time.Time
@@ -116,6 +127,7 @@ func (e *OnlineEngine) Start(stop <-chan struct{}) {
 	if spent, err := e.store.OnlineSpentSince(day.UnixMilli()); err != nil {
 		logx.Warnf("online: restoring today's spend: %v", err)
 	} else {
+		spent.JudgeTokens += e.restoreFindingsSpend(now)
 		e.budget.Restore(spent, now)
 	}
 	if open, err := e.store.OnlineAlerts("open", 1000); err != nil {
@@ -493,6 +505,7 @@ func (e *OnlineEngine) Tick(ctx context.Context) {
 	now := e.now()
 	e.finishStaleRuns(false)
 	e.detect(ctx, now)
+	e.findingsMaintain(ctx, now)
 	e.digest(ctx, now)
 	if now.Sub(e.lastTick) > 24*time.Hour {
 		if !e.lastTick.IsZero() {
@@ -641,6 +654,7 @@ type onlineStatusDTO struct {
 	Counts     map[string]int64    `json:"counts"`
 	OpenAlerts int                 `json:"openAlerts"`
 	Sinks      []string            `json:"sinks"`
+	Findings   findingsStatusDTO   `json:"findings"`
 }
 
 func (e *OnlineEngine) status() onlineStatusDTO {
@@ -665,6 +679,7 @@ func (e *OnlineEngine) status() onlineStatusDTO {
 	}
 	st.OpenAlerts = len(e.alerts)
 	e.mu.Unlock()
+	st.Findings = e.findingsStatus()
 	return st
 }
 

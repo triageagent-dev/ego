@@ -4,15 +4,20 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/triageagent-dev/ego/internal/adk"
+	"github.com/triageagent-dev/ego/internal/online"
 )
 
 // ServerVersion is reported to MCP clients during initialize; it is not otherwise meaningful.
 const ServerVersion = "0.1.0"
+
+// defaultFindingState is the state get_findings lists when none is asked for: the work that is waiting.
+const defaultFindingState = "open"
 
 // Defaults and bounds of get_quality's window.
 const (
@@ -136,6 +141,50 @@ func Tools(b Backend, o Options) []server.ServerTool {
 			mcp.WithString("session_id", mcp.Required(),
 				mcp.Description("Session ID of an online-scored session, e.g. from list_sessions.")),
 		), Handler: explainSessionHandler(b)},
+
+		server.ServerTool{Tool: mcp.NewTool("get_findings",
+			mcp.WithDescription("The diagnoses written for your agent's low scores, last updated first: the failure mode, "+
+				"a summary, a suggested correction, a confidence, the evidence sessions and the corrections already "+
+				"tried (history). A finding is open until a correction names it, then corrected until ego has "+
+				"verified it (resolved, or open again when it did not help). Read the evidence with explain_session "+
+				"before trusting the summary. Scoped to the tenants you may see."),
+			mcp.WithString("kind",
+				mcp.Description("Only this call kind. Omit for all kinds.")),
+			mcp.WithString("state", mcp.DefaultString(defaultFindingState),
+				mcp.Description("open, corrected, resolved, stale, or all.")),
+			mcp.WithString("since",
+				mcp.Description("Only findings updated since this RFC 3339 time or this long ago (e.g. 24h).")),
+		), Handler: getFindingsHandler(b)},
+
+		server.ServerTool{Tool: mcp.NewTool("register_correction",
+			mcp.WithDescription("Record what you changed in answer to a finding. The finding becomes corrected, the "+
+				"sampler scores your next sessions first, and ego verifies on its detector ticks whether the scores "+
+				"recovered: verified resolves the finding, failed reopens it with this attempt in its history. "+
+				"Returns the correction with its verification window. Ship the change under a new service.version "+
+				"and pass it, so only sessions at that version count."),
+			mcp.WithString("finding_id",
+				mcp.Description("The finding this change answers (from get_findings). Omit for a change that answers no finding.")),
+			mcp.WithString("kind", mcp.Required(),
+				mcp.Description("The call kind the change applies to.")),
+			mcp.WithString("what", mcp.Required(),
+				mcp.Description("What you changed, in plain words (at most 2000 characters).")),
+			mcp.WithString("version",
+				mcp.Description("The service.version the change ships as.")),
+			mcp.WithString("by",
+				mcp.Description("Who made the change: an agent name or a person.")),
+			mcp.WithString("tenant",
+				mcp.Description("The tenant. Implied by the finding, or by a token limited to one tenant.")),
+		), Handler: registerCorrectionHandler(b)},
+
+		server.ServerTool{Tool: mcp.NewTool("list_corrections",
+			mcp.WithDescription("The corrections registered for your tenants, newest first, each with its verification: the "+
+				"mean score before and after, how many sessions, and when the window ends. State is pending, verified "+
+				"or failed."),
+			mcp.WithString("kind",
+				mcp.Description("Only this call kind. Omit for all kinds.")),
+			mcp.WithString("state",
+				mcp.Description("pending, verified, failed, or all (the default).")),
+		), Handler: listCorrectionsHandler(b)},
 	)
 
 	if o.Admin {
@@ -306,6 +355,61 @@ func explainSessionHandler(b Backend) server.ToolHandlerFunc {
 		out, err := b.ExplainSession(ctx, id)
 		if err != nil {
 			return toolError(err)
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func getFindingsHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		since, err := ParseSince(req.GetString("since", ""), time.Now())
+		if err != nil {
+			return toolError(err)
+		}
+		out, err := b.Findings(ctx, req.GetString("kind", ""), req.GetString("state", defaultFindingState), since)
+		if err != nil {
+			return toolError(err)
+		}
+		if out == nil {
+			out = []online.Finding{}
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func registerCorrectionHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		kind, err := req.RequireString("kind")
+		if err != nil {
+			return toolError(err)
+		}
+		what, err := req.RequireString("what")
+		if err != nil {
+			return toolError(err)
+		}
+		out, err := b.RegisterCorrection(ctx, CorrectionInput{
+			FindingID: req.GetString("finding_id", ""),
+			Tenant:    req.GetString("tenant", ""),
+			Kind:      kind,
+			What:      what,
+			Version:   req.GetString("version", ""),
+			By:        req.GetString("by", ""),
+		})
+		if err != nil {
+			return toolError(err)
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func listCorrectionsHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		out, err := b.Corrections(ctx, req.GetString("kind", ""), req.GetString("state", ""))
+		if err != nil {
+			return toolError(err)
+		}
+		if out == nil {
+			out = []online.Correction{}
 		}
 		return mcp.NewToolResultStructuredOnly(out), nil
 	}

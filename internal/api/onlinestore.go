@@ -49,6 +49,33 @@ func ensureOnlineSchema(db *sql.DB) error {
 			data TEXT NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_online_alerts_status ON online_alerts(status, updated_ms)`,
+		`CREATE TABLE IF NOT EXISTS online_findings (
+			finding_id TEXT PRIMARY KEY,
+			tenant TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			metric TEXT NOT NULL,
+			state TEXT NOT NULL,
+			alert_id TEXT NOT NULL,
+			created_ms INTEGER NOT NULL,
+			updated_ms INTEGER NOT NULL,
+			data TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_online_findings_state ON online_findings(state, updated_ms)`,
+		`CREATE INDEX IF NOT EXISTS idx_online_findings_alert ON online_findings(alert_id)`,
+		`CREATE TABLE IF NOT EXISTS online_corrections (
+			correction_id TEXT PRIMARY KEY,
+			tenant TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			metric TEXT NOT NULL,
+			finding_id TEXT NOT NULL,
+			version TEXT NOT NULL,
+			state TEXT NOT NULL,
+			created_ms INTEGER NOT NULL,
+			verified_ms INTEGER NOT NULL,
+			data TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_online_corrections_state ON online_corrections(state, created_ms)`,
+		`CREATE INDEX IF NOT EXISTS idx_online_corrections_finding ON online_corrections(finding_id)`,
 		`CREATE TABLE IF NOT EXISTS online_state (
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
@@ -159,6 +186,39 @@ func (s *SQLiteStore) OnlineSamples(sinceMs int64) ([]onlineSampleRow, error) {
 	return out, rows.Err()
 }
 
+// OnlineSamplesFor returns the decided scores of one (tenant, kind) in [sinceMs, untilMs), oldest first. An empty
+// metric pools every metric of the kind; an empty version takes every version. Verification reads its "after"
+// sessions this way.
+func (s *SQLiteStore) OnlineSamplesFor(tenant, kind, metric, version string, sinceMs, untilMs int64) ([]online.Sample, error) {
+	q := `SELECT session_id, at_ms, version, model, score FROM online_scores
+		WHERE tenant = ? AND kind = ? AND at_ms >= ? AND at_ms < ? AND score IS NOT NULL AND status != 'errored'`
+	args := []any{tenant, kind, sinceMs, untilMs}
+	if metric != "" {
+		q += ` AND metric = ?`
+		args = append(args, metric)
+	}
+	if version != "" {
+		q += ` AND version = ?`
+		args = append(args, version)
+	}
+	rows, err := s.db.Query(q+` ORDER BY at_ms`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []online.Sample
+	for rows.Next() {
+		var sm online.Sample
+		var at int64
+		if err := rows.Scan(&sm.SessionID, &at, &sm.Version, &sm.Model, &sm.Score); err != nil {
+			return nil, err
+		}
+		sm.At = time.UnixMilli(at)
+		out = append(out, sm)
+	}
+	return out, rows.Err()
+}
+
 type onlineSeriesPoint struct {
 	BucketMs int64   `json:"bucketMs"`
 	Tenant   string  `json:"tenant"`
@@ -252,6 +312,8 @@ func (s *SQLiteStore) PruneOnline(cutoff time.Time) error {
 		`DELETE FROM online_evals WHERE at_ms < ?`,
 		`DELETE FROM online_scores WHERE at_ms < ?`,
 		`DELETE FROM online_alerts WHERE status = 'resolved' AND updated_ms < ?`,
+		`DELETE FROM online_findings WHERE state IN ('resolved', 'stale') AND updated_ms < ?`,
+		`DELETE FROM online_corrections WHERE state != 'pending' AND created_ms < ?`,
 	} {
 		if _, err := s.db.Exec(q, ms); err != nil {
 			return err

@@ -10,7 +10,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/triageagent-dev/ego/internal/online"
 	"github.com/triageagent-dev/ego/internal/otlp"
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 )
@@ -309,4 +311,45 @@ func (b *REST) ExplainSession(ctx context.Context, sessionID string) (*SessionEv
 		return nil, err
 	}
 	return &out, nil
+}
+
+func (b *REST) Findings(ctx context.Context, kind, state string, since time.Time) ([]online.Finding, error) {
+	q := url.Values{}
+	if kind != "" {
+		q.Set("kind", kind)
+	}
+	if state != "" {
+		q.Set("state", state)
+	}
+	if !since.IsZero() {
+		q.Set("since", since.UTC().Format(time.RFC3339))
+	}
+	var out []online.Finding
+	if err := b.get(ctx, "/api/online/findings?"+q.Encode(), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (b *REST) RegisterCorrection(ctx context.Context, in CorrectionInput) (*online.Correction, error) {
+	var out online.Correction
+	if err := b.post(ctx, "/api/online/corrections", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (b *REST) Corrections(ctx context.Context, kind, state string) ([]online.Correction, error) {
+	q := url.Values{}
+	if kind != "" {
+		q.Set("kind", kind)
+	}
+	if state != "" {
+		q.Set("state", state)
+	}
+	var out []online.Correction
+	if err := b.get(ctx, "/api/online/corrections?"+q.Encode(), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

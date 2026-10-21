@@ -84,6 +84,28 @@ type Detector struct {
 	Every      Duration `json:"every"`
 }
 
+// Findings configures the findings pass and the verification of corrections (docs/rsi.md, sections 2 and 3).
+// MinAgreement and RecalibrateEvery belong to the label gate and anchor re-scoring; they are parsed and checked
+// now so a config written for the later phase loads, and used there.
+type Findings struct {
+	// Enabled false writes no findings; corrections can still be registered and verified.
+	Enabled bool `json:"enabled"`
+	// Every is the sweep interval over series that have always been bad.
+	Every Duration `json:"every"`
+	// Window is the span of scores a finding is written from (and the time a series must stay healthy to go stale).
+	Window Duration `json:"window"`
+	// MinSessions is how many sessions a series needs in the window before the sweep may judge it.
+	MinSessions int `json:"minSessions"`
+	// MinScore is the mean below which a series with enough sessions gets a finding.
+	MinScore float64 `json:"minScore"`
+	// MaxSessions is how many of the lowest-scoring sessions a finding quotes.
+	MaxSessions int `json:"maxSessions"`
+	// VerifyWithin is how long a correction may stay pending before it counts as failed.
+	VerifyWithin     Duration `json:"verifyWithin"`
+	MinAgreement     float64  `json:"minAgreement"`
+	RecalibrateEvery Duration `json:"recalibrateEvery"`
+}
+
 // Sink is one notification target.
 type Sink struct {
 	// Type is "discord", "webhook" (the AlertPayload body) or "event" (a
@@ -116,6 +138,7 @@ type Config struct {
 	Sampling Sampling  `json:"sampling"`
 	Profiles []Profile `json:"profiles"`
 	Detector Detector  `json:"detector"`
+	Findings Findings  `json:"findings"`
 	Sinks    []Sink    `json:"sinks"`
 	// PublicURL prefixes session links in notifications.
 	PublicURL string `json:"publicUrl,omitempty"`
@@ -172,7 +195,9 @@ func Load(path string) (*Config, error) {
 
 // Parse validates a config document, filling defaults.
 func Parse(b []byte) (*Config, error) {
-	var c Config
+	// The findings pass is on unless the config turns it off, and a bool cannot tell "absent" from "false" after
+	// decoding.
+	c := Config{Findings: Findings{Enabled: true}}
 	dec := json.NewDecoder(strings.NewReader(string(b)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&c); err != nil {
@@ -219,6 +244,31 @@ func (c *Config) fillDefaults() {
 	if c.Detector.Every == 0 {
 		c.Detector.Every = Duration(10 * time.Minute)
 	}
+	f := &c.Findings
+	if f.Every == 0 {
+		f.Every = Duration(6 * time.Hour)
+	}
+	if f.Window == 0 {
+		f.Window = Duration(24 * time.Hour)
+	}
+	if f.MinSessions == 0 {
+		f.MinSessions = 8
+	}
+	if f.MinScore == 0 {
+		f.MinScore = 0.7
+	}
+	if f.MaxSessions == 0 {
+		f.MaxSessions = 8
+	}
+	if f.VerifyWithin == 0 {
+		f.VerifyWithin = Duration(48 * time.Hour)
+	}
+	if f.MinAgreement == 0 {
+		f.MinAgreement = 0.7
+	}
+	if f.RecalibrateEvery == 0 {
+		f.RecalibrateEvery = Duration(24 * time.Hour)
+	}
 	if c.DigestHourUTC == nil {
 		h := 8
 		c.DigestHourUTC = &h
@@ -249,6 +299,9 @@ func (c *Config) validate() error {
 	}
 	if c.Detector.MinSamples < 3 {
 		return fmt.Errorf("online config: detector.minSamples must be at least 3")
+	}
+	if err := c.Findings.validate(); err != nil {
+		return err
 	}
 	seen := map[string]bool{}
 	for _, p := range c.Profiles {
@@ -289,6 +342,27 @@ func (c *Config) validate() error {
 		if s.URL == "" && s.URLEnv == "" {
 			return fmt.Errorf("online config: %s sink needs url or urlEnv", s.Type)
 		}
+	}
+	return nil
+}
+
+func (f Findings) validate() error {
+	for name, d := range map[string]Duration{"every": f.Every, "window": f.Window, "verifyWithin": f.VerifyWithin, "recalibrateEvery": f.RecalibrateEvery} {
+		if d <= 0 {
+			return fmt.Errorf("online config: findings.%s must be positive", name)
+		}
+	}
+	if f.MinSessions < 1 {
+		return fmt.Errorf("online config: findings.minSessions must be at least 1")
+	}
+	if f.MaxSessions < 1 || f.MaxSessions > 20 {
+		return fmt.Errorf("online config: findings.maxSessions must be 1..20")
+	}
+	if f.MinScore <= 0 || f.MinScore > 1 {
+		return fmt.Errorf("online config: findings.minScore must be in (0, 1]")
+	}
+	if f.MinAgreement <= 0 || f.MinAgreement > 1 {
+		return fmt.Errorf("online config: findings.minAgreement must be in (0, 1]")
 	}
 	return nil
 }

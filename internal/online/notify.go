@@ -76,12 +76,13 @@ const (
 // GenericEvent is the "event" sink body: the common event-ingest shape
 // (type, message, severity, source, tenant, raw).
 type GenericEvent struct {
-	Type     string       `json:"type"`
-	Message  string       `json:"message"`
-	Severity string       `json:"severity"`
-	Source   string       `json:"source"`
-	Tenant   string       `json:"tenant,omitempty"`
-	Raw      AlertPayload `json:"raw"`
+	Type     string `json:"type"`
+	Message  string `json:"message"`
+	Severity string `json:"severity"`
+	Source   string `json:"source"`
+	Tenant   string `json:"tenant,omitempty"`
+	// Raw is the webhook body of the event: an AlertPayload, FindingPayload or CorrectionPayload.
+	Raw any `json:"raw"`
 }
 
 // EventOf maps an alert event to a generic event. The source is
@@ -105,7 +106,11 @@ func EventOf(p AlertPayload) GenericEvent {
 
 // chatText makes a value that came from span attributes safe to put in a chat message: control characters and line
 // breaks become spaces, characters that start formatting, links or mentions are dropped, and it is cut to 80 runes.
-func chatText(s string) string {
+// The same holds for what a model wrote about those values.
+func chatText(s string) string { return chatTextN(s, 80) }
+
+// chatTextN is chatText cut to limit runes, for longer values such as a suggested correction.
+func chatTextN(s string, limit int) string {
 	var b strings.Builder
 	n := 0
 	for _, r := range s {
@@ -115,7 +120,7 @@ func chatText(s string) string {
 		case strings.ContainsRune("`*~|>[]<@\\", r):
 			continue
 		}
-		if n++; n > 80 {
+		if n++; n > limit {
 			b.WriteString("…")
 			break
 		}
@@ -234,16 +239,32 @@ const discordLimit = 2000
 // Alert sends one alert event to every sink. Errors are joined; one failed
 // sink does not stop the others.
 func (n *Notifier) Alert(ctx context.Context, p AlertPayload) error {
+	return n.fanOut(ctx, DiscordText(p), p, EventOf(p))
+}
+
+// Finding sends one finding event to every sink.
+func (n *Notifier) Finding(ctx context.Context, p FindingPayload) error {
+	return n.fanOut(ctx, FindingText(p), p, FindingEventOf(p))
+}
+
+// Correction sends a correction's verdict to every sink.
+func (n *Notifier) Correction(ctx context.Context, p CorrectionPayload) error {
+	return n.fanOut(ctx, CorrectionText(p), p, CorrectionEventOf(p))
+}
+
+// fanOut sends the chat text to discord sinks, the webhook body to webhook sinks and the generic event to event
+// sinks.
+func (n *Notifier) fanOut(ctx context.Context, text string, webhook any, event GenericEvent) error {
 	var errs []string
 	for _, s := range n.Sinks {
 		var err error
 		switch s.Type {
 		case "discord":
-			err = n.discord(ctx, s, DiscordText(p))
+			err = n.discord(ctx, s, text)
 		case "webhook":
-			err = n.post(ctx, s, p)
+			err = n.post(ctx, s, webhook)
 		case "event":
-			err = n.post(ctx, s, EventOf(p))
+			err = n.post(ctx, s, event)
 		}
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", s.Type, err))

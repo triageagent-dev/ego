@@ -94,3 +94,6 @@ var delimiterDefanger = strings.NewReplacer("<", "‹", ">", "›", "**", "∗�
 func defang(s string) string {
 	return promptDelimiters.ReplaceAllStringFunc(s, delimiterDefanger.Replace)
 }
+
+// Defang is defang for other packages that quote trace text in a prompt of their own (the online findings pass).
+func Defang(s string) string { return defang(s) }

@@ -1,6 +1,39 @@
 package mcptools
 
-import "github.com/triageagent-dev/ego/internal/online"
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/triageagent-dev/ego/internal/online"
+)
+
+// CorrectionInput is the argument of register_correction (and the body of POST /api/online/corrections). Tenant is
+// optional: a role limited to one tenant implies it, and a finding names it.
+type CorrectionInput struct {
+	FindingID string `json:"findingId,omitempty"`
+	Tenant    string `json:"tenant,omitempty"`
+	Kind      string `json:"kind"`
+	What      string `json:"what"`
+	Version   string `json:"version,omitempty"`
+	By        string `json:"by,omitempty"`
+}
+
+// ParseSince reads the `since` argument of get_findings and GET /api/online/findings: an RFC 3339 time, or a
+// duration such as "24h" counted back from now. Empty means no limit.
+func ParseSince(s string, now time.Time) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
+	if d, err := time.ParseDuration(s); err == nil && d > 0 {
+		return now.Add(-d), nil
+	}
+	return time.Time{}, fmt.Errorf("since must be an RFC 3339 time or a duration like 24h")
+}
 
 // The wire contract of the tools is snake_case JSON, independent of the camelCase REST DTOs the stdio client
 // reads, so an agent sees the same shapes whichever transport it uses.
