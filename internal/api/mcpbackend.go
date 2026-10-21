@@ -258,7 +258,7 @@ func (b *mcpBackend) RegisterCorrection(ctx context.Context, in mcptools.Correct
 }
 
 func (b *mcpBackend) RunFindings(ctx context.Context) (*mcptools.SweepReport, error) {
-	return b.online.SweepNow(roleInfoOrOpen(ctx))
+	return b.online.SweepNow(ctx, roleInfoOrOpen(ctx))
 }
 
 func (b *mcpBackend) Corrections(ctx context.Context, kind, state string) ([]online.Correction, error) {

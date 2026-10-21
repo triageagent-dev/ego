@@ -39,8 +39,10 @@ type labelsMetricDTO struct {
 	Disagree int `json:"disagree"`
 	// Agreement is agree / (agree + disagree) over the last 7 days; null when the window holds no labels.
 	Agreement *float64 `json:"agreement"`
-	// Gated is true when the metric's judge is too far from the people who checked it to drive findings.
-	Gated bool `json:"gated"`
+	// Gated is true when the metric's judge is too far from the people who checked it, in at least one tenant the
+	// caller sees, to drive that tenant's findings; GatedTenants names those tenants.
+	Gated        bool     `json:"gated"`
+	GatedTenants []string `json:"gatedTenants,omitempty"`
 	// Drift is the mean absolute difference between the last anchor pass's new scores and the labelled scores.
 	Drift   *float64   `json:"drift,omitempty"`
 	DriftN  int        `json:"driftN,omitempty"`
@@ -58,7 +60,27 @@ type labelsStatusDTO struct {
 
 // recentLabels reads the labels inside the agreement window.
 func (e *OnlineEngine) recentLabels(now time.Time) ([]*online.Label, error) {
-	return e.store.OnlineLabels("", "", now.Add(-online.AgreementWindow).UnixMilli(), 0)
+	return e.store.OnlineLabels("", "", "", now.Add(-online.AgreementWindow).UnixMilli(), online.MaxLabelRows)
+}
+
+// gatedTenants names, per metric, the tenants whose own labels gate the metric's judge for them.
+func (e *OnlineEngine) gatedTenants(ls []*online.Label) map[string][]string {
+	byTenant := map[string][]online.Label{}
+	for _, l := range ls {
+		byTenant[l.Tenant] = append(byTenant[l.Tenant], *l)
+	}
+	out := map[string][]string{}
+	for tenant, labels := range byTenant {
+		for metric, a := range online.AgreementByMetric(labels) {
+			if a.Gated(e.cfg.Findings.MinAgreement) {
+				out[metric] = append(out[metric], tenant)
+			}
+		}
+	}
+	for _, ts := range out {
+		sort.Strings(ts)
+	}
+	return out
 }
 
 func labelValues(ls []*online.Label) []online.Label {
@@ -69,10 +91,11 @@ func labelValues(ls []*online.Label) []online.Label {
 	return out
 }
 
-// uncalibrated reports whether a metric's judge is gated: enough recent labels and agreement below the floor. The
-// gate looks at every tenant's labels, because it judges the metric's judge, not one tenant's sessions.
-func (e *OnlineEngine) uncalibrated(metric string, now time.Time) bool {
-	ls, err := e.store.OnlineLabels(metric, "", now.Add(-online.AgreementWindow).UnixMilli(), 0)
+// uncalibrated reports whether a metric's judge is gated for one tenant: enough of that tenant's recent labels and
+// agreement below the floor. The gate is per tenant so that one tenant's labels, which a member can write freely
+// for its own sessions, cannot stop the findings of every other tenant.
+func (e *OnlineEngine) uncalibrated(metric, tenant string, now time.Time) bool {
+	ls, err := e.store.OnlineLabels(metric, "", tenant, now.Add(-online.AgreementWindow).UnixMilli(), online.MaxLabelRows)
 	if err != nil {
 		logx.Warnf("online: reading labels for the agreement gate: %v", err)
 		return false
@@ -92,9 +115,9 @@ func (e *OnlineEngine) storedDrift(metric string) *online.Drift {
 	return &d
 }
 
-// labelsStatus is the agreement per metric. A tenant-limited caller counts only the labels of its tenants; the
-// gate flag stays the engine's (it is about the judge), and drift, which is not attributable to a tenant, is not
-// shown to such a caller.
+// labelsStatus is the agreement per metric. A tenant-limited caller counts only the labels of its tenants, and
+// `gated` is true when one of those tenants is gated (gatedTenants names them); an admin sees every tenant's.
+// Drift, which is not attributable to a tenant, is not shown to a tenant-limited caller.
 func (e *OnlineEngine) labelsStatus(info RoleInfo) labelsStatusDTO {
 	st := labelsStatusDTO{PerMetric: map[string]labelsMetricDTO{}}
 	st.Skipped.Budget = e.lSkippedBudget.Load()
@@ -104,13 +127,13 @@ func (e *OnlineEngine) labelsStatus(info RoleInfo) labelsStatusDTO {
 		logx.Warnf("online: reading labels: %v", err)
 		return st
 	}
-	all := online.AgreementByMetric(labelValues(ls))
-	shown := all
+	visible := ls
 	if info.TenantScoped() {
-		shown = online.AgreementByMetric(labelValues(filterByTenant(ls, info, func(l *online.Label) string { return l.Tenant })))
+		visible = filterByTenant(ls, info, func(l *online.Label) string { return l.Tenant })
 	}
-	for metric, a := range shown {
-		dto := labelsMetricDTO{Agree: a.Agree, Disagree: a.Disagree, Gated: all[metric].Gated(e.cfg.Findings.MinAgreement)}
+	gated := e.gatedTenants(visible)
+	for metric, a := range online.AgreementByMetric(labelValues(visible)) {
+		dto := labelsMetricDTO{Agree: a.Agree, Disagree: a.Disagree, Gated: len(gated[metric]) > 0, GatedTenants: gated[metric]}
 		if rate, ok := a.Rate(); ok {
 			dto.Agreement = &rate
 		}
@@ -144,8 +167,9 @@ func (e *OnlineEngine) digestAgreement(now time.Time) []online.AgreementRow {
 		return nil
 	}
 	var out []online.AgreementRow
+	gated := e.gatedTenants(ls)
 	for metric, a := range online.AgreementByMetric(labelValues(ls)) {
-		out = append(out, online.AgreementRow{Metric: metric, Agreement: a, Gated: a.Gated(e.cfg.Findings.MinAgreement)})
+		out = append(out, online.AgreementRow{Metric: metric, Agreement: a, Gated: len(gated[metric]) > 0})
 	}
 	return out
 }
@@ -199,6 +223,12 @@ func (e *OnlineEngine) LabelSession(info RoleInfo, by string, in mcptools.LabelI
 		JudgeScore: *judgeScore, Verdict: in.Verdict, Score: in.Score, Note: in.Note,
 		By: clipRunes(strings.TrimSpace(by), online.MaxLabelByChars), CreatedAt: e.now().UTC(),
 	}
+	// Checked after the session lookups so a refusal reveals nothing about sessions the caller cannot see.
+	if n, err := e.store.CountOnlineLabels(in.SessionID, in.Metric); err != nil {
+		return nil, err
+	} else if n >= online.MaxLabelsPerSession {
+		return nil, &statusError{http.StatusConflict, "this session already has " + strconv.Itoa(online.MaxLabelsPerSession) + " labels for that metric"}
+	}
 	if err := e.store.InsertOnlineLabel(l); err != nil {
 		return nil, err
 	}
@@ -225,7 +255,7 @@ func (e *OnlineEngine) Labels(info RoleInfo, metric, sessionID string, since tim
 	if !since.IsZero() {
 		sinceMs = since.UnixMilli()
 	}
-	rows, err := e.store.OnlineLabels(metric, sessionID, sinceMs, maxListed)
+	rows, err := e.store.OnlineLabels(metric, sessionID, "", sinceMs, maxListed)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +421,10 @@ func (e *OnlineEngine) recalibrate(ctx context.Context, now time.Time) {
 			return
 		}
 	}
-	all, err := e.store.OnlineLabels("", "", 0, 0)
+	// Only labels young enough to count (the agreement window, or the pass interval when that is longer) are
+	// anchors, and at most MaxLabelRows of them: this read must not grow with the table.
+	anchorWindow := max(online.AgreementWindow, e.cfg.Findings.RecalibrateEvery.D())
+	all, err := e.store.OnlineLabels("", "", "", now.Add(-anchorWindow).UnixMilli(), online.MaxLabelRows)
 	if err != nil {
 		logx.Errorf("online: reading labels: %v", err)
 		return

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,8 +28,10 @@ const (
 	// findingsBudgetName keys the findings call's own running cost estimate in the budget meter.
 	findingsBudgetName = "~findings"
 	findingTimeout     = 2 * time.Minute
-	maxListed          = 500
-	maxVerdictLines    = 10
+	// sweepNowTimeout bounds a manual sweep, which runs inside the request.
+	sweepNowTimeout = 5 * time.Minute
+	maxListed       = 500
+	maxVerdictLines = 10
 )
 
 // findingsStatusDTO is the `findings` part of GET /api/online/status.
@@ -263,7 +266,7 @@ func (e *OnlineEngine) diagnose(ctx context.Context, now time.Time, in online.Pr
 func (e *OnlineEngine) writeFinding(ctx context.Context, now time.Time, key online.SeriesKey, alertID string, existing *online.Finding) {
 	cfg := e.cfg.Findings
 	// A judge that people keep disagreeing with must not drive corrections (docs/rsi.md, section 4).
-	if e.uncalibrated(key.Metric, now) {
+	if e.uncalibrated(key.Metric, key.Tenant, now) {
 		e.fSkippedUncalibrated.Add(1)
 		return
 	}
@@ -469,13 +472,14 @@ func (e *OnlineEngine) sweepFindings(ctx context.Context, now time.Time) {
 			return
 		}
 	}
+	// A sweep already running (a manual one) is left to finish; the ticker has nothing to report.
 	e.runSweep(ctx, now)
 }
 
 // SweepNow runs one sweep at once, whatever the cadence, and reports what it did. It lets an admin see the loop
 // act on today's sessions instead of waiting for findings.every; it spends judge budget like a scheduled sweep and
 // restarts the cadence from now.
-func (e *OnlineEngine) SweepNow(info RoleInfo) (*mcptools.SweepReport, error) {
+func (e *OnlineEngine) SweepNow(ctx context.Context, info RoleInfo) (*mcptools.SweepReport, error) {
 	if e == nil {
 		return nil, errOnlineUnavailable
 	}
@@ -485,7 +489,13 @@ func (e *OnlineEngine) SweepNow(info RoleInfo) (*mcptools.SweepReport, error) {
 	if !e.cfg.Findings.Enabled {
 		return nil, &statusError{409, "findings are disabled in the online config"}
 	}
-	rep := e.runSweep(context.Background(), e.now())
+	// Bounded, and tied to the request so a caller that went away stops the model calls.
+	ctx, cancel := context.WithTimeout(ctx, sweepNowTimeout)
+	defer cancel()
+	rep, ran := e.runSweep(ctx, e.now())
+	if !ran {
+		return nil, &statusError{http.StatusConflict, "a sweep is already running"}
+	}
 	return &rep, nil
 }
 
@@ -494,13 +504,15 @@ func (e *OnlineEngine) sweepCounters() [4]int64 {
 }
 
 // runSweep is one sweep: it remembers its time, marks stale the findings whose series recovered, and writes a
-// finding for every candidate series. The report is the difference it made to the counters.
-func (e *OnlineEngine) runSweep(ctx context.Context, now time.Time) (rep mcptools.SweepReport) {
+// finding for every candidate series. The report is the difference it made to the counters; ran is false when
+// another sweep was already running, so a manual caller can say so instead of reporting zeros.
+func (e *OnlineEngine) runSweep(ctx context.Context, now time.Time) (rep mcptools.SweepReport, ran bool) {
 	// One sweep at a time: a manual sweep that overlaps the ticker's would see the same candidates before either
 	// wrote a finding, and diagnose each series twice.
 	if !e.sweeping.CompareAndSwap(false, true) {
-		return rep
+		return rep, false
 	}
+	ran = true
 	defer e.sweeping.Store(false)
 	cfg := e.cfg.Findings
 	before := e.sweepCounters()
@@ -554,6 +566,9 @@ func (e *OnlineEngine) runSweep(ctx context.Context, now time.Time) (rep mcptool
 	candidates := online.SweepCandidates(series, cfg, func(k online.SeriesKey) bool { return has[k] })
 	rep.Candidates = len(candidates)
 	for _, c := range candidates {
+		if ctx.Err() != nil {
+			break
+		}
 		alertID := ""
 		e.mu.Lock()
 		if a := e.alerts[c.Key]; a != nil {
@@ -562,7 +577,7 @@ func (e *OnlineEngine) runSweep(ctx context.Context, now time.Time) (rep mcptool
 		e.mu.Unlock()
 		e.writeFinding(ctx, now, c.Key, alertID, nil)
 	}
-	return rep
+	return rep, true
 }
 
 // RegisterCorrection records a change made in answer to a finding, marks the finding corrected, starts the change
@@ -586,6 +601,8 @@ func (e *OnlineEngine) RegisterCorrection(info RoleInfo, in mcptools.CorrectionI
 		return nil, &statusError{400, fmt.Sprintf("what is at most %d characters", online.MaxWhatChars)}
 	case len([]rune(in.By)) > online.MaxByChars || len([]rune(in.Version)) > online.MaxVersion:
 		return nil, &statusError{400, "by and version are short labels"}
+	case len([]rune(in.Kind)) > online.MaxKindChars || len([]rune(in.Tenant)) > online.MaxTenantChars:
+		return nil, &statusError{400, "kind and tenant are short labels"}
 	}
 
 	var finding *online.Finding
@@ -641,6 +658,14 @@ func (e *OnlineEngine) RegisterCorrection(info RoleInfo, in mcptools.CorrectionI
 	c.Verification.WindowEnd = now.Add(e.cfg.Findings.VerifyWithin.D()).UTC()
 
 	e.fmu.Lock()
+	// Counted under fmu with the insert, so two callers cannot both take the last slot.
+	if n, err := e.store.CountOnlineCorrections(c.Tenant, c.Kind, online.CorrectionPending); err != nil {
+		e.fmu.Unlock()
+		return nil, err
+	} else if n >= online.MaxPendingPerSeries {
+		e.fmu.Unlock()
+		return nil, &statusError{http.StatusTooManyRequests, fmt.Sprintf("%s/%s already has %d corrections waiting for verification; wait for them to be decided", c.Tenant, c.Kind, online.MaxPendingPerSeries)}
+	}
 	if err := e.store.UpsertOnlineCorrection(c); err != nil {
 		e.fmu.Unlock()
 		return nil, err
@@ -680,7 +705,9 @@ func singleTenant(info RoleInfo) (string, bool) {
 
 // verifyCorrections decides every pending correction with the scores since it was registered.
 func (e *OnlineEngine) verifyCorrections(ctx context.Context, now time.Time) {
-	pending, err := e.store.OnlineCorrections(online.CorrectionPending, "", maxListed)
+	// Every pending correction, not the newest page: a flood from one tenant must not starve the others. The
+	// per-(tenant, kind) quota keeps the set small.
+	pending, err := e.store.OnlineCorrections(online.CorrectionPending, "", 0)
 	if err != nil {
 		logx.Errorf("online: reading corrections: %v", err)
 		return

@@ -49,7 +49,7 @@ func onlineFindingsSweepHandler(e *OnlineEngine) http.HandlerFunc {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		out, err := e.SweepNow(roleInfoOrOpen(r.Context()))
+		out, err := e.SweepNow(r.Context(), roleInfoOrOpen(r.Context()))
 		if err != nil {
 			writeStatusError(w, err)
 			return

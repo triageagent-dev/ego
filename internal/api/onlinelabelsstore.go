@@ -39,8 +39,8 @@ func scanLabel(row interface{ Scan(...any) error }) (*online.Label, error) {
 	return &l, nil
 }
 
-// OnlineLabels lists labels newest first. Empty metric or sessionID match all; limit <= 0 is no limit.
-func (s *SQLiteStore) OnlineLabels(metric, sessionID string, sinceMs int64, limit int) ([]*online.Label, error) {
+// OnlineLabels lists labels newest first. Empty metric, sessionID or tenant match all; limit <= 0 is no limit.
+func (s *SQLiteStore) OnlineLabels(metric, sessionID, tenant string, sinceMs int64, limit int) ([]*online.Label, error) {
 	q := `SELECT ` + labelColumns + ` FROM online_labels WHERE created_ms >= ?`
 	args := []any{sinceMs}
 	if metric != "" {
@@ -50,6 +50,10 @@ func (s *SQLiteStore) OnlineLabels(metric, sessionID string, sinceMs int64, limi
 	if sessionID != "" {
 		q += ` AND session_id = ?`
 		args = append(args, sessionID)
+	}
+	if tenant != "" {
+		q += ` AND tenant = ?`
+		args = append(args, tenant)
 	}
 	q += ` ORDER BY created_ms DESC, label_id`
 	if limit > 0 {
@@ -70,4 +74,11 @@ func (s *SQLiteStore) OnlineLabels(metric, sessionID string, sinceMs int64, limi
 		out = append(out, l)
 	}
 	return out, rows.Err()
+}
+
+// CountOnlineLabels is how many labels (every version, not only the newest) one session carries for a metric.
+func (s *SQLiteStore) CountOnlineLabels(sessionID, metric string) (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM online_labels WHERE session_id = ? AND metric = ?`, sessionID, metric).Scan(&n)
+	return n, err
 }

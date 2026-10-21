@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -164,6 +165,10 @@ func TestAgreementGateKeepsAnUncalibratedMetricFromWritingFindings(t *testing.T)
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("status JSON lacks %s: %s", want, raw)
 		}
+	}
+
+	if !m.Gated || len(m.GatedTenants) != 1 || m.GatedTenants[0] != "acme" {
+		t.Errorf("gated tenants = %v, want [acme]", m.GatedTenants)
 	}
 
 	// People change their minds on five of the disagreements: 8 of 10 agree, the gate opens, the next sweep writes.
@@ -435,5 +440,67 @@ func TestMCPLabelToolAndRSILoopPromptOverTheEndpoint(t *testing.T) {
 	text, _ := msgs[0].(map[string]any)["content"].(map[string]any)["text"].(string)
 	if text != skills.EgoRSI || !strings.HasPrefix(text, "---\nname: ego-rsi\n") {
 		t.Errorf("rsi_loop returned %d bytes, want the embedded skill (%d)", len(text), len(skills.EgoRSI))
+	}
+}
+
+// Ten disagreements in one tenant gate that tenant's findings only: another tenant's series, scored by the same
+// judge, still gets its finding, and a caller sees the gate of its own tenants.
+func TestAgreementGateIsPerTenant(t *testing.T) {
+	f := newFindingsFixture(t, findingsConfig)
+	acme := f.seedBad("acme", 12)
+	f.seedBad("globex", 9)
+	labelAll(t, f, acme[:10], 0, time.Minute)
+	f.e.findingsMaintain(context.Background(), f.now)
+
+	fs := f.findings(t, "")
+	if len(fs) != 1 || fs[0].Tenant != "globex" {
+		t.Fatalf("findings = %+v, want only globex's", fs)
+	}
+	if st := f.e.status(); st.Findings.Skipped.Uncalibrated != 1 {
+		t.Errorf("skipped %+v, want the acme series counted once", st.Findings.Skipped)
+	}
+	if m := f.e.statusFor(adminInfo).Labels.PerMetric["hallucinations_v1"]; !m.Gated || len(m.GatedTenants) != 1 || m.GatedTenants[0] != "acme" {
+		t.Errorf("admin status = %+v", m)
+	}
+	if m := f.e.statusFor(member("acme")).Labels.PerMetric["hallucinations_v1"]; !m.Gated {
+		t.Errorf("acme member does not see its own gate: %+v", m)
+	}
+	if m, ok := f.e.statusFor(member("globex")).Labels.PerMetric["hallucinations_v1"]; ok && m.Gated {
+		t.Errorf("globex member sees another tenant's gate: %+v", m)
+	}
+}
+
+// One session and metric carry at most MaxLabelsPerSession versions of a label.
+func TestLabelsPerSessionAreCapped(t *testing.T) {
+	f := newFindingsFixture(t, findingsConfig)
+	id := f.seedBad("acme", 1)[0]
+	for i := 0; i < online.MaxLabelsPerSession; i++ {
+		f.now = f.now.Add(time.Second)
+		if _, err := f.e.LabelSession(adminInfo, "", labelIn(id, online.VerdictAgree)); err != nil {
+			t.Fatalf("label %d: %v", i, err)
+		}
+	}
+	_, err := f.e.LabelSession(adminInfo, "", labelIn(id, online.VerdictDisagree))
+	var se *statusError
+	if !errors.As(err, &se) || se.Status != http.StatusConflict {
+		t.Errorf("label %d = %v, want 409", online.MaxLabelsPerSession+1, err)
+	}
+}
+
+// The store filters by tenant and honours the limit, newest first.
+func TestOnlineLabelsStoreFiltersByTenantAndLimit(t *testing.T) {
+	f := newFindingsFixture(t, findingsConfig)
+	for i, tenant := range []string{"acme", "globex", "acme"} {
+		if err := f.archive.InsertOnlineLabel(&online.Label{ID: fmt.Sprintf("l%d", i), SessionID: fmt.Sprintf("s%d", i), Tenant: tenant, Kind: "rca",
+			Metric: "hallucinations_v1", Verdict: online.VerdictAgree, CreatedAt: f.now.Add(time.Duration(i) * time.Minute)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := f.archive.OnlineLabels("", "", "acme", 0, 0)
+	if err != nil || len(got) != 2 || got[0].ID != "l2" {
+		t.Errorf("acme labels = %v, %v", got, err)
+	}
+	if got, _ := f.archive.OnlineLabels("", "", "", 0, 1); len(got) != 1 || got[0].ID != "l2" {
+		t.Errorf("limit 1 = %v", got)
 	}
 }

@@ -29,6 +29,8 @@ func ensureOnlineSchema(db *sql.DB) error {
 			run_id TEXT NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_online_evals_at ON online_evals(at_ms)`,
+		// A tenant-limited run is visible through the sessions scored in it, a join on run_id.
+		`CREATE INDEX IF NOT EXISTS idx_online_evals_run ON online_evals(run_id)`,
 		`CREATE TABLE IF NOT EXISTS online_scores (
 			session_id TEXT NOT NULL,
 			at_ms INTEGER NOT NULL,

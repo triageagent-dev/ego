@@ -165,7 +165,14 @@ func (s *SQLiteStore) OnlineCorrection(id string) (*online.Correction, bool, err
 	return c, err == nil, err
 }
 
-// OnlineCorrections lists corrections newest first; empty state or kind match all.
+// CountOnlineCorrections is how many corrections a (tenant, kind) holds in a state.
+func (s *SQLiteStore) CountOnlineCorrections(tenant, kind, state string) (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM online_corrections WHERE tenant = ? AND kind = ? AND state = ?`, tenant, kind, state).Scan(&n)
+	return n, err
+}
+
+// OnlineCorrections lists corrections newest first; empty state or kind match all; limit <= 0 is no limit.
 func (s *SQLiteStore) OnlineCorrections(state, kind string, limit int) ([]*online.Correction, error) {
 	q := `SELECT ` + correctionColumns + ` FROM online_corrections WHERE 1 = 1`
 	var args []any
@@ -177,8 +184,11 @@ func (s *SQLiteStore) OnlineCorrections(state, kind string, limit int) ([]*onlin
 		q += ` AND kind = ?`
 		args = append(args, kind)
 	}
-	q += ` ORDER BY created_ms DESC, correction_id LIMIT ?`
-	args = append(args, limit)
+	q += ` ORDER BY created_ms DESC, correction_id`
+	if limit > 0 {
+		q += ` LIMIT ?`
+		args = append(args, limit)
+	}
 	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err

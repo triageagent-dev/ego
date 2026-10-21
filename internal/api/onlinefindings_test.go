@@ -915,14 +915,112 @@ func TestSweepNow(t *testing.T) {
 	if n := len(f.findings(t, "")); n != 1 {
 		t.Fatalf("a sweep inside the cadence wrote: %d findings", n)
 	}
-	if _, err := f.e.SweepNow(member("acme")); err == nil {
+	if _, err := f.e.SweepNow(context.Background(), member("acme")); err == nil {
 		t.Error("member ran the sweep")
 	}
-	rep, err := f.e.SweepNow(RoleInfo{Role: RoleAdmin, IsAdmin: true})
+	rep, err := f.e.SweepNow(context.Background(), RoleInfo{Role: RoleAdmin, IsAdmin: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rep.Candidates != 1 || rep.Written != 1 || len(f.findings(t, "")) != 2 {
 		t.Errorf("report %+v, findings %d", rep, len(f.findings(t, "")))
+	}
+
+	// A sweep already running is reported as a conflict, not as an empty report.
+	f.e.sweeping.Store(true)
+	_, err = f.e.SweepNow(context.Background(), RoleInfo{Role: RoleAdmin, IsAdmin: true})
+	var se *statusError
+	if !errors.As(err, &se) || se.Status != http.StatusConflict || !strings.Contains(se.Msg, "already running") {
+		t.Errorf("a sweep during a sweep = %v, want 409", err)
+	}
+	f.e.sweeping.Store(false)
+
+	// A request that went away stops the sweep before it spends judge budget.
+	f.seedBad("initech", 9)
+	f.now = f.now.Add(time.Hour)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rep, err = f.e.SweepNow(ctx, RoleInfo{Role: RoleAdmin, IsAdmin: true})
+	if err != nil || rep.Written != 0 || len(f.judge.prompts) != 2 {
+		t.Errorf("a cancelled sweep = %+v, %v, %d model calls", rep, err, len(f.judge.prompts))
+	}
+}
+
+func TestRegisterCorrection_FieldCapsAndQuota(t *testing.T) {
+	f := newFindingsFixture(t, findingsConfig)
+	admin := RoleInfo{Role: RoleAdmin, IsAdmin: true}
+	long := strings.Repeat("k", 201)
+	for name, in := range map[string]mcptools.CorrectionInput{
+		"kind":    {Tenant: "acme", Kind: long, What: "x"},
+		"tenant":  {Tenant: long, Kind: "rca", What: "x"},
+		"version": {Tenant: "acme", Kind: "rca", What: "x", Version: long},
+		"by":      {Tenant: "acme", Kind: "rca", What: "x", By: long},
+	} {
+		_, err := f.e.RegisterCorrection(admin, in)
+		var se *statusError
+		if !errors.As(err, &se) || se.Status != http.StatusBadRequest {
+			t.Errorf("%s of 201 characters = %v, want 400", name, err)
+		}
+	}
+	exact := strings.Repeat("k", 200)
+	if _, err := f.e.RegisterCorrection(admin, mcptools.CorrectionInput{Tenant: "acme", Kind: exact, What: "x", Version: exact, By: exact}); err != nil {
+		t.Errorf("fields of exactly 200 characters were refused: %v", err)
+	}
+
+	var first *online.Correction
+	for i := 0; i < online.MaxPendingPerSeries; i++ {
+		c, err := f.e.RegisterCorrection(admin, mcptools.CorrectionInput{Tenant: "acme", Kind: "rca", What: fmt.Sprintf("change %d", i)})
+		if err != nil {
+			t.Fatalf("correction %d: %v", i, err)
+		}
+		if first == nil {
+			first = c
+		}
+	}
+	_, err := f.e.RegisterCorrection(admin, mcptools.CorrectionInput{Tenant: "acme", Kind: "rca", What: "one too many"})
+	var se *statusError
+	if !errors.As(err, &se) || se.Status != http.StatusTooManyRequests || !strings.Contains(se.Msg, "waiting for verification") {
+		t.Fatalf("the 21st pending correction = %v, want 429", err)
+	}
+	// The quota is per (tenant, kind).
+	for _, in := range []mcptools.CorrectionInput{{Tenant: "acme", Kind: "other", What: "x"}, {Tenant: "globex", Kind: "rca", What: "x"}} {
+		if _, err := f.e.RegisterCorrection(admin, in); err != nil {
+			t.Errorf("%s/%s was refused: %v", in.Tenant, in.Kind, err)
+		}
+	}
+	// A decided correction frees its slot.
+	first.State = online.CorrectionVerified
+	if err := f.archive.UpsertOnlineCorrection(first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.e.RegisterCorrection(admin, mcptools.CorrectionInput{Tenant: "acme", Kind: "rca", What: "after a slot freed"}); err != nil {
+		t.Errorf("a verified correction did not free a slot: %v", err)
+	}
+}
+
+// Verification reads every pending correction: a tenant with more than a page of them must not hide another
+// tenant's.
+func TestVerification_ReachesEveryTenantsCorrections(t *testing.T) {
+	f := newFindingsFixture(t, findingsConfig)
+	f.seedBad("globex", 9)
+	c, err := f.e.RegisterCorrection(member("globex"), mcptools.CorrectionInput{Kind: "rca", What: "tuned the prompt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Newer than globex's, and more than a page; inserted directly because the quota refuses this many.
+	for i := 0; i < maxListed+50; i++ {
+		flood := &online.Correction{ID: fmt.Sprintf("flood-%04d", i), Tenant: "acme", Kind: fmt.Sprintf("kind-%d", i), State: online.CorrectionPending,
+			CreatedAt: c.CreatedAt.Add(time.Second)}
+		if err := f.archive.UpsertOnlineCorrection(flood); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.now = f.now.Add(2 * time.Hour)
+	for i := 0; i < 5; i++ {
+		f.seed("globex", 0.9, f.now.Add(-time.Hour+time.Duration(i)*time.Minute), "v2", fmt.Sprintf("after %d", i), "get_pods")
+	}
+	f.e.Tick(context.Background())
+	if got := f.correction(t, c.ID); got.State != online.CorrectionVerified {
+		t.Errorf("globex's correction behind a flood of acme's = %+v", got)
 	}
 }

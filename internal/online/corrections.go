@@ -17,6 +17,12 @@ const (
 	MaxWhatChars = 2000
 	MaxByChars   = 200
 	MaxVersion   = 200
+	// MaxKindChars and MaxTenantChars bound the free-text identifiers of a correction.
+	MaxKindChars   = 200
+	MaxTenantChars = 200
+	// MaxPendingPerSeries is how many unverified corrections one (tenant, kind) may hold. Verified and failed ones
+	// do not count, so a caller that keeps correcting is slowed by verification, not stopped for good.
+	MaxPendingPerSeries = 20
 )
 
 // VWindow is one side of a verification: the mean score and the number of sessions.

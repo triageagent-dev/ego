@@ -27,6 +27,12 @@ const (
 	AnchorsPerMetric  = 20
 	MaxLabelNoteChars = 1000
 	MaxLabelByChars   = 200
+	// MaxLabelsPerSession bounds the versions of one (session, metric) label: a label is never edited, so a caller
+	// that changes its mind forever would otherwise grow the table without limit.
+	MaxLabelsPerSession = 50
+	// MaxLabelRows bounds every read of labels for the agreement, the gate and the anchor pass, newest first. The
+	// window is a week, so the bound only bites on a flood; the oldest labels then fall out of the count.
+	MaxLabelRows = 5000
 )
 
 // Label is one verdict on one metric of one session. The wire shape is snake_case like findings and corrections.
