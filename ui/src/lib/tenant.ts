@@ -79,6 +79,15 @@ export function tenantNames(keys: string): string {
   return keys.split(',').map((k) => tenantName(k.trim())).join(', ');
 }
 
+// A session id is `<sender>:<label>:<name>` and its tenant is shown as a badge, so the row title is the name alone.
+export function sessionTitle(sessionId: string, tenants: string[] | undefined): string {
+  for (const key of tenants ?? []) {
+    const prefix = `${key.replace('/', ':')}:`;
+    if (sessionId.startsWith(prefix) && sessionId.length > prefix.length) return sessionId.slice(prefix.length);
+  }
+  return sessionId;
+}
+
 function setNames(options: TenantOption[]): void {
   const next: Record<string, string> = {};
   for (const o of options) if (o.name) next[o.key] = o.name;

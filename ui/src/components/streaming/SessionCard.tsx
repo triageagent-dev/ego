@@ -7,7 +7,7 @@ import { SessionMetadata } from './SessionMetadata';
 import { OnlineScoresPanel } from './OnlineScoresPanel';
 import { formatSpanDuration, formatTurnTime } from '../../lib/trace-helpers';
 import type { AnnotationQueue } from '../../lib/types';
-import { tenantName, useTenantNames } from '../../lib/tenant';
+import { sessionTitle, tenantName, useTenantNames } from '../../lib/tenant';
 
 interface Invocation {
   invocationId: string;
@@ -259,19 +259,6 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
               </span>
             )}
 
-            {session.startedAt && (
-              <span style={{
-                fontSize: '12.5px',
-                fontWeight: 500,
-                color: 'var(--text-primary)',
-                background: 'rgba(148, 163, 184, 0.18)',
-                padding: '1px 7px',
-                borderRadius: 'var(--radius)',
-              }}>
-                {new Date(session.startedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-              </span>
-            )}
-
             {(totalCacheCreation > 0 || totalCacheRead > 0) && (
               <span style={{
                 fontSize: '12.5px',
@@ -308,7 +295,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             color: 'var(--text-primary)',
             margin: '0 0 2px 0',
           }}>
-            {session.sessionId}
+            <span title={session.sessionId}>{sessionTitle(session.sessionId, session.tenants)}</span>
           </h3>
 
           <p style={{
@@ -320,6 +307,11 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             flexWrap: 'wrap',
             gap: '10px',
           }}>
+            {session.startedAt && (
+              <span style={{ color: 'var(--text-secondary)', fontFamily: 'inherit' }}>
+                {new Date(session.startedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+            )}
             {session.rootSpanName && (
               <span style={{ color: 'var(--text-secondary)' }}>
                 {session.rootSpanName}
