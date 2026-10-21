@@ -24,6 +24,7 @@ import type {
 } from '../lib/types';
 import { config } from '../config';
 import { withTenant } from '../lib/tenant';
+import { materialize, SessionEvalSetFile, SessionTraceFile } from '../lib/sessionFiles';
 import { evalSetFromWireFormat, evalSetToWireFormat } from '../lib/evalset-builder';
 
 export class StorageUnavailableError extends Error {
@@ -60,14 +61,24 @@ async function unwrap<T>(response: Response): Promise<T> {
   return json.data;
 }
 
-export async function convertTraces(traceFiles: File[]): Promise<ConvertTracesResponse> {
-  const formData = new FormData();
-  traceFiles.forEach(file => formData.append('trace_files', file));
+// Sessions the server holds are named by id; anything else (an upload, an edited trace) is sent as a file.
+function namedSessions(traceFiles: File[]): string[] | null {
+  if (traceFiles.length === 0 || !traceFiles.every((f) => f instanceof SessionTraceFile)) return null;
+  return traceFiles.map((f) => (f as SessionTraceFile).sessionId);
+}
 
-  const response = await fetch(`${API_BASE_URL}/convert`, {
-    method: 'POST',
-    body: formData,
-  });
+export async function convertTraces(traceFiles: File[]): Promise<ConvertTracesResponse> {
+  const sessionIds = namedSessions(traceFiles);
+  let init: RequestInit;
+  if (sessionIds) {
+    init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_ids: sessionIds }) };
+  } else {
+    const formData = new FormData();
+    (await Promise.all(traceFiles.map(materialize))).forEach(file => formData.append('trace_files', file));
+    init = { method: 'POST', body: formData };
+  }
+
+  const response = await fetch(`${API_BASE_URL}/convert`, init);
 
   if (!response.ok) {
     let errorMessage = `API error: ${response.status} ${response.statusText}`;
@@ -85,28 +96,35 @@ export async function convertTraces(traceFiles: File[]): Promise<ConvertTracesRe
   return unwrap<ConvertTracesResponse>(response);
 }
 
+// The evaluate request: session ids and the config as JSON when the server holds every trace (and the golden
+// eval set), else the files as a multipart upload.
+async function evaluateRequest(traceFiles: File[], evalSetFile: File | null, evalConfig: EvalConfig): Promise<RequestInit> {
+  const sessionIds = namedSessions(traceFiles);
+  if (sessionIds && (evalSetFile === null || evalSetFile instanceof SessionEvalSetFile)) {
+    return {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        config: evalConfig,
+        session_ids: sessionIds,
+        ...(evalSetFile instanceof SessionEvalSetFile ? { eval_set_session_id: evalSetFile.sessionId } : {}),
+      }),
+    };
+  }
+  const formData = new FormData();
+  (await Promise.all(traceFiles.map(materialize))).forEach(file => formData.append('trace_files', file));
+  if (evalSetFile) formData.append('eval_set_file', await materialize(evalSetFile));
+  formData.append('config', JSON.stringify(evalConfig));
+  return { method: 'POST', body: formData };
+}
+
 export async function evaluateTracesAPI(
   traceFiles: File[],
   evalSetFile: File | null,
   evalConfig: EvalConfig
 ): Promise<RunResult> {
-  const formData = new FormData();
-
-  traceFiles.forEach(file => {
-    formData.append('trace_files', file);
-  });
-
-  if (evalSetFile) {
-    formData.append('eval_set_file', evalSetFile);
-  }
-
-  formData.append('config', JSON.stringify(evalConfig));
-
   try {
-    const response = await fetch(`${API_BASE_URL}/evaluate`, {
-      method: 'POST',
-      body: formData,
-    });
+    const response = await fetch(`${API_BASE_URL}/evaluate`, await evaluateRequest(traceFiles, evalSetFile, evalConfig));
 
     if (!response.ok) {
       let errorMessage = `API error: ${response.status} ${response.statusText}`;
@@ -140,23 +158,8 @@ export async function evaluateTracesStreaming(
   onComplete: (result: RunResult) => void,
   onError: (error: Error) => void
 ): Promise<void> {
-  const formData = new FormData();
-
-  traceFiles.forEach(file => {
-    formData.append('trace_files', file);
-  });
-
-  if (evalSetFile) {
-    formData.append('eval_set_file', evalSetFile);
-  }
-
-  formData.append('config', JSON.stringify(evalConfig));
-
   try {
-    const response = await fetch(`${API_BASE_URL}/evaluate/stream`, {
-      method: 'POST',
-      body: formData,
-    });
+    const response = await fetch(`${API_BASE_URL}/evaluate/stream`, await evaluateRequest(traceFiles, evalSetFile, evalConfig));
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);

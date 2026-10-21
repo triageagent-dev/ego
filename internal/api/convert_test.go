@@ -49,7 +49,7 @@ func TestConvertHandler_PopulatesMetadata(t *testing.T) {
 	req := multipartConvertRequest(t, "trace_mysession.jsonl", content)
 	rec := httptest.NewRecorder()
 
-	convertHandler(rec, req)
+	convertHandler(nil)(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -102,7 +102,7 @@ func TestConvertHandler_NoFiles(t *testing.T) {
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	rec := httptest.NewRecorder()
 
-	convertHandler(rec, req)
+	convertHandler(nil)(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)

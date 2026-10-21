@@ -4,7 +4,7 @@ import { useTraceContext } from '../../context/TraceContext';
 import { AnnotationTable } from './AnnotationTable';
 import { AnnotationDetailPanel } from './AnnotationDetailPanel';
 import type { Annotation, AnnotationQueueItem } from '../../lib/types';
-import { config } from '../../config';
+import { SessionEvalSetFile, SessionTraceFile } from '../../lib/sessionFiles';
 
 export function AnnotationQueueView() {
   const { state, actions } = useTraceContext();
@@ -12,7 +12,6 @@ export function AnnotationQueueView() {
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedGoldenId, setSelectedGoldenId] = useState<string | null>(null);
-  const [isPreparingEvaluation, setIsPreparingEvaluation] = useState(false);
   const [newQueueName, setNewQueueName] = useState('');
   const [showNewQueueInput, setShowNewQueueInput] = useState(false);
 
@@ -38,66 +37,26 @@ export function AnnotationQueueView() {
     setShowNewQueueInput(false);
   };
 
-  const handleContinueToEvaluation = async () => {
+  // The evaluate page is given the sessions by id; the server holds their traces (see lib/sessionFiles.ts).
+  const handleContinueToEvaluation = () => {
     if (!selectedGoldenId || !currentQueue) return;
-    setIsPreparingEvaluation(true);
 
-    try {
-      const evalSetResponse = await fetch(config.api.endpoints.streamingCreateEvalSet, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: selectedGoldenId,
-          eval_set_id: `golden_${selectedGoldenId}`,
-        }),
-      });
-
-      if (!evalSetResponse.ok) {
-        throw new Error('Failed to create eval set from golden session');
+    const pendingAnnotations = new Map<string, Annotation>();
+    for (const item of currentQueue.items) {
+      if (item.annotation) {
+        pendingAnnotations.set(item.traceId, item.annotation);
       }
-
-      const evalSetEnvelope = await evalSetResponse.json();
-      const evalSetBlob = new Blob([JSON.stringify(evalSetEnvelope.data.evalSet, null, 2)], { type: 'application/json' });
-      const evalSetFile = new File([evalSetBlob], `eval_set_${selectedGoldenId}.json`, { type: 'application/json' });
-
-      const traceFiles = await Promise.all(
-        currentQueue.items.map(async (item) => {
-          if (!item.invocations || item.invocations.length === 0) return null;
-
-          const traceResponse = await fetch(config.api.endpoints.streamingGetTrace, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: item.sessionId }),
-          });
-
-          if (!traceResponse.ok) return null;
-
-          const traceEnvelope = await traceResponse.json();
-          const traceBlob = new Blob([traceEnvelope.data.traceContent], { type: 'application/json' });
-          return new File([traceBlob], `trace_${item.sessionId}.jsonl`, { type: 'application/json' });
-        })
-      );
-
-      const validTraceFiles = traceFiles.filter((f): f is File => f !== null);
-
-      const pendingAnnotations = new Map<string, Annotation>();
-      for (const item of currentQueue.items) {
-        if (item.annotation) {
-          pendingAnnotations.set(item.traceId, item.annotation);
-        }
-      }
-
-      actions.setPendingAnnotations(pendingAnnotations);
-      actions.setEvaluationOrigin('annotation-queue');
-      await actions.setTraceFiles(validTraceFiles);
-      actions.setEvalSet(evalSetFile);
-      actions.setCurrentView('upload');
-    } catch (error) {
-      console.error('Failed to prepare evaluation:', error);
-      alert(`Failed to prepare evaluation: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsPreparingEvaluation(false);
     }
+
+    actions.setPendingAnnotations(pendingAnnotations);
+    actions.setEvaluationOrigin('annotation-queue');
+    actions.setTraceFiles(
+      currentQueue.items
+        .filter((item) => item.invocations && item.invocations.length > 0)
+        .map((item) => new SessionTraceFile(item.sessionId)),
+    );
+    actions.setEvalSet(new SessionEvalSetFile(selectedGoldenId));
+    actions.setCurrentView('upload');
   };
 
   const completedItems = currentQueue?.items.filter(item => item.invocations && item.invocations.length > 0) || [];
@@ -229,21 +188,17 @@ export function AnnotationQueueView() {
             {completedItems.length > 1 && (
               <button
                 onClick={handleContinueToEvaluation}
-                disabled={isPreparingEvaluation}
                 style={{
                   height: '44px', padding: '0 32px', borderRadius: 'var(--radius)',
-                  background: isPreparingEvaluation ? 'var(--bg-surface)' : 'var(--accent-primary)',
-                  border: isPreparingEvaluation ? '1px solid var(--border-default)' : 'none',
-                  color: isPreparingEvaluation ? 'var(--text-secondary)' : '#fff',
+                  background: 'var(--accent-primary)',
+                  border: 'none',
+                  color: '#fff',
                   fontSize: '15px', fontWeight: 600,
-                  cursor: isPreparingEvaluation ? 'not-allowed' : 'pointer',
-                  opacity: isPreparingEvaluation ? 0.4 : 1,
-                  transition: 'all 0.3s ease',
-                  boxShadow: isPreparingEvaluation ? 'none' : '0 0 20px rgba(181, 171, 252, 0.3)',
+                  cursor: 'pointer',
                   whiteSpace: 'nowrap',
                 }}
               >
-                {isPreparingEvaluation ? 'Preparing...' : 'Continue to Evaluation →'}
+                Continue to Evaluation →
               </button>
             )}
           </div>

@@ -1,4 +1,5 @@
 import type { EvalStatus } from './types';
+import { isSessionFile } from './sessionFiles';
 
 /**
  * Format duration from microseconds to human-readable string
@@ -126,6 +127,7 @@ export function safeJsonParse<T>(jsonString: string, fallback: T): T {
  * Read file as text
  */
 export function readFileAsText(file: File): Promise<string> {
+  if (isSessionFile(file)) return file.fetchText();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {

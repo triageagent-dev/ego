@@ -102,7 +102,7 @@ func TestEvaluateHandler_NoEvalSet(t *testing.T) {
 	req := multipartEvaluateRequest(t, content, nil, config)
 	rec := httptest.NewRecorder()
 
-	evaluateHandler(nil)(rec, req)
+	evaluateHandler(nil, nil)(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -165,7 +165,7 @@ func TestEvaluateHandler_WithEvalSet_Passes(t *testing.T) {
 	req := multipartEvaluateRequest(t, content, []byte(evalSet), config)
 	rec := httptest.NewRecorder()
 
-	evaluateHandler(nil)(rec, req)
+	evaluateHandler(nil, nil)(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -209,7 +209,7 @@ func TestEvaluateHandler_NoTraceFiles(t *testing.T) {
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	rec := httptest.NewRecorder()
 
-	evaluateHandler(nil)(rec, req)
+	evaluateHandler(nil, nil)(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
@@ -245,7 +245,7 @@ func TestEvaluateStreamHandler_WithEvalSet_Passes(t *testing.T) {
 	req.URL.Path = "/api/evaluate/stream"
 	rec := httptest.NewRecorder()
 
-	evaluateStreamHandler(nil)(rec, req)
+	evaluateStreamHandler(nil, nil)(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -310,7 +310,7 @@ func TestEvaluateStreamHandler_NoTraceFiles(t *testing.T) {
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	rec := httptest.NewRecorder()
 
-	evaluateStreamHandler(nil)(rec, req)
+	evaluateStreamHandler(nil, nil)(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (errors are reported as SSE events)", rec.Code)

@@ -6,6 +6,7 @@ import { onServerDown, onServerUp, setFeed } from '../../lib/connection';
 import { parseHash } from '../shell/routes';
 import { CursorPager } from '../ui/Pager';
 import { useSelectedTenant } from '../../lib/tenant';
+import { SessionEvalSetFile, SessionTraceFile } from '../../lib/sessionFiles';
 import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
 
 type TimeRangeKey = '1h' | '6h' | '12h' | 'day' | '7d' | 'all';
@@ -146,7 +147,6 @@ export function LiveStreamingView() {
   });
   const goToPage = (next: string[]) => setStack({ key: listKey, cursors: next });
   const [selectedGoldenId, setSelectedGoldenId] = useState<string | null>(null);
-  const [isPreparingEvaluation, setIsPreparingEvaluation] = useState(false);
   // Shown under the Continue button: an alert() is easy to miss, and a browser can be told to hide them.
   const [evaluationError, setEvaluationError] = useState<string | null>(null);
   // Sessions explicitly opted in as extra comparison traces alongside the
@@ -692,106 +692,30 @@ export function LiveStreamingView() {
     loadSessionRef.current(focusId);
   }, [focusId]);
 
-  const handleContinueToEvaluation = async () => {
+  // The evaluate page is given the sessions by id: the server already holds their traces, so nothing is downloaded
+  // here and nothing is uploaded later (see lib/sessionFiles.ts).
+  const handleContinueToEvaluation = () => {
     if (!selectedGoldenId) return;
-
-    setIsPreparingEvaluation(true);
     setEvaluationError(null);
 
-    try {
-      const goldenSession = activeSessions.get(selectedGoldenId);
-      if (!goldenSession) {
-        throw new Error('Golden session not found');
-      }
-
-      if (import.meta.env.DEV) {
-        console.log('Creating eval set from golden session:', selectedGoldenId);
-      }
-
-      const evalSetResponse = await fetch(config.api.endpoints.streamingCreateEvalSet, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: selectedGoldenId,
-          eval_set_id: `golden_${selectedGoldenId}`,
-        }),
-      });
-
-      if (!evalSetResponse.ok) {
-        throw new Error('Failed to create eval set from golden session');
-      }
-
-      const evalSetEnvelope = await evalSetResponse.json();
-      const evalSetBlob = new Blob([JSON.stringify(evalSetEnvelope.data.evalSet, null, 2)], { type: 'application/json' });
-      const evalSetFile = new File([evalSetBlob], `eval_set_${selectedGoldenId}.json`, { type: 'application/json' });
-
-      if (import.meta.env.DEV) {
-        console.log('Fetching traces for all sessions');
-      }
-      // Only the golden session plus whatever the user explicitly checked
-      // "Compare" on. Include the golden alongside those so its performance
-      // is plotted as a reference in the charts - it's tagged via
-      // goldenTraceId so the results view keeps it out of pass/fail scoring
-      // (scoring it against the eval set derived from itself is a trivial
-      // pass).
-      const sessionIds = Array.from(new Set([selectedGoldenId, ...comparisonSessionIds]));
-      // Only tag as "golden" (excluded from the results
-      // table entirely, see DashboardView.tsx) when there's actually
-      // something to compare it against. With zero comparison sessions
-      // checked, the UI already relabels this "EvalSet Selected" rather than
-      // "Golden Run Selected" (see the button below) - that's the supported
-      // single-session flow (e.g. running a judge-only, reference-free
-      // metric like safety_v1 against just one session), and unconditionally
-      // excluding its only row left the results table permanently empty for
-      // that case.
-      const goldenTraceId = comparisonSessionIds.size > 0 ? (activeSessions.get(selectedGoldenId)?.traceId ?? null) : null;
-
-      const traceFiles = await Promise.all(
-        sessionIds.map(async (sessionId) => {
-          const session = activeSessions.get(sessionId);
-          if (!session || !session.invocations || session.invocations.length === 0) {
-            return null;
-          }
-
-          if (import.meta.env.DEV) {
-            console.log(`Fetching trace for session: ${sessionId}`);
-          }
-
-          const traceResponse = await fetch(config.api.endpoints.streamingGetTrace, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: sessionId }),
-          });
-
-          if (!traceResponse.ok) {
-            console.warn(`Failed to get trace for session ${sessionId}`);
-            return null;
-          }
-
-          const traceEnvelope = await traceResponse.json();
-          const traceBlob = new Blob([traceEnvelope.data.traceContent], { type: 'application/json' });
-          return new File([traceBlob], `trace_${sessionId}.jsonl`, { type: 'application/json' });
-        })
-      );
-
-      const validTraceFiles = traceFiles.filter((f): f is File => f !== null);
-
-      if (import.meta.env.DEV) {
-        console.log(`Loaded ${validTraceFiles.length} trace files and 1 eval set`);
-      }
-
-      actions.setEvaluationOrigin('streaming');
-      actions.setTraceFiles(validTraceFiles);
-      actions.setEvalSet(evalSetFile);
-      actions.setGoldenTraceId(goldenTraceId);
-      actions.setCurrentView('upload');
-
-    } catch (error) {
-      console.error('Failed to prepare evaluation:', error);
-      setEvaluationError(`Could not prepare the evaluation: ${error instanceof Error ? error.message : 'unknown error'}`);
-    } finally {
-      setIsPreparingEvaluation(false);
+    if (!activeSessions.get(selectedGoldenId)?.invocations?.length) {
+      setEvaluationError('This session has no conversation to use as the golden reference.');
+      return;
     }
+
+    // The golden session plus whatever was checked "Compare". It is plotted as a reference in the charts and tagged
+    // via goldenTraceId so the results view keeps it out of pass/fail scoring (scoring it against the eval set
+    // derived from itself is a trivial pass). With nothing to compare it against it is not tagged: that is the
+    // single-session flow, e.g. a reference-free judge metric like safety_v1, which needs its only row in the table.
+    const sessionIds = Array.from(new Set([selectedGoldenId, ...comparisonSessionIds]))
+      .filter((id) => activeSessions.get(id)?.invocations?.length);
+    const goldenTraceId = comparisonSessionIds.size > 0 ? (activeSessions.get(selectedGoldenId)?.traceId ?? null) : null;
+
+    actions.setEvaluationOrigin('streaming');
+    actions.setTraceFiles(sessionIds.map((id) => new SessionTraceFile(id)));
+    actions.setEvalSet(new SessionEvalSetFile(selectedGoldenId));
+    actions.setGoldenTraceId(goldenTraceId);
+    actions.setCurrentView('upload');
   };
 
   const byStartedAtDesc = (a: LiveSession, b: LiveSession) =>
@@ -1079,25 +1003,23 @@ export function LiveStreamingView() {
 
           <button
             onClick={handleContinueToEvaluation}
-            disabled={isPreparingEvaluation}
             style={{
               height: '44px',
               padding: '0 32px',
               borderRadius: 'var(--radius)',
-              background: isPreparingEvaluation ? 'var(--bg-surface)' : 'var(--accent-primary)',
-              border: isPreparingEvaluation ? '1px solid var(--border-default)' : 'none',
-              color: isPreparingEvaluation ? 'var(--text-secondary)' : '#fff',
+              background: 'var(--accent-primary)',
+              border: 'none',
+              color: '#fff',
               fontSize: '15px',
               fontWeight: 600,
-              cursor: isPreparingEvaluation ? 'not-allowed' : 'pointer',
-              opacity: isPreparingEvaluation ? 0.4 : 1,
+              cursor: 'pointer',
               whiteSpace: 'nowrap',
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
             }}
           >
-            {isPreparingEvaluation ? 'Preparing...' : 'Continue to Evaluation →'}
+            Continue to Evaluation →
           </button>
         </div>
       )}

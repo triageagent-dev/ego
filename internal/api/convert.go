@@ -132,50 +132,78 @@ func sessionNameFromFilename(filename string) string {
 	return ""
 }
 
-// convertHandler implements POST /api/convert.
-func convertHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
+// convertHandler implements POST /api/convert for uploaded trace files, or for stored sessions named by id in a
+// JSON body (see sessionrefs.go).
+func convertHandler(sessions *SessionStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		convertTraces(w, r, sessions)
 	}
+}
 
-	limitUpload(w, r)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		writeEvaluateError(w, http.StatusBadRequest, "invalid multipart form: "+err.Error())
-		return
-	}
-
-	traceFileHeaders := r.MultipartForm.File["trace_files"]
-	if len(traceFileHeaders) == 0 {
-		writeEvaluateError(w, http.StatusBadRequest, "No valid trace files provided")
-		return
-	}
-
-	traceFormat := r.FormValue("trace_format")
-
-	var traces []*tracepkg.Trace
-	traceToFilename := map[string]string{}
+func convertTraces(w http.ResponseWriter, r *http.Request, sessions *SessionStore) {
+	var inputs []traceInput
 	var loadWarnings []string
-	for _, fh := range traceFileHeaders {
-		lower := strings.ToLower(fh.Filename)
-		if !strings.HasSuffix(lower, ".json") && !strings.HasSuffix(lower, ".jsonl") {
-			writeEvaluateError(w, http.StatusBadRequest,
-				fmt.Sprintf("Invalid file extension for %s. Only .json and .jsonl files are allowed.", fh.Filename))
+	traceFormat := ""
+
+	if isJSONBody(r) {
+		var refs sessionRefs
+		if err := decodeJSON(w, r, &refs); err != nil {
+			writeEvaluateError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+			return
+		}
+		var msg string
+		if inputs, msg = sessionTraceInputs(sessions, r, refs.SessionIDs); msg != "" {
+			status := http.StatusBadRequest
+			if strings.HasSuffix(msg, "not found") {
+				status = http.StatusNotFound
+			}
+			writeEvaluateError(w, status, msg)
+			return
+		}
+	} else {
+		limitUpload(w, r)
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			writeEvaluateError(w, http.StatusBadRequest, "invalid multipart form: "+err.Error())
 			return
 		}
 
-		content, err := readMultipartFile(fh, maxUploadFileSize)
-		if err != nil {
-			loadWarnings = append(loadWarnings, fmt.Sprintf("Failed to read trace file %q: %s", fh.Filename, err))
-			continue
+		traceFileHeaders := r.MultipartForm.File["trace_files"]
+		if len(traceFileHeaders) == 0 {
+			writeEvaluateError(w, http.StatusBadRequest, "No valid trace files provided")
+			return
 		}
-		parsed, err := loader.ParseFile(fh.Filename, content, traceFormat)
+		traceFormat = r.FormValue("trace_format")
+
+		for _, fh := range traceFileHeaders {
+			lower := strings.ToLower(fh.Filename)
+			if !strings.HasSuffix(lower, ".json") && !strings.HasSuffix(lower, ".jsonl") {
+				writeEvaluateError(w, http.StatusBadRequest,
+					fmt.Sprintf("Invalid file extension for %s. Only .json and .jsonl files are allowed.", fh.Filename))
+				return
+			}
+			content, err := readMultipartFile(fh, maxUploadFileSize)
+			if err != nil {
+				loadWarnings = append(loadWarnings, fmt.Sprintf("Failed to read trace file %q: %s", fh.Filename, err))
+				continue
+			}
+			inputs = append(inputs, traceInput{Filename: fh.Filename, Content: content})
+		}
+	}
+
+	var traces []*tracepkg.Trace
+	traceToFilename := map[string]string{}
+	for _, in := range inputs {
+		parsed, err := loader.ParseFile(in.Filename, in.Content, traceFormat)
 		if err != nil {
-			loadWarnings = append(loadWarnings, fmt.Sprintf("Failed to load '%s': %s", fh.Filename, err))
+			loadWarnings = append(loadWarnings, fmt.Sprintf("Failed to load '%s': %s", in.Filename, err))
 			continue
 		}
 		for _, t := range parsed {
-			traceToFilename[t.TraceID] = fh.Filename
+			traceToFilename[t.TraceID] = in.Filename
 		}
 		traces = append(traces, parsed...)
 	}

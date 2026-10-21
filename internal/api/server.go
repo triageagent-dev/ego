@@ -16,7 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/triageagent-dev/ego/internal/adk"
 	"github.com/triageagent-dev/ego/internal/logx"
 	"github.com/triageagent-dev/ego/internal/mcptools"
 	"github.com/triageagent-dev/ego/internal/online"
@@ -146,9 +145,9 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/runs/{id}/results", getRunResultsHandler(archive))
 	mux.HandleFunc("/api/evalsets", evalSetsHandler(archive))
 	mux.HandleFunc("/api/evalsets/{id}", getEvalSetHandler(archive))
-	mux.HandleFunc("/api/convert", convertHandler)
-	mux.HandleFunc("/api/evaluate", evaluateHandler(archive))
-	mux.HandleFunc("/api/evaluate/stream", evaluateStreamHandler(archive))
+	mux.HandleFunc("/api/convert", convertHandler(store))
+	mux.HandleFunc("/api/evaluate", evaluateHandler(archive, store))
+	mux.HandleFunc("/api/evaluate/stream", evaluateStreamHandler(archive, store))
 	mux.HandleFunc("/api/online/status", onlineStatusHandler(onlineEngine))
 	mux.HandleFunc("/api/online/series", onlineSeriesHandler(onlineEngine))
 	mux.HandleFunc("/api/online/alerts", onlineAlertsHandler(onlineEngine))
@@ -475,29 +474,17 @@ func createEvalSetHandler(store *SessionStore) http.HandlerFunc {
 			return
 		}
 
-		result := adk.ConvertTrace(tr)
-		if len(result.Invocations) == 0 {
-			detail := "Failed to convert trace"
-			if len(result.Warnings) > 0 {
-				detail = strings.Join(result.Warnings, "; ")
-			}
+		evalSet, detail := goldenEvalSet(tr, req.EvalSetID)
+		if detail != "" {
 			http.Error(w, detail, http.StatusBadRequest)
 			return
-		}
-
-		evalSet := adk.EvalSet{
-			EvalSetID: req.EvalSetID,
-			EvalCases: []adk.EvalCase{{
-				EvalID:       "case_1",
-				Conversation: result.Invocations,
-			}},
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": map[string]any{
 				"evalSet":        evalSet,
-				"numInvocations": len(result.Invocations),
+				"numInvocations": len(evalSet.EvalCases[0].Conversation),
 			},
 			"error": nil,
 		})

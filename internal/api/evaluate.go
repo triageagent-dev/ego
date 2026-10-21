@@ -164,7 +164,10 @@ type evaluateRequest struct {
 // shared by /api/evaluate and /api/evaluate/stream. Returns an HTTP status + message for the caller to report
 // (via a plain JSON error or an SSE error event) when the request itself is malformed; per-file load failures
 // are instead accumulated into loadErrors.
-func parseEvaluateRequest(r *http.Request) (*evaluateRequest, int, string) {
+func parseEvaluateRequest(r *http.Request, sessions *SessionStore) (*evaluateRequest, int, string) {
+	if isJSONBody(r) {
+		return parseEvaluateByID(r, sessions)
+	}
 	limitUpload(nil, r)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		return nil, http.StatusBadRequest, "invalid multipart form: " + err.Error()
@@ -333,7 +336,7 @@ func runVertexEvalMetric(ctx context.Context, name string, client *vertexeval.Cl
 
 // evaluateHandler implements POST /api/evaluate: scores every uploaded trace file (Jaeger or OTLP JSON/JSONL,
 // auto-detected) against an optional golden eval set, using the evaluator list in the "config" form field.
-func evaluateHandler(store *SQLiteStore) http.HandlerFunc {
+func evaluateHandler(store *SQLiteStore, sessions *SessionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -344,7 +347,7 @@ func evaluateHandler(store *SQLiteStore) http.HandlerFunc {
 			return
 		}
 
-		req, status, msg := parseEvaluateRequest(r)
+		req, status, msg := parseEvaluateRequest(r, sessions)
 		if r.MultipartForm != nil {
 			defer r.MultipartForm.RemoveAll()
 		}
@@ -393,7 +396,7 @@ func evaluateHandler(store *SQLiteStore) http.HandlerFunc {
 //
 // Un. This keeps the connection flushing during a slow judge-model call (30-40s+) so an intermediate proxy
 // buffering an idle streaming response doesn't silently swallow the eventual "done" event.
-func evaluateStreamHandler(store *SQLiteStore) http.HandlerFunc {
+func evaluateStreamHandler(store *SQLiteStore, sessions *SessionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -409,7 +412,7 @@ func evaluateStreamHandler(store *SQLiteStore) http.HandlerFunc {
 			return
 		}
 
-		req, _, msg := parseEvaluateRequest(r)
+		req, _, msg := parseEvaluateRequest(r, sessions)
 		if r.MultipartForm != nil {
 			defer r.MultipartForm.RemoveAll()
 		}

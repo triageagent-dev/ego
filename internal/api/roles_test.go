@@ -326,7 +326,7 @@ func TestEvaluateHandler_ViewerCannotWrite(t *testing.T) {
 	req := withRoleInfoForTest(RoleInfo{Role: RoleViewer})(multipartEvaluateRequest(t, content, nil, config))
 	rec := httptest.NewRecorder()
 
-	evaluateHandler(nil)(rec, req)
+	evaluateHandler(nil, nil)(rec, req)
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("viewer POST /api/evaluate = %d, want 403, body=%s", rec.Code, rec.Body.String())
@@ -343,7 +343,7 @@ func TestEvaluateHandler_MemberCanWrite(t *testing.T) {
 	req := withRoleInfoForTest(RoleInfo{Role: RoleMember})(multipartEvaluateRequest(t, content, nil, config))
 	rec := httptest.NewRecorder()
 
-	evaluateHandler(nil)(rec, req)
+	evaluateHandler(nil, nil)(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("member POST /api/evaluate = %d, want 200, body=%s", rec.Code, rec.Body.String())

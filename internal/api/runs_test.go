@@ -48,7 +48,7 @@ func TestEvaluateHandler_PersistsRunHistory(t *testing.T) {
 	req := multipartEvaluateRequest(t, content, []byte(evalSet), config)
 	rec := httptest.NewRecorder()
 
-	evaluateHandler(store)(rec, req)
+	evaluateHandler(store, nil)(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
