@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { css } from '@emotion/react';
 import { Check, Search } from 'lucide-react';
 import type { TenantOption } from '../../lib/tenant';
@@ -11,15 +11,13 @@ interface Row {
   title?: string;
 }
 
-// The A-Z rail only earns its width on a long list.
-const RAIL_MIN = 12;
+// Rows on screen at once. A longer list is not scrolled: the letter rail moves the window and typing narrows it.
+const WINDOW = 8;
 
-// Picks the tenant the views show: a search box over the list, the current pick checked, and a letter rail to jump
-// down a long list. '' is every tenant the role covers; "<sender>/*" is all of one sender's.
+// Picks the tenant the views show: a search box over a fixed window of rows, the current pick checked, and a letter
+// rail that moves the window. '' is every tenant the role covers; "<sender>/*" is all of one sender's.
 export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; onPick: (key: string) => void }> = ({ options, picked, onPick }) => {
   const [query, setQuery] = useState('');
-  const listRef = useRef<HTMLDivElement>(null);
-  const rowRefs = useRef(new Map<string, HTMLElement>());
 
   const { rows, tenantRows } = useMemo(() => {
     const senders = Array.from(new Set(options.map((o) => o.sender ?? '').filter(Boolean))).sort();
@@ -39,6 +37,9 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
     return { rows: [...lead, ...tenants], tenantRows: tenants };
   }, [options]);
 
+  // The window opens on the current pick, so it is never out of sight.
+  const [start, setStart] = useState(() => Math.max(0, rows.findIndex((r) => r.key === picked) - WINDOW + 1));
+
   const q = query.trim().toLowerCase();
   const shown = q ? rows.filter((r) => `${r.label} ${r.hint ?? ''} ${r.key}`.toLowerCase().includes(q)) : rows;
 
@@ -47,22 +48,27 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
     return /[A-Z]/.test(c) ? c : '#';
   };
   const letters = Array.from(new Set(tenantRows.map(letterOf)));
-  const firstOfLetter = (l: string) => tenantRows.find((r) => letterOf(r) === l);
+  const maxStart = Math.max(0, shown.length - WINDOW);
+  const from = Math.min(start, maxStart);
+  const visible = shown.slice(from, from + WINDOW);
+  const below = shown.length - (from + visible.length);
   const jump = (l: string) => {
-    const first = firstOfLetter(l);
-    const el = first && rowRefs.current.get(first.key);
-    if (el && listRef.current) listRef.current.scrollTop = el.offsetTop - listRef.current.offsetTop;
+    const i = shown.findIndex((r) => r.key !== '' && !r.key.endsWith('/*') && letterOf(r) === l);
+    if (i >= 0) setStart(Math.min(i, maxStart));
   };
 
   return (
     <div css={wrapStyle}>
       <div css={headingStyle}>Tenant ({options.length})</div>
       <label css={searchStyle}>
-        <Search size={16} />
+        <Search size={13} />
         <input
           autoFocus
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setStart(0);
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && shown[0]) onPick(shown[0].key);
           }}
@@ -71,28 +77,24 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
         />
       </label>
       <div css={bodyStyle}>
-        <div css={listStyle} ref={listRef} role="listbox">
-          {shown.map((r) => (
+        <div css={listStyle} role="listbox">
+          {visible.map((r) => (
             <button
               key={r.key || 'all'}
-              ref={(el) => {
-                if (el) rowRefs.current.set(r.key, el);
-                else rowRefs.current.delete(r.key);
-              }}
               css={[rowStyle, r.key === picked && pickedStyle]}
               role="option"
               aria-selected={r.key === picked}
               title={r.title}
               onClick={() => onPick(r.key)}
             >
-              <span css={checkStyle}>{r.key === picked && <Check size={16} />}</span>
+              <span css={checkStyle}>{r.key === picked && <Check size={13} />}</span>
               <span css={labelStyle}>{r.label}</span>
               {r.hint && <span css={hintStyle}>{r.hint}</span>}
             </button>
           ))}
           {shown.length === 0 && <div css={emptyStyle}>no tenant matches</div>}
         </div>
-        {!q && options.length >= RAIL_MIN && (
+        {!q && letters.length > 1 && (
           <div css={railStyle} aria-hidden>
             {letters.map((l) => (
               <button key={l} css={letterStyle} onClick={() => jump(l)} tabIndex={-1}>{l}</button>
@@ -100,6 +102,7 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
           </div>
         )}
       </div>
+      {below > 0 && <div css={moreStyle}>↓ {below} below — type to narrow</div>}
     </div>
   );
 };
@@ -109,16 +112,17 @@ const wrapStyle = css`
 `;
 
 const headingStyle = css`
-  padding: 4px 6px 8px;
+  padding: 2px 4px 5px;
   color: var(--text-tertiary);
+  font-size: 0.72rem;
 `;
 
 const searchStyle = css`
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  height: 34px;
+  gap: 6px;
+  padding: 0 8px;
+  height: 26px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
   background: var(--bg-primary);
@@ -141,22 +145,19 @@ const searchStyle = css`
 
 const bodyStyle = css`
   position: relative;
-  margin-top: 6px;
+  margin-top: 4px;
 `;
 
 const listStyle = css`
-  max-height: 300px;
-  overflow-y: auto;
-  position: relative;
-  padding-right: 22px;
+  padding-right: 18px;
 `;
 
 const rowStyle = css`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   width: 100%;
-  padding: 8px 8px;
+  padding: 4px 6px;
   border: none;
   border-radius: var(--radius);
   background: transparent;
@@ -177,7 +178,7 @@ const pickedStyle = css`
 
 const checkStyle = css`
   display: inline-flex;
-  width: 16px;
+  width: 13px;
   flex-shrink: 0;
 `;
 
@@ -191,11 +192,11 @@ const labelStyle = css`
 
 const hintStyle = css`
   color: var(--text-tertiary);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
 `;
 
 const emptyStyle = css`
-  padding: 10px 8px;
+  padding: 6px;
   color: var(--text-tertiary);
 `;
 
@@ -210,16 +211,22 @@ const railStyle = css`
 `;
 
 const letterStyle = css`
-  padding: 0 4px;
+  padding: 0 3px;
   border: none;
   background: transparent;
   color: var(--text-tertiary);
   font: inherit;
-  font-size: 0.68rem;
-  line-height: 1.15;
+  font-size: 0.62rem;
+  line-height: 1;
   cursor: pointer;
 
   &:hover {
     color: var(--accent-primary);
   }
+`;
+
+const moreStyle = css`
+  padding: 5px 6px 2px;
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
 `;

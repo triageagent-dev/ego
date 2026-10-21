@@ -74,15 +74,9 @@ export const AccountMenu: React.FC = () => {
               <div css={dividerStyle} />
             </>
           )}
-          {signedIn && (
+          {signedIn && me?.role === 'none' && (
             <div css={rowStyle}>
-              <span css={mutedStyle}>signed in as</span>
-              <span>
-                {me?.username}
-                {me?.role === 'none' && (
-                  <span css={noAccessStyle} title="No role binding covers you: ask an admin to add your GitHub team"> no access</span>
-                )}
-              </span>
+              <span css={noAccessStyle} title="No role binding covers you: ask an admin to add your GitHub team">no access</span>
             </div>
           )}
           <div css={rowStyle}>
@@ -154,7 +148,7 @@ const panelStyle = css`
   right: 0;
   top: calc(100% + 6px);
   z-index: 50;
-  width: 300px;
+  width: 240px;
   max-height: calc(100vh - 70px);
   overflow-y: auto;
   padding: 6px;
@@ -163,7 +157,7 @@ const panelStyle = css`
   background: var(--bg-surface);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
   font-family: var(--font-display);
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   color: var(--text-primary);
 `;
 
@@ -171,8 +165,8 @@ const rowStyle = css`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 7px 8px;
+  gap: 12px;
+  padding: 5px 6px;
 `;
 
 const mutedStyle = css`
@@ -204,7 +198,7 @@ const itemStyle = css`
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 7px 8px;
+  padding: 5px 6px;
   border: none;
   border-radius: var(--radius);
   background: transparent;
