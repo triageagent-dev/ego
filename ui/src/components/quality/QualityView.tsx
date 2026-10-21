@@ -73,7 +73,7 @@ export const QualityView: React.FC = () => {
       setError(null);
     } catch (e) {
       setError(e instanceof StorageUnavailableError
-        ? 'Online evaluation is not configured. Start the server with --session-db and --online-config.'
+        ? 'Online evaluation is not configured. Start the server with --session-db and --online-config <file>; a minimal file is in the README: https://github.com/triageagent-dev/ego#online-evaluation'
         : (e as Error).message);
     } finally {
       setLoading(false);
