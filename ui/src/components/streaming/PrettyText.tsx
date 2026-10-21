@@ -1,9 +1,10 @@
 // Readable rendering for
-// long LLM prompts and answers. Keeps line breaks, pretty-prints JSON, and
+// long LLM prompts and answers. Keeps line breaks, shows JSON as a folding tree, and
 // renders the light Markdown prompts use (#/##/### headings, - and 1.
 // lists, **bold**, `code`, ``` fences). Builds React nodes only - never
 // injects HTML.
 import type { ReactNode } from 'react';
+import { JsonTree, parseLooseJSON } from './JsonTree';
 
 const codeStyle = {
   fontFamily: 'monospace',
@@ -32,85 +33,15 @@ function inline(text: string, keyBase: string): ReactNode[] {
   return out;
 }
 
-function asJSON(text: string): string | null {
-  const t = text.trim();
-  if (!(t.startsWith('{') || t.startsWith('['))) return null;
-  try {
-    return JSON.stringify(JSON.parse(t), null, 2);
-  } catch {
-    return null;
-  }
-}
-
-// Indents text that starts like JSON but does not parse: a value cut short by an attribute limit, or one followed by
-// more text, still reads as a tree. Strings are kept as written; `rest` is whatever follows the top-level value.
-export function lenientJSON(text: string): { pretty: string; rest: string } | null {
-  const t = text.trim();
-  if (!/^(\{\s*"|\[\s*[[{"])/.test(t)) return null;
-  const pad = (depth: number) => '\n' + '  '.repeat(depth);
-  let out = '';
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  let i = 0;
-  for (; i < t.length; i++) {
-    const c = t[i];
-    if (inString) {
-      out += c;
-      if (escaped) escaped = false;
-      else if (c === '\\') escaped = true;
-      else if (c === '"') inString = false;
-      continue;
-    }
-    if (c === '"') {
-      inString = true;
-      out += c;
-    } else if (c === '{' || c === '[') {
-      let j = i + 1;
-      while (j < t.length && /\s/.test(t[j])) j++;
-      if (t[j] === (c === '{' ? '}' : ']')) {
-        out += c + t[j];
-        i = j;
-        if (depth === 0) {
-          i++;
-          break;
-        }
-      } else {
-        depth++;
-        out += c + pad(depth);
-      }
-    } else if (c === '}' || c === ']') {
-      depth--;
-      if (depth < 0) return null;
-      out += pad(depth) + c;
-      if (depth === 0) {
-        i++;
-        break;
-      }
-    } else if (c === ',') {
-      out += ',' + pad(depth);
-    } else if (c === ':') {
-      out += ': ';
-    } else if (!/\s/.test(c)) {
-      out += c;
-    }
-  }
-  return { pretty: out, rest: t.slice(i).trim() };
-}
-
-const preStyle = { ...codeStyle, display: 'block', padding: '10px 12px', margin: 0, whiteSpace: 'pre-wrap', overflowX: 'auto' } as const;
-
 export function PrettyText({ text }: { text: string }) {
-  const json = asJSON(text);
-  if (json) {
-    return <pre style={preStyle}>{json}</pre>;
-  }
-  const loose = lenientJSON(text);
-  if (loose) {
+  // JSON, whole or cut short or followed by more text, is a tree that folds; the text after it reads as prose.
+  const loose = parseLooseJSON(text);
+  if (loose && loose.value !== null && typeof loose.value === 'object') {
+    const rest = text.trim().slice(loose.end).trim();
     return (
       <div>
-        <pre style={preStyle}>{loose.pretty}</pre>
-        {loose.rest && <div style={{ marginTop: '8px' }}><PrettyText text={loose.rest} /></div>}
+        <JsonTree value={loose.value} truncated={loose.truncated} />
+        {rest && <div style={{ marginTop: '8px' }}><PrettyText text={rest} /></div>}
       </div>
     );
   }
@@ -148,7 +79,7 @@ export function PrettyText({ text }: { text: string }) {
     const h = /^(#{1,6})\s+(.*)$/.exec(line);
     if (h) {
       flushPara(); flushList();
-      const size = h[1].length === 1 ? '16px' : h[1].length === 2 ? '15px' : '14px';
+      const size = h[1].length === 1 ? '14px' : h[1].length === 2 ? '13.5px' : '13px';
       blocks.push(<div key={`h${blocks.length}`} style={{ fontSize: size, fontWeight: 700, margin: '12px 0 6px', color: 'var(--text-primary)' }}>{inline(h[2], `h${blocks.length}`)}</div>);
       continue;
     }

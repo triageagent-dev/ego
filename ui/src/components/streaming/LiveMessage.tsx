@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { PrettyText } from './PrettyText';
 
 // User and agent messages open by default and collapse one by one (a prompt can be thousands of words); collapsed,
@@ -16,7 +17,7 @@ function MessageBlock({ label, color, text, extra }: { label: string; color: str
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
         style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', minWidth: 0 }}
       >
-        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', width: '10px' }}>{open ? '\u25BE' : '\u25B8'}</span>
+        {open ? <ChevronDown size={14} style={{ flexShrink: 0, color: 'var(--text-tertiary)' }} /> : <ChevronRight size={14} style={{ flexShrink: 0, color: 'var(--text-tertiary)' }} />}
         <span style={{
           fontSize: '10px',
           color,
@@ -32,7 +33,7 @@ function MessageBlock({ label, color, text, extra }: { label: string; color: str
           {extra}
         </span>
         {!open && preview && (
-          <span style={{ fontSize: '13px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>
             {preview}
           </span>
         )}
@@ -42,10 +43,10 @@ function MessageBlock({ label, color, text, extra }: { label: string; color: str
       </div>
       {open && (
         <div style={{
-          fontSize: '14px',
+          fontSize: '12.5px',
           color: 'var(--text-primary)',
-          lineHeight: '1.6',
-          marginTop: '8px',
+          lineHeight: '1.5',
+          marginTop: '6px',
           paddingLeft: '18px',
         }}>
           <PrettyText text={text} />
