@@ -1,4 +1,4 @@
-.PHONY: build run serve test vet fmt build-ui dev-backend dev-frontend clean clean-tree image deploy deploy-diff
+.PHONY: build run serve test vet fmt build-ui dev-backend dev-frontend clean clean-tree image deploy deploy-diff release-local
 
 build:
 	go build -o bin/ego ./cmd/ego
@@ -78,3 +78,10 @@ deploy-diff: check-image
 # so a bad image or a crash loop never leaves the service down.
 deploy: check-image
 	$(HELM) upgrade --install $(RELEASE) charts/ego -f $(VALUES) --set image.tag=$(TAG) --atomic --wait --timeout 3m
+
+# Publish a release from this machine (binaries, image, chart, GitHub release) instead of the Release workflow:
+#   make release-local RELEASE_TAG=v0.1.51
+# Run it in a clean checkout of the commit to release; see scripts/release-local.sh.
+release-local: clean-tree
+	@test -n "$(RELEASE_TAG)" || { echo "usage: make release-local RELEASE_TAG=vX.Y.Z"; exit 2; }
+	./scripts/release-local.sh $(RELEASE_TAG)

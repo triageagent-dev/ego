@@ -1,11 +1,10 @@
 name: Release
 
-# Push a tag like v0.1.0 to publish: binaries (with checksums) on a GitHub
-# release, a multi-arch image on ghcr.io and the Helm chart as an OCI artifact.
-# Run it by hand to build the binaries without publishing anything.
+# Releases are published from a maintainer's machine (scripts/release-local.sh, `make release-local`): the
+# included Actions minutes ran out, and a tag push here would publish the same version a second time. To use this
+# workflow again, add `push: tags: ["v*.*.*"]` back under `on:` and stop using the script.
+# Run by hand it builds the binaries without publishing anything.
 on:
-  push:
-    tags: ["v*.*.*"]
   workflow_dispatch:
 
 permissions:

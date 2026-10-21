@@ -424,12 +424,14 @@ root-level `/api/...` endpoint needs an entry in `httpRoute.rootPaths`, or the g
 
 ### Releasing
 
-**Releasing:** push a tag, `git tag vX.Y.Z && git push origin vX.Y.Z`. Running the *Release* workflow by hand builds
-the binaries without publishing anything. The publishing jobs run in the `release` environment: add required reviewers
-(and a tag rule) to it under Settings > Environments so a tag alone cannot publish. The checksums file and the image are
-signed keyless with cosign (the Sigstore identity is the workflow): `cosign verify-blob --bundle checksums.txt.bundle
---certificate-identity-regexp "https://github.com/triageagent-dev/ego/" --certificate-oidc-issuer
-https://token.actions.githubusercontent.com checksums.txt`, and `cosign verify` on the image. The chart is not signed.
+**Releasing:** from a clean checkout of the commit, `make release-local RELEASE_TAG=vX.Y.Z` (or
+`scripts/release-local.sh vX.Y.Z`). It runs the checks, builds the four binaries, tags the commit, pushes the multi-arch
+image and the Helm chart to ghcr.io, and creates the GitHub release with the binaries and `checksums.txt`. Releases
+are built on a maintainer's machine because the Actions minutes ran out, so nothing runs on a push or a tag; the
+*CI* and *Release* workflows are manual (`workflow_dispatch`). Releases made this way carry no cosign signatures, which
+need the workflow's identity; the ones before v0.1.51 are signed keyless (`cosign verify-blob --bundle
+checksums.txt.bundle --certificate-identity-regexp "https://github.com/triageagent-dev/ego/" --certificate-oidc-issuer
+https://token.actions.githubusercontent.com checksums.txt`, and `cosign verify` on the image). The chart is not signed.
 New GHCR packages are private until their visibility is changed under the package settings, which has to be done once
 for the image and once for the chart before the repository is opened up.
 
