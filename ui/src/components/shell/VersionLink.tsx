@@ -3,9 +3,10 @@ import { css } from '@emotion/react';
 import { REPO_URL } from '../../config';
 import { useTraceContext } from '../../context/TraceContext';
 
-// A release version links to its tag, a build "x.y.z-sha" to its commit, anything else to the repo.
+// A release version links to its tag, a build to its commit ("x.y.z-sha", or git describe's "x.y.z-N-gsha",
+// either with a "-dirty" mark), anything else to the repo.
 function versionUrl(v: string): string {
-  const sha = v.match(/-([0-9a-f]{7,40})$/)?.[1];
+  const sha = v.match(/-g?([0-9a-f]{7,40})(?:-dirty)?$/)?.[1];
   if (sha) return `${REPO_URL}/commit/${sha}`;
   if (/^\d+\.\d+\.\d+/.test(v)) return `${REPO_URL}/releases/tag/v${v}`;
   return REPO_URL;
