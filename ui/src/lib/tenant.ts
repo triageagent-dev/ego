@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 // The tenant the reader picked in the switcher; '' means every tenant their role covers. A tenant key is
 // "<sender>/<tenant>" (two senders can both send a tenant called "acme"); "<sender>/*" means all of a sender's.
@@ -124,5 +124,37 @@ export async function fetchTenants(): Promise<TenantOption[]> {
   const body = await res.json();
   const options = (body.data ?? []) as TenantOption[];
   setNames(options);
+  return options;
+}
+
+const OPTIONS_REFRESH_MS = 60_000;
+
+/** The tenants the reader may pick from, refreshed every minute; null until the first answer. A remembered pick the
+ * role no longer covers is dropped rather than shown as an empty view. */
+export function useTenantOptions(): TenantOption[] | null {
+  const picked = useSelectedTenant();
+  const [options, setOptions] = useState<TenantOption[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const load = () =>
+      fetchTenants()
+        .then((o) => active && setOptions(o))
+        .catch(() => active && setOptions([]));
+    load();
+    const id = setInterval(load, OPTIONS_REFRESH_MS);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!options || !picked) return;
+    const known = options.some((o) => o.key === picked) ||
+      (picked.endsWith('/*') && options.some((o) => o.key.startsWith(picked.slice(0, -1))));
+    if (!known) setSelectedTenant('');
+  }, [options, picked]);
+
   return options;
 }

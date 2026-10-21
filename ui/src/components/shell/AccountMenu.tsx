@@ -3,8 +3,10 @@ import { css } from '@emotion/react';
 import { ChevronDown, LogIn, LogOut, User } from 'lucide-react';
 import { useMe } from '../../lib/me';
 import { describe, useConnection } from '../../lib/connection';
+import { setSelectedTenant, useSelectedTenant, useTenantOptions } from '../../lib/tenant';
 import { ConnectionDot } from './ConnectionDot';
 import { ModeSwitch } from './ModeSwitch';
+import { TenantPicker } from './TenantPicker';
 import { VersionLink } from './VersionLink';
 
 // The classic header's account menu: who is signed in, with the interface style, the link to the server and the
@@ -13,6 +15,8 @@ import { VersionLink } from './VersionLink';
 export const AccountMenu: React.FC = () => {
   const me = useMe();
   const conn = useConnection();
+  const options = useTenantOptions();
+  const picked = useSelectedTenant();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -32,6 +36,16 @@ export const AccountMenu: React.FC = () => {
     };
   }, [open]);
 
+  // What the views are limited to, shown on the button so a picked tenant is never forgotten.
+  const pickedLabel = !picked
+    ? ''
+    : picked.endsWith('/*')
+      ? `${picked.slice(0, -2)} · all`
+      : (() => {
+          const o = options?.find((x) => x.key === picked);
+          return o ? o.name || o.label : picked;
+        })();
+
   const signedIn = !!me?.authenticated;
   const canSignIn = me?.authEnabled !== false && me !== null && !me.authenticated;
 
@@ -41,11 +55,25 @@ export const AccountMenu: React.FC = () => {
         <ConnectionDot />
         <User size={14} />
         {signedIn && <span css={nameStyle}>{me?.username}</span>}
+        {pickedLabel && <span css={tenantBadgeStyle} title={`Showing tenant ${pickedLabel}`}>{pickedLabel}</span>}
         <ChevronDown size={13} />
       </button>
 
       {open && (
         <div css={panelStyle} role="menu">
+          {options && options.length > 0 && (
+            <>
+              <TenantPicker
+                options={options}
+                picked={picked}
+                onPick={(key) => {
+                  setSelectedTenant(key);
+                  setOpen(false);
+                }}
+              />
+              <div css={dividerStyle} />
+            </>
+          )}
           {signedIn && (
             <div css={rowStyle}>
               <span css={mutedStyle}>signed in as</span>
@@ -126,7 +154,9 @@ const panelStyle = css`
   right: 0;
   top: calc(100% + 6px);
   z-index: 50;
-  min-width: 240px;
+  width: 300px;
+  max-height: calc(100vh - 70px);
+  overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
@@ -188,4 +218,17 @@ const itemStyle = css`
     color: var(--text-primary);
     background: var(--bg-elevated);
   }
+`;
+
+const tenantBadgeStyle = css`
+  max-width: 130px;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--radius);
+  background: rgba(255, 106, 198, 0.1);
+  color: var(--accent-magenta);
+  font-size: 0.72rem;
+  line-height: 18px;
 `;

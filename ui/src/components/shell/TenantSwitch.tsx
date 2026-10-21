@@ -1,38 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { css } from '@emotion/react';
-import { fetchTenants, setSelectedTenant, useSelectedTenant, type TenantOption } from '../../lib/tenant';
+import { setSelectedTenant, useSelectedTenant, useTenantOptions, type TenantOption } from '../../lib/tenant';
 
 const shown = (o: TenantOption) => `${o.name || o.label}${o.sessions ? ` (${o.sessions})` : ''}`;
-
-const REFRESH_MS = 60_000;
 
 // Picks which tenant the sessions, usage and quality views show. Admins see every tenant and can switch between
 // them; anyone else is offered only the tenants their team grants. Hidden when there is nothing to choose from.
 export const TenantSwitch: React.FC<{ stacked?: boolean }> = ({ stacked }) => {
   const picked = useSelectedTenant();
-  const [options, setOptions] = useState<TenantOption[] | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    const load = () =>
-      fetchTenants()
-        .then((o) => active && setOptions(o))
-        .catch(() => active && setOptions([]));
-    load();
-    const id = setInterval(load, REFRESH_MS);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
-  }, []);
-
-  // A remembered pick that the role no longer covers is dropped rather than shown as an empty view.
-  useEffect(() => {
-    if (!options || !picked) return;
-    const known = options.some((o) => o.key === picked) ||
-      (picked.endsWith('/*') && options.some((o) => o.key.startsWith(picked.slice(0, -1))));
-    if (!known) setSelectedTenant('');
-  }, [options, picked]);
+  const options = useTenantOptions();
 
   if (!options || options.length === 0) return null;
 

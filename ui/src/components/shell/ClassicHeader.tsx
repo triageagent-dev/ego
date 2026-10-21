@@ -1,15 +1,13 @@
 import React from 'react';
 import { css } from '@emotion/react';
 import { AccountMenu } from './AccountMenu';
-import { TenantSwitch } from './TenantSwitch';
 import { setTitleSlot } from './PageTitle';
 
-// The top bar of the classic layout: the title of the view on the left (drawn by the view, see PageTitle), the
-// tenant the views show and the account menu on the right.
+// The top bar of the classic layout: the title of the view on the left (drawn by the view, see PageTitle) and the
+// account menu on the right, which holds the tenant picker.
 export const ClassicHeader: React.FC = () => (
   <header css={headerStyle}>
     <div ref={setTitleSlot} css={titleSlotStyle} />
-    <TenantSwitch />
     <AccountMenu />
   </header>
 );
