@@ -3,6 +3,7 @@ import { css } from '@emotion/react';
 import { Radio, Play, FileJson, History, Coins, Gauge, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useTraceContext } from '../../context/TraceContext';
 import type { ViewType } from '../../lib/types';
+import { SidebarUsage } from './SidebarUsage';
 import { TABS, tabForView } from './routes';
 
 const ICONS: Partial<Record<ViewType, React.ReactNode>> = {
@@ -18,9 +19,10 @@ const COLLAPSED_KEY = 'ego.sidebar.collapsed';
 
 const readCollapsed = (): boolean => {
   try {
-    return localStorage.getItem(COLLAPSED_KEY) === '1';
+    // Collapsed until the user opens it: only an explicit '0' keeps it open.
+    return localStorage.getItem(COLLAPSED_KEY) !== '0';
   } catch {
-    return false;
+    return true;
   }
 };
 
@@ -47,9 +49,6 @@ export const Sidebar: React.FC = () => {
           <img src="/favicon.svg" alt="" css={brandMarkStyle} />
           {!collapsed && <span css={brandNameStyle}>ego</span>}
         </div>
-        <button css={toggleStyle} onClick={toggle} title={collapsed ? 'Show menu' : 'Hide menu'} aria-label={collapsed ? 'Show menu' : 'Hide menu'}>
-          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-        </button>
       </div>
 
       <div css={navListStyle}>
@@ -64,6 +63,14 @@ export const Sidebar: React.FC = () => {
             {!collapsed && t.label}
           </button>
         ))}
+      </div>
+
+      <SidebarUsage collapsed={collapsed} />
+
+      <div css={[bottomStyle, collapsed && collapsedBottomStyle]}>
+        <button css={toggleStyle} onClick={toggle} title={collapsed ? 'Show menu' : 'Hide menu'} aria-label={collapsed ? 'Show menu' : 'Hide menu'}>
+          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+        </button>
       </div>
     </nav>
   );
@@ -100,7 +107,7 @@ const brandLinkStyle = css`
 
 const toggleStyle = css`
   display: inline-flex;
-  padding: 3px;
+  padding: 6px;
   border: none;
   border-radius: var(--radius);
   background: transparent;
@@ -119,9 +126,8 @@ const collapsedStyle = css`
 `;
 
 const collapsedBrandStyle = css`
-  flex-direction: column;
+  justify-content: center;
   padding: 0 0 12px;
-  gap: 10px;
 `;
 
 const collapsedItemStyle = css`
@@ -182,4 +188,15 @@ const activeItemStyle = css`
   &:hover {
     color: var(--accent-primary);
   }
+`;
+
+// The show/hide toggle sits at the bottom, away from the logo.
+const bottomStyle = css`
+  padding: 10px 8px;
+  border-top: 1px solid var(--border-default);
+  display: flex;
+`;
+
+const collapsedBottomStyle = css`
+  justify-content: center;
 `;
