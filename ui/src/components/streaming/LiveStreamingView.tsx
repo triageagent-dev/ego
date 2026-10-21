@@ -920,6 +920,7 @@ export function LiveStreamingView() {
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape') setSearchQuery(''); }}
             placeholder="Search sessions…"
             aria-label="Search sessions"
             style={{
