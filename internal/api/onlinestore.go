@@ -94,6 +94,8 @@ func ensureOnlineSchema(db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_online_labels_metric ON online_labels(metric, created_ms)`,
 		`CREATE INDEX IF NOT EXISTS idx_online_labels_session ON online_labels(session_id)`,
+		// The score of record joins each score with its newest label (truthFrom).
+		`CREATE INDEX IF NOT EXISTS idx_online_labels_truth ON online_labels(session_id, metric, created_ms)`,
 		`CREATE TABLE IF NOT EXISTS online_state (
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
@@ -180,12 +182,24 @@ type onlineSampleRow struct {
 	Sample online.Sample
 }
 
-// OnlineSamples returns every decided score (passed or failed, not errored)
-// since sinceMs, oldest first.
+// The score of record (docs/rsi.md, section 4). Every read that aggregates scores joins each score with the
+// newest label of its (session, metric): a person's score, when they gave one, replaces the judge's; a
+// disagreement without a score leaves the session out, because the judge is known wrong and no truth was given;
+// an agreement keeps the judge's score and marks it confirmed. truthFrom is the FROM clause (the score is `s`,
+// the label `l`), truthWhere the condition that a score counts, truthScore and truthHuman the columns.
+const (
+	truthFrom = ` FROM online_scores s LEFT JOIN online_labels l ON l.label_id = (
+		SELECT x.label_id FROM online_labels x WHERE x.session_id = s.session_id AND x.metric = s.metric
+		ORDER BY x.created_ms DESC, x.label_id DESC LIMIT 1)`
+	truthWhere = ` s.score IS NOT NULL AND s.status != 'errored' AND (l.verdict IS NULL OR l.verdict = 'agree' OR l.score IS NOT NULL)`
+	truthScore = `COALESCE(l.score, s.score)`
+	truthHuman = `l.verdict IS NOT NULL, COALESCE(l.note, '')`
+)
+
+// OnlineSamples returns every score of record (passed or failed, not errored) since sinceMs, oldest first.
 func (s *SQLiteStore) OnlineSamples(sinceMs int64) ([]onlineSampleRow, error) {
-	rows, err := s.db.Query(`SELECT session_id, at_ms, tenant, kind, version, model, metric, score
-		FROM online_scores WHERE at_ms >= ? AND score IS NOT NULL AND status != 'errored'
-		ORDER BY at_ms`, sinceMs)
+	rows, err := s.db.Query(`SELECT s.session_id, s.at_ms, s.tenant, s.kind, s.version, s.model, s.metric, `+truthScore+`, `+truthHuman+
+		truthFrom+` WHERE s.at_ms >= ? AND`+truthWhere+` ORDER BY s.at_ms`, sinceMs)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +209,7 @@ func (s *SQLiteStore) OnlineSamples(sinceMs int64) ([]onlineSampleRow, error) {
 		var r onlineSampleRow
 		var at int64
 		if err := rows.Scan(&r.Sample.SessionID, &at, &r.Key.Tenant, &r.Key.Kind, &r.Sample.Version,
-			&r.Sample.Model, &r.Key.Metric, &r.Sample.Score); err != nil {
+			&r.Sample.Model, &r.Key.Metric, &r.Sample.Score, &r.Sample.Human, &r.Sample.Note); err != nil {
 			return nil, err
 		}
 		r.Sample.At = time.UnixMilli(at)
@@ -251,22 +265,22 @@ func (s *SQLiteStore) OnlineScoredSince(sinceMs int64, limit int) []string {
 	return out
 }
 
-// OnlineSamplesFor returns the decided scores of one (tenant, kind) in [sinceMs, untilMs), oldest first. An empty
-// metric pools every metric of the kind; an empty version takes every version. Verification reads its "after"
-// sessions this way.
+// OnlineSamplesFor returns the scores of record of one (tenant, kind) in [sinceMs, untilMs), oldest first. An
+// empty metric pools every metric of the kind; an empty version takes every version. Verification reads its
+// "after" sessions this way.
 func (s *SQLiteStore) OnlineSamplesFor(tenant, kind, metric, version string, sinceMs, untilMs int64) ([]online.Sample, error) {
-	q := `SELECT session_id, at_ms, version, model, score FROM online_scores
-		WHERE tenant = ? AND kind = ? AND at_ms >= ? AND at_ms < ? AND score IS NOT NULL AND status != 'errored'`
+	q := `SELECT s.session_id, s.at_ms, s.version, s.model, ` + truthScore + `, ` + truthHuman + truthFrom +
+		` WHERE s.tenant = ? AND s.kind = ? AND s.at_ms >= ? AND s.at_ms < ? AND` + truthWhere
 	args := []any{tenant, kind, sinceMs, untilMs}
 	if metric != "" {
-		q += ` AND metric = ?`
+		q += ` AND s.metric = ?`
 		args = append(args, metric)
 	}
 	if version != "" {
-		q += ` AND version = ?`
+		q += ` AND s.version = ?`
 		args = append(args, version)
 	}
-	rows, err := s.db.Query(q+` ORDER BY at_ms`, args...)
+	rows, err := s.db.Query(q+` ORDER BY s.at_ms`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +289,7 @@ func (s *SQLiteStore) OnlineSamplesFor(tenant, kind, metric, version string, sin
 	for rows.Next() {
 		var sm online.Sample
 		var at int64
-		if err := rows.Scan(&sm.SessionID, &at, &sm.Version, &sm.Model, &sm.Score); err != nil {
+		if err := rows.Scan(&sm.SessionID, &at, &sm.Version, &sm.Model, &sm.Score, &sm.Human, &sm.Note); err != nil {
 			return nil, err
 		}
 		sm.At = time.UnixMilli(at)
@@ -293,11 +307,11 @@ type onlineSeriesPoint struct {
 	N        int     `json:"n"`
 }
 
-// OnlineSeries returns hourly mean scores per (tenant, kind, metric).
+// OnlineSeries returns hourly means of the scores of record per (tenant, kind, metric).
 func (s *SQLiteStore) OnlineSeries(sinceMs int64) ([]onlineSeriesPoint, error) {
-	rows, err := s.db.Query(`SELECT (at_ms / 3600000) * 3600000 AS bucket, tenant, kind, metric, AVG(score), COUNT(*)
-		FROM online_scores WHERE at_ms >= ? AND score IS NOT NULL AND status != 'errored'
-		GROUP BY bucket, tenant, kind, metric ORDER BY bucket`, sinceMs)
+	rows, err := s.db.Query(`SELECT (s.at_ms / 3600000) * 3600000 AS bucket, s.tenant, s.kind, s.metric, AVG(`+truthScore+`), COUNT(*)`+
+		truthFrom+` WHERE s.at_ms >= ? AND`+truthWhere+`
+		GROUP BY bucket, s.tenant, s.kind, s.metric ORDER BY bucket`, sinceMs)
 	if err != nil {
 		return nil, err
 	}

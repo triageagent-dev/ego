@@ -89,9 +89,13 @@ and n, `reason`).
 ### 6. Never label your own sessions
 
 `label_session` records a person's verdict on a judge's score (`session_id`, `metric`, `verdict` `agree` or
-`disagree`, optional `score` and `note`). ego uses labels to measure whether the judge can be trusted: a metric
-whose judge people mostly disagree with stops producing findings. Labels are for people reading the evidence, not
-for the agent being judged. Do not call it on sessions you produced, and never to improve your own numbers.
+`disagree`, `score` and `note`). The label is the score of record: a person's score replaces the judge's in
+every mean, alert, finding and verification, an agreement confirms the judge's score, and a disagreement without
+a score drops the session from them. A finding's `confirmed` counts the evidence sessions a person checked, and
+the diagnosis saw their notes: weigh those sessions above the judge-only ones. ego also measures how often people
+agree with each metric's judge; a metric whose judge people mostly disagree with stops producing findings. Labels
+are for people reading the evidence, not for the agent being judged. Do not call it on sessions you produced, and
+never to improve your own numbers.
 
 ## Rules
 

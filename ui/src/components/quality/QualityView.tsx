@@ -215,7 +215,7 @@ export const QualityView: React.FC = () => {
                 <table css={tableStyle}>
                   <thead>
                     <tr>
-                      <th>Kind</th><th>Metric</th><th>Failure mode</th><th>Confidence</th><th>Created</th><th css={numStyle}>Sessions</th>
+                      <th>Kind</th><th>Metric</th><th>Failure mode</th><th>Confidence</th><th>Created</th><th css={numStyle}>Sessions</th><th css={numStyle} title="evidence sessions a person checked">Checked</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -228,10 +228,11 @@ export const QualityView: React.FC = () => {
                           <td>{f.diagnosis.confidence}</td>
                           <td>{new Date(f.created_at).toLocaleString()}</td>
                           <td css={numStyle}>{f.sessions.length}</td>
+                          <td css={numStyle}>{f.confirmed ?? 0}</td>
                         </tr>
                         {openFinding === f.finding_id && (
                           <tr>
-                            <td colSpan={6} css={detailStyle}>
+                            <td colSpan={7} css={detailStyle}>
                               <p>{f.diagnosis.summary}</p>
                               {f.diagnosis.suggested_correction && (
                                 <p><b>Suggested correction.</b> {f.diagnosis.suggested_correction}</p>

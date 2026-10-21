@@ -356,6 +356,10 @@ type Evidence struct {
 	Score  *float64 `json:"score"`
 	Status string   `json:"status"`
 	Error  string   `json:"error,omitempty"`
+	// HumanVerdict is the newest label's verdict on the score (agree or disagree), HumanScore the score the person
+	// gave with it. A person's score is the score of record wherever ego aggregates (docs/rsi.md, section 4).
+	HumanVerdict string   `json:"human_verdict,omitempty"`
+	HumanScore   *float64 `json:"human_score,omitempty"`
 	// Rationale is the judge's reason for the first failing item, or the decision's answer for jev_*.
 	Rationale string `json:"rationale,omitempty"`
 	// Failing counts the failing items among Total (unsupported, contradictory or disputed sentences, "no" rubrics,

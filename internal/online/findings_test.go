@@ -25,7 +25,7 @@ func samplesOf(scores ...float64) []Sample {
 func TestLowestSessions_PicksWorstFirstAndDedups(t *testing.T) {
 	in := samplesOf(0.9, 0.2, 0.5, 0.2, 0.7)
 	in = append(in, Sample{SessionID: "sb", Score: 0.1, At: in[1].At}) // the same session scored again, worse
-	got := LowestSessions(in, 3)
+	got := LowestSessions(in, 3, 0.7)
 	var ids []string
 	for _, s := range got {
 		ids = append(ids, s.SessionID)
@@ -35,8 +35,32 @@ func TestLowestSessions_PicksWorstFirstAndDedups(t *testing.T) {
 	if want := []string{"sb", "sd", "sc"}; !slices.Equal(ids, want) {
 		t.Errorf("lowest = %v, want %v", ids, want)
 	}
-	if len(LowestSessions(nil, 3)) != 0 {
+	if len(LowestSessions(nil, 3, 0.7)) != 0 {
 		t.Error("no samples must give no evidence")
+	}
+}
+
+func TestLowestSessions_ConfirmedByAPersonComesFirst(t *testing.T) {
+	in := samplesOf(0.9, 0.05, 0.4, 0.3)
+	in[2].Human, in[2].Note = true, "it mixed up two services" // sc: a person scored it 0.4
+	in[0].Human = true                                         // sa: a person agreed with 0.9, not a failure
+	var ids []string
+	for _, s := range LowestSessions(in, 3, 0.7) {
+		ids = append(ids, s.SessionID)
+	}
+	if want := []string{"sc", "sb", "sd"}; !slices.Equal(ids, want) {
+		t.Errorf("lowest = %v, want %v", ids, want)
+	}
+	ev := []EvidenceSession{{SessionID: "sc", Score: 0.4, Human: true, Note: "it mixed up two services"}, {SessionID: "sb", Score: 0.05}}
+	if Confirmed(ev) != 1 {
+		t.Errorf("confirmed = %d, want 1", Confirmed(ev))
+	}
+	prompt := BuildPrompt(PromptInput{Key: SeriesKey{Kind: "rca", Metric: "m"}, Evidence: ev})
+	if !strings.Contains(prompt, "checked by a person: the score above is theirs; their note: it mixed up two services") {
+		t.Errorf("prompt lacks the person's line:\n%s", prompt)
+	}
+	if strings.Count(prompt, "\nchecked by a person:") != 1 {
+		t.Error("a judge-only session must not be marked as checked")
 	}
 }
 

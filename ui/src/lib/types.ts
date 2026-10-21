@@ -852,6 +852,8 @@ export interface OnlineFinding {
   window: { from: string; to: string; n: number; mean: number; below: number };
   model: string;
   model_error?: string;
+  // How many evidence sessions a person scored or confirmed.
+  confirmed?: number;
   history: {
     correction_id: string;
     what: string;
@@ -905,4 +907,7 @@ export interface OnlineSessionScore {
   metric: string;
   score: number | null;
   status: string;
+  // The newest label's verdict and the score the person gave with it; that score is the score of record.
+  human_verdict?: 'agree' | 'disagree';
+  human_score?: number;
 }

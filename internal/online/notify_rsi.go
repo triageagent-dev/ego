@@ -41,7 +41,9 @@ type FindingPayload struct {
 	Scored int     `json:"scored"`
 	Mean   float64 `json:"mean"`
 	Below  int     `json:"below"`
-	Link   string  `json:"link,omitempty"`
+	// Confirmed counts the evidence sessions a person scored or confirmed.
+	Confirmed int    `json:"confirmed"`
+	Link      string `json:"link,omitempty"`
 }
 
 // FindingPayloadOf builds the webhook body for a finding event.
@@ -54,7 +56,8 @@ func FindingPayloadOf(event string, f *Finding, cfg *Config) FindingPayload {
 		Type: FindingWebhookType, Event: event, FindingID: f.ID, Tenant: f.Tenant, Kind: f.Kind, Metric: f.Metric,
 		FailureMode: f.Diagnosis.FailureMode, Summary: f.Diagnosis.Summary,
 		SuggestedCorrection: f.Diagnosis.SuggestedCorrection, Confidence: f.Diagnosis.Confidence,
-		Sessions: sessions, Scored: f.Window.N, Mean: f.Window.Mean, Below: f.Window.Below, Link: cfg.PublicURL,
+		Sessions: sessions, Scored: f.Window.N, Mean: f.Window.Mean, Below: f.Window.Below, Confirmed: f.Confirmed,
+		Link: cfg.PublicURL,
 	}
 }
 
@@ -103,6 +106,9 @@ func FindingText(p FindingPayload) string {
 		fmt.Fprintf(&b, "\n%d scored, mean %.2f, %d below threshold", p.Scored, p.Mean, p.Below)
 		if n := len(p.Sessions); n > 0 {
 			fmt.Fprintf(&b, " · %d evidence sessions", n)
+			if p.Confirmed > 0 {
+				fmt.Fprintf(&b, ", %d checked by a person", p.Confirmed)
+			}
 		}
 		if p.Confidence != "" {
 			fmt.Fprintf(&b, " · confidence %s", chatText(p.Confidence))

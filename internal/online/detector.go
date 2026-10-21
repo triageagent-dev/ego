@@ -9,10 +9,14 @@ import (
 // Sample is one stored score of a series.
 type Sample struct {
 	SessionID string
-	Score     float64
-	Version   string
-	Model     string
-	At        time.Time
+	// Score is the score of record: a person's when the session was labelled with one, else the judge's.
+	Score   float64
+	Version string
+	Model   string
+	At      time.Time
+	// Human is true when a person confirmed or gave the score; Note is what they wrote.
+	Human bool
+	Note  string
 }
 
 // SeriesKey identifies one (tenant, kind, metric) series.

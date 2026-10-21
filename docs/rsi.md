@@ -73,9 +73,12 @@ A finding is written by the **findings pass** (`internal/online/findings.go`, wi
   `findings.minSessions` (default 8) sessions in the last `findings.window` (default 24h) whose mean is below
   `findings.minScore` (default 0.7) and that has no open finding, one finding. Alerts catch drops; the sweep
   catches "always been bad".
-- **Evidence.** Up to `findings.maxSessions` (default 8) lowest-scoring sessions of the series in the window.
-  For each: the first user message (truncated to 500 chars), the tool-call name sequence, the metric's rationale,
-  and the per-sentence or per-rubric verdicts that failed, read from the online run results.
+- **Evidence.** Up to `findings.maxSessions` (default 8) lowest-scoring sessions of the series in the window,
+  by the score of record (section 4); a session a person scored or confirmed below `minScore` comes before any
+  judge-only one. For each: the first user message (truncated to 500 chars), the tool-call name sequence, the
+  person's note when they checked it, the metric's rationale, and the per-sentence or per-rubric verdicts that
+  failed, read from the online run results. The finding's `confirmed` counts the checked sessions among its
+  evidence, and the notification says "n checked by a person".
 - **Diagnosis.** One call to the judge model (`judge.Model`, Gemini, metered against `budget.judgeTokensPerDay`;
   skipped with reason `budget` when the cap is reached) with the evidence fenced as data (the existing defang)
   and this contract, answered as JSON:
@@ -132,6 +135,18 @@ A finding is written by the **findings pass** (`internal/online/findings.go`, wi
 - A manual sweep (`run_findings`, `POST /api/online/findings/sweep`) is tied to its request and stops after 5 minutes; while another sweep runs it answers 409 `a sweep is already running`.
 
 ## 4. Labels
+
+A label is the truth about one score, and ego counts it as such:
+
+- **Score of record.** Wherever ego aggregates scores (the detector's baseline and window, alerts, the sweep, a
+  finding's window and evidence, a correction's baseline and verification, the hourly series behind the Quality
+  view, `get_quality` and `explain_regression`, the digest), each (session, metric) is read with its newest
+  label joined: the person's score, when they gave one, replaces the judge's; an agreement keeps the judge's
+  score and marks the sample as confirmed; a disagreement without a score leaves the session out, because the
+  judge is known wrong and no truth was given. `explain_session` and the session card show the person's verdict
+  and score next to the judge's. A label never rewrites the `online_scores` row: the judge's score stays as what
+  the judge said, and the join decides what counts.
+- **Evidence.** Findings cite checked sessions first and show the diagnosis the person's note (section 2).
 
 - `POST /api/online/labels` body `{sessionId, metric, verdict: agree|disagree, score?, note?}`;
   `GET /api/online/labels?metric=&tenant=&since=`. Stored in `online_labels(label_id, session_id, tenant, kind,

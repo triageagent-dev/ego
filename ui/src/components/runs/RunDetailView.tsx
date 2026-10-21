@@ -267,6 +267,12 @@ export const RunDetailView: React.FC<RunDetailViewProps> = ({ runId, onBack }) =
                             </span>
                           )}
                           {row.latencyMs != null && <span css={subtleMonoStyle}>{row.latencyMs}ms</span>}
+                          {(() => {
+                            const h = online[caseName]?.scores.find(sc => sc.metric === row.evaluatorName)?.human_score;
+                            return h !== undefined && h !== row.score
+                              ? <span css={subtleMonoStyle} title="the score a person gave; it is the score of record">person {h.toFixed(2)}</span>
+                              : null;
+                          })()}
                           {online[caseName]?.scores.some(sc => sc.metric === row.evaluatorName && sc.score !== null) && (
                             <LabelButtons sessionId={caseName} metric={row.evaluatorName}
                               latest={online[caseName].labels.find(l => l.metric === row.evaluatorName)}

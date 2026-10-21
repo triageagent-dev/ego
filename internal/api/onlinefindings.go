@@ -175,7 +175,7 @@ func (e *OnlineEngine) evidenceFor(key online.SeriesKey, worst []online.Sample) 
 		if !ok {
 			continue
 		}
-		es := online.EvidenceSession{SessionID: s.SessionID, Score: s.Score}
+		es := online.EvidenceSession{SessionID: s.SessionID, Score: s.Score, Human: s.Human, Note: s.Note}
 		es.FirstUser, es.Tools = e.sessionDigest(s.SessionID)
 		for _, m := range ev.Metrics {
 			if m.Metric == key.Metric {
@@ -277,7 +277,7 @@ func (e *OnlineEngine) writeFinding(ctx context.Context, now time.Time, key onli
 		return
 	}
 	stats := online.StatsOf(key, samples, cfg.MinScore)
-	evidence := e.evidenceFor(key, online.LowestSessions(samples, cfg.MaxSessions))
+	evidence := e.evidenceFor(key, online.LowestSessions(samples, cfg.MaxSessions, cfg.MinScore))
 	if len(evidence) == 0 {
 		e.fSkippedEvidence.Add(1)
 		return
@@ -296,6 +296,7 @@ func (e *OnlineEngine) writeFinding(ctx context.Context, now time.Time, key onli
 		f.Sessions = sessions
 		f.Window = online.FindingWindow{From: from.UTC(), To: now.UTC(), N: stats.Sessions, Mean: stats.Mean, Below: stats.Below}
 		f.Model, f.ModelError = res.model, res.modelError
+		f.Confirmed = online.Confirmed(evidence)
 		f.Tokens += res.tokens
 		f.UpdatedAt = now.UTC()
 		if alertID != "" {

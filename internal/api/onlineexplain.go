@@ -141,6 +141,14 @@ func (e *OnlineEngine) sessionEvidence(sessionID string) (ev *mcptools.SessionEv
 	for _, r := range rows {
 		byMetric[r.EvaluatorName] = r
 	}
+	labels, err := e.store.OnlineLabels("", sessionID, "", 0, 0)
+	if err != nil {
+		return nil, false, err
+	}
+	latest := map[string]online.Label{}
+	for _, l := range online.Latest(labelValues(labels)) {
+		latest[l.Metric] = l
+	}
 
 	ev = &mcptools.SessionEvidence{
 		SessionID: sessionID, Tenant: rec.Tenant, Kind: rec.Kind, Service: rec.Service,
@@ -157,6 +165,9 @@ func (e *OnlineEngine) sessionEvidence(sessionID string) (ev *mcptools.SessionEv
 		}
 		// The score table is the record of the score; the row only explains it.
 		m.Score, m.Status = sc.Score, sc.Status
+		if l, ok := latest[sc.Metric]; ok {
+			m.HumanVerdict, m.HumanScore = l.Verdict, l.Score
+		}
 		ev.Metrics = append(ev.Metrics, m)
 	}
 	return ev, true, nil

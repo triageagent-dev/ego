@@ -118,10 +118,13 @@ type FindingData struct {
 	Sessions  []string      `json:"sessions"`
 	Window    FindingWindow `json:"window"`
 	// Model is the judge model asked; empty when none was configured. ModelError says why its answer was not used.
-	Model      string           `json:"model"`
-	ModelError string           `json:"model_error,omitempty"`
-	Tokens     int64            `json:"tokens"`
-	History    []CorrectionNote `json:"history"`
+	Model      string `json:"model"`
+	ModelError string `json:"model_error,omitempty"`
+	Tokens     int64  `json:"tokens"`
+	// Confirmed counts the evidence sessions a person scored or confirmed: the part of the finding that rests on
+	// truth rather than on the judge.
+	Confirmed int              `json:"confirmed"`
+	History   []CorrectionNote `json:"history"`
 }
 
 // Finding is a diagnosis of one (tenant, kind, metric) series. The wire shape is the MCP tools' snake_case.
@@ -171,12 +174,17 @@ func StatsOf(key SeriesKey, samples []Sample, minScore float64) SeriesStats {
 	return st
 }
 
-// LowestSessions picks up to n distinct sessions with the lowest scores, worst first. Ties go to the more recent
-// session, then the smaller id, so the choice is stable.
-func LowestSessions(samples []Sample, n int) []Sample {
+// LowestSessions picks up to n distinct sessions with the lowest scores, worst first. A session a person scored
+// or confirmed below minScore comes before any judge-only one: its failure is known, not inferred. Ties go to the
+// more recent session, then the smaller id, so the choice is stable.
+func LowestSessions(samples []Sample, n int, minScore float64) []Sample {
 	worst := append([]Sample(nil), samples...)
+	confirmed := func(s Sample) bool { return s.Human && s.Score < minScore }
 	sort.SliceStable(worst, func(i, j int) bool {
 		a, b := worst[i], worst[j]
+		if ca, cb := confirmed(a), confirmed(b); ca != cb {
+			return ca
+		}
 		if a.Score != b.Score {
 			return a.Score < b.Score
 		}
@@ -233,6 +241,20 @@ type EvidenceSession struct {
 	// Rationale is the metric's reason; Failing the verdicts that failed (sentences, rubrics, decisions).
 	Rationale string
 	Failing   []string
+	// Human is true when a person confirmed or gave the score; Note is what they wrote.
+	Human bool
+	Note  string
+}
+
+// Confirmed counts the evidence sessions whose score came from, or was confirmed by, a person.
+func Confirmed(evidence []EvidenceSession) int {
+	n := 0
+	for _, ev := range evidence {
+		if ev.Human {
+			n++
+		}
+	}
+	return n
 }
 
 // PromptInput is everything BuildPrompt needs.
@@ -269,7 +291,7 @@ func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 func BuildPrompt(in PromptInput) string {
 	var b strings.Builder
 	b.WriteString(promptNotice)
-	b.WriteString("You diagnose why an AI agent scores low on one quality metric. Below are the lowest-scoring sessions of one series from real traffic. Find what they have in common and say what to change in the agent.\n\n")
+	b.WriteString("You diagnose why an AI agent scores low on one quality metric. Below are the lowest-scoring sessions of one series from real traffic. Find what they have in common and say what to change in the agent. A session marked as checked by a person carries their score and note: that is ground truth, so weigh it above the judge's rationale.\n\n")
 	fmt.Fprintf(&b, "Series: kind %q, metric %q", fence(oneLine(in.Key.Kind)), fence(oneLine(in.Key.Metric)))
 	if in.Key.Tenant != "" {
 		fmt.Fprintf(&b, ", tenant %q", fence(oneLine(in.Key.Tenant)))
@@ -292,6 +314,13 @@ func BuildPrompt(in PromptInput) string {
 				quoted[i] = fence(oneLine(t))
 			}
 			fmt.Fprintf(&b, "tool calls: %s\n", strings.Join(quoted, " > "))
+		}
+		if ev.Human {
+			b.WriteString("checked by a person: the score above is theirs")
+			if ev.Note != "" {
+				fmt.Fprintf(&b, "; their note: %s", fence(oneLine(clipRunes(ev.Note, maxRationale))))
+			}
+			b.WriteString("\n")
 		}
 		if ev.Rationale != "" {
 			fmt.Fprintf(&b, "judge rationale: %s\n", fence(oneLine(clipRunes(ev.Rationale, maxRationale))))

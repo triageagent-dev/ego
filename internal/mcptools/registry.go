@@ -229,10 +229,13 @@ func Tools(b Backend, o Options) []server.ServerTool {
 
 		server.ServerTool{Tool: mcp.NewTool("label_session",
 			mcp.WithDescription("Record a person's verdict on a judge's score: agree or disagree with the online score of "+
-				"one metric on one session, optionally with the score you think is right and a note. ego measures how "+
-				"often people agree with each metric's judge; a metric whose judge people mostly disagree with stops "+
-				"producing findings. Labels are for people reading the evidence: do not label sessions you produced. "+
-				"Fails when the session has no online score for the metric."),
+				"one metric on one session, with the score you think is right and a note. The label is the score of "+
+				"record: a score you give replaces the judge's in every mean, alert, finding and verification; an "+
+				"agreement confirms the judge's score; a disagreement without a score drops the session from them. "+
+				"Findings cite checked sessions first, with the note. ego also measures how often people agree with "+
+				"each metric's judge; a metric whose judge people mostly disagree with stops producing findings. "+
+				"Labels are for people reading the evidence: do not label sessions you produced. Fails when the "+
+				"session has no online score for the metric."),
 			mcp.WithString("session_id", mcp.Required(),
 				mcp.Description("An online-scored session.")),
 			mcp.WithString("metric", mcp.Required(),
@@ -241,7 +244,8 @@ func Tools(b Backend, o Options) []server.ServerTool {
 				mcp.Enum("agree", "disagree"),
 				mcp.Description("agree or disagree with the judge's score.")),
 			mcp.WithNumber("score",
-				mcp.Description("The score you think is right, between 0 and 1. Omit to only agree or disagree.")),
+				mcp.Description("The score you think is right, between 0 and 1. Give one with a disagreement, or the "+
+					"session counts nowhere until someone does.")),
 			mcp.WithString("note",
 				mcp.Description("Why, in a sentence (at most 1000 characters).")),
 		), Handler: labelSessionHandler(b)},

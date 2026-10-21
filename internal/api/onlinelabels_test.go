@@ -121,16 +121,19 @@ func TestOnlineLabelsHandler(t *testing.T) {
 	}
 }
 
-// labelAll labels each session, the first `agree` of them agree and the rest disagree, step apart.
+// labelAll labels each session, the first `agree` of them agree and the rest disagree, step apart. A
+// disagreement gives a low score of its own, so the session stays in the series (a disagreement without a score
+// would drop it from the score of record).
 func labelAll(t *testing.T, f *findingsFixture, ids []string, agree int, step time.Duration) {
 	t.Helper()
 	for i, id := range ids {
-		v := online.VerdictDisagree
+		in := labelIn(id, online.VerdictDisagree)
+		in.Score = ptr(0.1)
 		if i < agree {
-			v = online.VerdictAgree
+			in = labelIn(id, online.VerdictAgree)
 		}
 		f.now = f.now.Add(step)
-		if _, err := f.e.LabelSession(adminInfo, "", labelIn(id, v)); err != nil {
+		if _, err := f.e.LabelSession(adminInfo, "", in); err != nil {
 			t.Fatal(err)
 		}
 	}

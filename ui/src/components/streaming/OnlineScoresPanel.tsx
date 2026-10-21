@@ -3,10 +3,11 @@ import { css } from '@emotion/react';
 import { getOnlineLabels, getOnlineSessionScores, postOnlineLabel } from '../../api/client';
 import type { OnlineLabel, OnlineSessionScore } from '../../lib/types';
 
-// A person's verdict on the judge's score of one metric of one session: thumbs and a note. The labels measure
-// how far each metric's judge can be trusted (docs/rsi.md, section 4). `latest` is the label that counts for
-// the metric (the server lists them newest first); onLabeled reloads them. Clicks stay inside the control, so it
-// can sit on a row that toggles on click.
+// A person's verdict on the judge's score of one metric of one session: thumbs and a note. The label is the
+// score of record (docs/rsi.md, section 4): a thumb down asks for the right score, which replaces the judge's
+// wherever ego aggregates; a thumb up confirms the judge's. `latest` is the label that counts for the metric
+// (the server lists them newest first); onLabeled reloads them. Clicks stay inside the control, so it can sit on
+// a row that toggles on click.
 interface LabelButtonsProps {
   sessionId: string;
   metric: string;
@@ -17,13 +18,15 @@ interface LabelButtonsProps {
 export const LabelButtons: React.FC<LabelButtonsProps> = ({ sessionId, metric, latest, onLabeled }) => {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const label = async (verdict: 'agree' | 'disagree') => {
+  const label = async (verdict: 'agree' | 'disagree', score?: number) => {
     setBusy(true);
     setError(null);
+    setPicking(false);
     try {
-      await postOnlineLabel({ sessionId, metric, verdict, note: note.trim() || undefined });
+      await postOnlineLabel({ sessionId, metric, verdict, score, note: note.trim() || undefined });
       setNote('');
       await onLabeled();
     } catch (e) {
@@ -40,16 +43,28 @@ export const LabelButtons: React.FC<LabelButtonsProps> = ({ sessionId, metric, l
           onClick={() => label('agree')} title="Agree: the judge's score is right" aria-label="agree">
           <ThumbIcon up />
         </button>
-        <button css={[btnStyle, latest?.verdict === 'disagree' && onStyle]} disabled={busy}
-          onClick={() => label('disagree')} title="Disagree: the judge's score is wrong" aria-label="disagree">
+        <button css={[btnStyle, (latest?.verdict === 'disagree' || picking) && onStyle]} disabled={busy}
+          onClick={() => setPicking(p => !p)} title="Disagree: the judge's score is wrong" aria-label="disagree">
           <ThumbIcon />
         </button>
+        {picking && (
+          <span css={pickStyle}>
+            <span css={dimStyle}>right score</span>
+            {[0, 0.25, 0.5, 0.75, 1].map(v => (
+              <button key={v} css={btnStyle} disabled={busy} onClick={() => label('disagree', v)}>{v}</button>
+            ))}
+            <button css={btnStyle} disabled={busy} onClick={() => label('disagree')}
+              title="Disagree without a score: the session then counts nowhere until someone scores it">?</button>
+          </span>
+        )}
       </span>
       <input css={noteStyle} placeholder="note (optional)" maxLength={1000} value={note}
         onChange={e => setNote(e.target.value)} onKeyDown={e => e.stopPropagation()} />
       {/* Always rendered: the row must fill all five grid cells, or the next row starts in the wrong column. */}
       <span css={dimStyle}>
-        {latest ? `${latest.by ? `${latest.by} ` : ''}${latest.verdict}d${latest.note ? `: ${latest.note}` : ''}` : null}
+        {latest
+          ? `${latest.by ? `${latest.by} ` : ''}${latest.verdict}d${latest.score !== undefined ? ` (${latest.score})` : ''}${latest.note ? `: ${latest.note}` : ''}`
+          : null}
       </span>
       {error && <span css={errStyle}>{error}</span>}
     </span>
@@ -94,7 +109,11 @@ export const OnlineScoresPanel: React.FC<Props> = ({ sessionId }) => {
       {scored.map(s => (
         <div key={s.metric} css={rowStyle}>
           <span css={metricStyle}>{s.metric}</span>
-          <span css={scoreStyle}>{s.score!.toFixed(2)}</span>
+          <span css={scoreStyle}>
+            {s.human_score !== undefined && s.human_score !== s.score
+              ? <><s css={dimStyle}>{s.score!.toFixed(2)}</s> {s.human_score.toFixed(2)}</>
+              : s.score!.toFixed(2)}
+          </span>
           <LabelButtons sessionId={sessionId} metric={s.metric} latest={latest(s.metric)} onLabeled={reloadLabels} />
         </div>
       ))}
@@ -133,6 +152,14 @@ const panelStyle = css`
 const thumbsStyle = css`
   display: inline-flex;
   gap: 4px;
+  align-items: center;
+`;
+
+const pickStyle = css`
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: 6px;
 `;
 
 const headStyle = css`
