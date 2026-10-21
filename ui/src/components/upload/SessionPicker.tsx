@@ -15,15 +15,19 @@ interface PickableSession {
   errors?: number;
 }
 
-const PAGE = 30;
+const PAGE = 10;
 
 // The recent finished sessions the server holds, to score without leaving the page: the list the sessions page shows,
-// cut to a short page and searchable, with a tick on each.
+// ten to a page, searchable, with a tick on each. A tick stays when the page changes.
 export const SessionPicker: React.FC<{ onUse: (sessionIds: string[]) => void }> = ({ onUse }) => {
   const [sessions, setSessions] = useState<PickableSession[] | null>(null);
   const [query, setQuery] = useState('');
   const [ticked, setTicked] = useState<Set<string>>(new Set());
+  // cursors[i] is the cursor that fetched page i; the first page has none.
+  const [cursors, setCursors] = useState<string[]>(['']);
+  const [next, setNext] = useState<string | null>(null);
   useTenantNames();
+  const cursor = cursors[cursors.length - 1];
 
   useEffect(() => {
     let active = true;
@@ -33,10 +37,13 @@ export const SessionPicker: React.FC<{ onUse: (sessionIds: string[]) => void }> 
       // "<sender>/*" goes as "<sender>/": gateways refuse a "/*" in a query string.
       if (tenant) params.set('tenant', tenant.endsWith('/*') ? tenant.slice(0, -1) : tenant);
       if (query.trim()) params.set('q', query.trim());
+      if (cursor) params.set('cursor', cursor);
       try {
         const res = await fetch(`${config.api.endpoints.streamingSessions}?${params}`);
         const body = res.ok ? await res.json() : { data: [] };
-        if (active) setSessions(((body.data ?? []) as PickableSession[]).filter((s) => s.isComplete));
+        if (!active) return;
+        setSessions(((body.data ?? []) as PickableSession[]).filter((s) => s.isComplete));
+        setNext(body.next ?? null);
       } catch {
         if (active) setSessions([]);
       }
@@ -45,7 +52,7 @@ export const SessionPicker: React.FC<{ onUse: (sessionIds: string[]) => void }> 
       active = false;
       clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, cursor]);
 
   const toggle = (id: string) =>
     setTicked((prev) => {
@@ -61,9 +68,15 @@ export const SessionPicker: React.FC<{ onUse: (sessionIds: string[]) => void }> 
         <input
           css={searchStyle}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setCursors(['']);
+          }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') setQuery('');
+            if (e.key === 'Escape') {
+              setQuery('');
+              setCursors(['']);
+            }
           }}
           placeholder="Search sessions…"
           aria-label="Search sessions"
@@ -101,9 +114,14 @@ export const SessionPicker: React.FC<{ onUse: (sessionIds: string[]) => void }> 
         </Button>
         {sessions !== null && sessions.length > 0 && (
           <Button size="small" onClick={() => setTicked(ticked.size ? new Set() : new Set(sessions.map((s) => s.sessionId)))}>
-            {ticked.size ? 'Clear' : 'Select all'}
+            {ticked.size ? 'Clear' : 'Select page'}
           </Button>
         )}
+        <span css={pagerStyle}>
+          <Button size="small" disabled={cursors.length === 1} onClick={() => setCursors((c) => c.slice(0, -1))} aria-label="Newer sessions">‹</Button>
+          <span css={pageNoStyle}>page {cursors.length}</span>
+          <Button size="small" disabled={!next} onClick={() => next && setCursors((c) => [...c, next])} aria-label="Older sessions">›</Button>
+        </span>
       </div>
     </div>
   );
@@ -224,4 +242,16 @@ const footStyle = css`
   display: flex;
   gap: 8px;
   margin-top: 10px;
+`;
+
+const pagerStyle = css`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+`;
+
+const pageNoStyle = css`
+  color: var(--text-muted);
+  font-size: 12px;
 `;

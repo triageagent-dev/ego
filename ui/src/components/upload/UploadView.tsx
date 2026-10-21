@@ -433,7 +433,7 @@ export const UploadView: React.FC = () => {
   );
 
   const detailsOf = (id: string) => {
-    if (id === SOURCES) return <>{tracesBox}{goldenBox}</>;
+    if (id === SOURCES) return <>{goldenBox}{tracesBox}</>;
     const group = groups.find(([name]) => name === id);
     if (group) {
       return (
