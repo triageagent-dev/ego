@@ -396,18 +396,8 @@ func sessionsHandler(store *SessionStore) http.HandlerFunc {
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": nil, "error": err.Error()})
 			return
 		}
-		all := store.List()
-		if info.Scoped() || info.TenantScoped() {
-			visible := all[:0]
-			for _, sum := range all {
-				if info.AllowsSession(sum.Agents, sum.Tenants) {
-					visible = append(visible, sum)
-				}
-			}
-			all = visible
-		}
-		// The optional filters narrow what the role already allows; they come last so they cannot widen it.
-		all = filterSessions(all, filter)
+		// The optional filters narrow what the role already allows; a query also reaches the archive.
+		all := store.Find(filter, allowedBy(info))
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": all, "error": nil})
 	}
 }

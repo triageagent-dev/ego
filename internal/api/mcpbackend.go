@@ -46,15 +46,8 @@ func (b *mcpBackend) Metrics(ctx context.Context) ([]mcptools.MetricInfo, error)
 }
 
 func (b *mcpBackend) Sessions(ctx context.Context, filter mcptools.SessionFilter) ([]mcptools.SessionListItem, error) {
-	info := roleInfoOrOpen(ctx)
-	var visible []SessionSummary
-	for _, s := range b.sessions.List() {
-		if info.AllowsSession(s.Agents, s.Tenants) {
-			visible = append(visible, s)
-		}
-	}
 	out := []mcptools.SessionListItem{}
-	for _, s := range filterSessions(visible, filter) {
+	for _, s := range b.sessions.Find(filter, allowedBy(roleInfoOrOpen(ctx))) {
 		out = append(out, mcptools.SessionListItem{
 			SessionID: s.SessionID, IsComplete: s.IsComplete, SpanCount: s.SpanCount, StartedAt: s.StartedAt,
 			Agent: strings.Join(s.Agents, ", "), Tenant: strings.Join(s.Tenants, ", "), Service: s.Service,

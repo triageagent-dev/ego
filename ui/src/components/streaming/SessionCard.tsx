@@ -164,7 +164,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
                 title="tenant"
                 style={{
                   fontSize: '11px',
-                  fontWeight: 600,
+                  fontWeight: 500,
                   color: 'var(--accent-magenta)',
                   background: 'rgba(255, 106, 198, 0.1)',
                   padding: '1px 7px',
@@ -180,7 +180,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
                 title="gen_ai.agent.name"
                 style={{
                   fontSize: '11px',
-                  fontWeight: 600,
+                  fontWeight: 500,
                   color: 'var(--accent-cyan)',
                   background: 'rgba(103, 232, 249, 0.1)',
                   padding: '1px 7px',
@@ -194,7 +194,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             {modelName && (
             <span style={{
               fontSize: '11px',
-              fontWeight: 600,
+              fontWeight: 500,
               color: '#b5abfc',
               background: 'rgba(181, 171, 252, 0.1)',
               padding: '1px 7px',
@@ -209,7 +209,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             {providerName && (
               <span style={{
                 fontSize: '11px',
-                fontWeight: 600,
+                fontWeight: 500,
                 color: '#3b82f6',
                 background: 'rgba(59, 130, 246, 0.1)',
                 padding: '1px 7px',
@@ -222,7 +222,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             {session.invocations && session.invocations.length > 0 && (
               <span style={{
                 fontSize: '11px',
-                fontWeight: 600,
+                fontWeight: 500,
                 color: 'var(--text-primary)',
                 background: 'rgba(148, 163, 184, 0.18)',
                 padding: '1px 7px',
@@ -235,7 +235,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             {totalTokens > 0 && (
               <span style={{
                 fontSize: '11px',
-                fontWeight: 600,
+                fontWeight: 500,
                 color: '#10b981',
                 background: 'rgba(16, 185, 129, 0.1)',
                 padding: '1px 7px',
@@ -248,7 +248,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             {session.status === 'complete' && session.durationMs != null && (
               <span title="Span window: earliest span start to latest span end" style={{
                 fontSize: '11px',
-                fontWeight: 600,
+                fontWeight: 500,
                 color: '#fff',
                 background: 'var(--accent-primary)',
                 padding: '1px 7px',
@@ -262,7 +262,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             {session.startedAt && (
               <span style={{
                 fontSize: '11px',
-                fontWeight: 600,
+                fontWeight: 500,
                 color: 'var(--text-primary)',
                 background: 'rgba(148, 163, 184, 0.18)',
                 padding: '1px 7px',
@@ -275,7 +275,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             {(totalCacheCreation > 0 || totalCacheRead > 0) && (
               <span style={{
                 fontSize: '11px',
-                fontWeight: 600,
+                fontWeight: 500,
                 color: '#f59e0b',
                 background: 'rgba(245, 158, 11, 0.1)',
                 padding: '1px 7px',
@@ -290,7 +290,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             {queueNames && queueNames.length > 0 && queueNames.map(name => (
               <span key={name} style={{
                 fontSize: '11px',
-                fontWeight: 600,
+                fontWeight: 500,
                 color: '#b5abfc',
                 background: 'rgba(181, 171, 252, 0.12)',
                 border: '1px solid rgba(181, 171, 252, 0.3)',
@@ -304,7 +304,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
 
           <h3 style={{
             fontSize: '13px',
-            fontWeight: 600,
+            fontWeight: 400,
             color: 'var(--text-primary)',
             margin: '0 0 2px 0',
           }}>

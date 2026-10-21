@@ -9,6 +9,7 @@ What ego supports today, and what it does not.
 - Live: OTLP/HTTP (`POST /v1/traces`, gzip accepted) and OTLP/gRPC, both feeding one session store.
 - Conventions: ADK (`gcp.vertex.agent.*`), OTel GenAI semantic conventions and OpenInference.
 - Sessions group by `ego.session_name`, then `gen_ai.conversation.id`, then a synthetic name.
+- A session search (the Sessions view's box, `GET /api/streaming/sessions?q=`, `list_sessions` `query`) reads memory and the archive: the newest 2000 archived rows that mention the text, up to 200 of them returned; the other filters only narrow memory.
 - An invocation's answer is the last call of the agent that opened it (`gen_ai.agent.name`); a later call by another agent in the same conversation (a verifier, a guard) is not scored as the answer.
 
 **Metrics**

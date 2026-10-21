@@ -38,8 +38,8 @@ function MetadataItem({ label, children }: { label: string; children: React.Reac
         {label}
       </div>
       <div style={{
-        fontSize: '14px',
-        fontWeight: 600,
+        fontSize: '13px',
+        fontWeight: 400,
         color: 'var(--text-primary)',
       }}>
         {children}

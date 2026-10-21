@@ -62,9 +62,13 @@ export const OnlineScoresPanel: React.FC<Props> = ({ sessionId }) => {
             <span css={metricStyle}>{s.metric}</span>
             <span css={scoreStyle}>{s.score!.toFixed(2)}</span>
             <button css={[btnStyle, existing?.verdict === 'agree' && onStyle]} disabled={busy === s.metric}
-              onClick={() => label(s.metric, 'agree')} title="The judge's score is right">agree</button>
+              onClick={() => label(s.metric, 'agree')} title="Agree: the judge's score is right" aria-label="agree">
+              <ThumbIcon up />
+            </button>
             <button css={[btnStyle, existing?.verdict === 'disagree' && onStyle]} disabled={busy === s.metric}
-              onClick={() => label(s.metric, 'disagree')} title="The judge's score is wrong">disagree</button>
+              onClick={() => label(s.metric, 'disagree')} title="Disagree: the judge's score is wrong" aria-label="disagree">
+              <ThumbIcon />
+            </button>
             <input css={noteStyle} placeholder="note (optional)" maxLength={1000} value={notes[s.metric] ?? ''}
               onChange={e => setNotes(n => ({ ...n, [s.metric]: e.target.value }))} />
             {existing && (
@@ -79,6 +83,16 @@ export const OnlineScoresPanel: React.FC<Props> = ({ sessionId }) => {
     </div>
   );
 };
+
+// A thumb, up for agree and down for disagree, drawn in the button's colour.
+const ThumbIcon = ({ up = false }: { up?: boolean }) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+    style={up ? undefined : { transform: 'scaleY(-1)' }}>
+    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z" />
+    <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
+  </svg>
+);
 
 const panelStyle = css`
   padding: 8px 0;

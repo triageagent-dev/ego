@@ -73,6 +73,7 @@ export function LiveStreamingView() {
   // A session linked to by id (#sessions?session=...): shown alone and opened.
   const [focusId, setFocusId] = useState<string | null>(() => parseHash(location.hash).params.get('session'));
   const loadSessionRef = useRef<(id: string) => void>(() => {});
+  const searchSessionsRef = useRef<(q: string) => void>(() => {});
   // Sessions whose trace made no LLM call (a server's per-request or
   // per-event trace) are hidden unless asked for; the choice is remembered
   // per browser.
@@ -152,12 +153,14 @@ export function LiveStreamingView() {
 
     // With an id, fetches just that session (read back from the archive if it left memory) and shows it even
     // if it was cleared or removed from this view before.
-    const fetchExistingSessions = async (onlyId?: string) => {
+    const fetchExistingSessions = async (onlyId?: string, query?: string) => {
       try {
         const res = await fetch(
           onlyId
             ? `${config.api.endpoints.streamingSessions}?id=${encodeURIComponent(onlyId)}`
-            : config.api.endpoints.streamingSessions,
+            : query
+              ? `${config.api.endpoints.streamingSessions}?q=${encodeURIComponent(query)}`
+              : config.api.endpoints.streamingSessions,
         );
         if (!res.ok) return;
         const envelope = await res.json();
@@ -211,8 +214,8 @@ export function LiveStreamingView() {
               }
               continue;
             }
-            if (!onlyId && removedIdsRef.current.has(s.sessionId)) continue;
-            if (!onlyId && s.isComplete && Date.parse(s.startedAt) < clearedBeforeRef.current) continue;
+            if (!onlyId && !query && removedIdsRef.current.has(s.sessionId)) continue;
+            if (!onlyId && !query && s.isComplete && Date.parse(s.startedAt) < clearedBeforeRef.current) continue;
             newMap.set(s.sessionId, {
               sessionId: s.sessionId,
               traceId: s.traceId,
@@ -246,6 +249,7 @@ export function LiveStreamingView() {
     // One re-fetch for a burst of resync signals or unknown-session events.
     let resyncTimer: ReturnType<typeof setTimeout> | null = null;
     loadSessionRef.current = (id) => void fetchExistingSessions(id);
+    searchSessionsRef.current = (q) => void fetchExistingSessions(undefined, q);
     const requestResync = () => {
       if (resyncTimer) return;
       resyncTimer = setTimeout(() => {
@@ -588,6 +592,15 @@ export function LiveStreamingView() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
+
+  // The box also searches the archive: a session evicted from memory is fetched by the query and joins the list,
+  // where the same client-side match shows it.
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 3) return;
+    const t = setTimeout(() => searchSessionsRef.current(q), 400);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
   // Declared after the feed effect above, so loadSessionRef is already set when this first runs.
   useEffect(() => {
