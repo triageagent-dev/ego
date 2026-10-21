@@ -42,10 +42,77 @@ function asJSON(text: string): string | null {
   }
 }
 
+// Indents text that starts like JSON but does not parse: a value cut short by an attribute limit, or one followed by
+// more text, still reads as a tree. Strings are kept as written; `rest` is whatever follows the top-level value.
+export function lenientJSON(text: string): { pretty: string; rest: string } | null {
+  const t = text.trim();
+  if (!/^(\{\s*"|\[\s*[[{"])/.test(t)) return null;
+  const pad = (depth: number) => '\n' + '  '.repeat(depth);
+  let out = '';
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let i = 0;
+  for (; i < t.length; i++) {
+    const c = t[i];
+    if (inString) {
+      out += c;
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      out += c;
+    } else if (c === '{' || c === '[') {
+      let j = i + 1;
+      while (j < t.length && /\s/.test(t[j])) j++;
+      if (t[j] === (c === '{' ? '}' : ']')) {
+        out += c + t[j];
+        i = j;
+        if (depth === 0) {
+          i++;
+          break;
+        }
+      } else {
+        depth++;
+        out += c + pad(depth);
+      }
+    } else if (c === '}' || c === ']') {
+      depth--;
+      if (depth < 0) return null;
+      out += pad(depth) + c;
+      if (depth === 0) {
+        i++;
+        break;
+      }
+    } else if (c === ',') {
+      out += ',' + pad(depth);
+    } else if (c === ':') {
+      out += ': ';
+    } else if (!/\s/.test(c)) {
+      out += c;
+    }
+  }
+  return { pretty: out, rest: t.slice(i).trim() };
+}
+
+const preStyle = { ...codeStyle, display: 'block', padding: '10px 12px', margin: 0, whiteSpace: 'pre-wrap', overflowX: 'auto' } as const;
+
 export function PrettyText({ text }: { text: string }) {
   const json = asJSON(text);
   if (json) {
-    return <pre style={{ ...codeStyle, display: 'block', padding: '10px 12px', margin: 0, whiteSpace: 'pre-wrap', overflowX: 'auto' }}>{json}</pre>;
+    return <pre style={preStyle}>{json}</pre>;
+  }
+  const loose = lenientJSON(text);
+  if (loose) {
+    return (
+      <div>
+        <pre style={preStyle}>{loose.pretty}</pre>
+        {loose.rest && <div style={{ marginTop: '8px' }}><PrettyText text={loose.rest} /></div>}
+      </div>
+    );
   }
 
   const blocks: ReactNode[] = [];
