@@ -111,11 +111,9 @@ const ThumbIcon = ({ up = false }: { up?: boolean }) => (
   </svg>
 );
 
+// The buttons, the note and the verdict are cells of the panel's grid, so every row lines up under the same columns.
 const groupStyle = css`
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  display: contents;
 `;
 
 const panelStyle = css`
@@ -123,6 +121,12 @@ const panelStyle = css`
   margin-bottom: 8px;
   border-bottom: 1px solid var(--border);
   font-size: 12px;
+  display: grid;
+  /* metric | score | agree | disagree | note | verdict */
+  grid-template-columns: max-content max-content max-content max-content minmax(160px, 420px) 1fr;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 6px;
 `;
 
 const headStyle = css`
@@ -131,14 +135,11 @@ const headStyle = css`
   text-transform: uppercase;
   color: var(--text-tertiary);
   margin-bottom: 4px;
+  grid-column: 1 / -1;
 `;
 
 const rowStyle = css`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 2px 0;
+  display: contents;
 `;
 
 const metricStyle = css`
@@ -173,9 +174,7 @@ const onStyle = css`
 `;
 
 const noteStyle = css`
-  flex: 1 1 140px;
-  min-width: 100px;
-  max-width: 280px;
+  width: 100%;
   padding: 1px 6px;
   border-radius: var(--radius);
   border: 1px solid var(--border-default);
@@ -189,6 +188,6 @@ const dimStyle = css`
 `;
 
 const errStyle = css`
-  margin-top: 4px;
+  grid-column: 1 / -1;
   color: var(--status-failure);
 `;
