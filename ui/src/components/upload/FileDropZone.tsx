@@ -14,12 +14,12 @@ interface FileDropZoneProps {
   accept?: string;
 }
 
+// One slim row: the icon, the title and the hint side by side.
 const dropZoneStyle = css`
   .ant-upload.ant-upload-drag {
     border: 1px dashed var(--border-default);
     border-radius: var(--radius);
     transition: all 0.3s ease;
-    padding: 8px 12px !important;
 
     &:hover {
       border-color: var(--accent-primary);
@@ -27,21 +27,31 @@ const dropZoneStyle = css`
     }
   }
 
+  .ant-upload.ant-upload-drag .ant-upload-btn {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 2px 10px;
+    padding: 6px 12px !important;
+  }
+
   .ant-upload-drag-icon {
+    display: inline-flex;
+    margin: 0 !important;
     color: var(--accent-primary);
-    margin-bottom: 2px !important;
   }
 
   .ant-upload-text {
     color: var(--text-primary) !important;
-    font-size: 13px;
+    font-size: 12.5px !important;
     font-weight: 500;
-    margin: 0 0 4px 0 !important;
+    margin: 0 !important;
   }
 
   .ant-upload-hint {
     color: var(--text-secondary) !important;
-    font-size: 12px;
+    font-size: 11.5px !important;
     margin: 0 !important;
   }
 `;
@@ -77,7 +87,7 @@ export const FileDropZone: React.FC<FileDropZoneProps> = ({
     <div css={dropZoneStyle}>
       <Dragger {...uploadProps}>
         <p className="ant-upload-drag-icon">
-          <FileJson size={18} />
+          <FileJson size={15} />
         </p>
         <p className="ant-upload-text">{title}</p>
         <p className="ant-upload-hint">{description}</p>
