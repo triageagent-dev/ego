@@ -985,12 +985,12 @@ export function LiveStreamingView() {
 
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>{listBody}</div>
+        {/* With the details open the list keeps a fixed, narrow column and the details take the rest. */}
+        <div style={openSession ? { flex: '0 0 460px', minWidth: 0 } : { flex: 1, minWidth: 0 }}>{listBody}</div>
         {openSession && (
           <aside style={{
-            width: '46%',
+            flex: 1,
             minWidth: '420px',
-            flexShrink: 0,
             position: 'sticky',
             top: 0,
             maxHeight: 'calc(var(--view-h, 100vh) - 70px)',
