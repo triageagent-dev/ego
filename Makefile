@@ -64,10 +64,11 @@ image: clean-tree
 # The tag to deploy: HEAD's image by default, or a published release (make deploy TAG=0.1.40).
 TAG ?= $(VERSION)
 
-# `make deploy` once rolled the release to a tag whose push had failed, and the pod sat in ImagePullBackOff. A HEAD
-# tag is deployed only when `make image` recorded pushing it; a release tag is taken as published.
+# `make deploy` once rolled the release to a tag whose push had failed, and the pod sat in ImagePullBackOff. A dev
+# tag (0.1.40-2-gabc1234) is deployed only when `make image` recorded pushing it; a release tag (0.1.40, which
+# HEAD also reads as right after tagging) is taken as published by the release workflow.
 check-image:
-	@test "$(TAG)" != "$(VERSION)" || grep -qx "$(KO_DOCKER_REPO):$(VERSION)" bin/.image 2>/dev/null || { echo "no image pushed for $(VERSION): run make image first"; exit 1; }
+	@echo "$(TAG)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || grep -qx "$(KO_DOCKER_REPO):$(TAG)" bin/.image 2>/dev/null || { echo "no image pushed for $(TAG): run make image first"; exit 1; }
 
 # Show what `make deploy` would change on the cluster.
 deploy-diff: check-image
