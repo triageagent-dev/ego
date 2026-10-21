@@ -760,33 +760,6 @@ export function LiveStreamingView() {
             }}
           />
 
-          <div style={{
-            display: 'flex',
-            gap: '2px',
-            padding: '1px',
-            borderRadius: 'var(--radius)',
-            border: '1px solid var(--border-default)',
-          }}>
-            {TIME_RANGES.map(range => (
-              <button
-                key={range.key}
-                onClick={() => setTimeRange(range.key)}
-                style={{
-                  padding: '2px 9px',
-                  borderRadius: 'var(--radius)',
-                  border: 'none',
-                  background: timeRange === range.key ? 'var(--bg-selected)' : 'transparent',
-                  color: timeRange === range.key ? 'var(--accent-magenta)' : 'var(--text-tertiary)',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
-                {range.label}
-              </button>
-            ))}
-          </div>
 
           {focusId && (
             <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
@@ -799,7 +772,36 @@ export function LiveStreamingView() {
               </button>
             </span>
           )}
-          {pagerInRow && <div style={{ marginLeft: 'auto' }}>{pagerInRow}</div>}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {pagerInRow}
+            <div style={{
+              display: 'flex',
+              gap: '2px',
+              padding: '1px',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--border-default)',
+            }}>
+              {TIME_RANGES.map(range => (
+                <button
+                  key={range.key}
+                  onClick={() => setTimeRange(range.key)}
+                  style={{
+                    padding: '2px 9px',
+                    borderRadius: 'var(--radius)',
+                    border: 'none',
+                    background: timeRange === range.key ? 'var(--bg-selected)' : 'transparent',
+                    color: timeRange === range.key ? 'var(--accent-magenta)' : 'var(--text-tertiary)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {range.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
