@@ -121,7 +121,8 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
     session.invocations?.[0]?.modelInfo?.models?.[0] ||
     session.models?.[0] ||
     '';
-  const extraModels = Math.max((session.models?.length ?? 0) - 1, 0);
+  // Every model the session used, not the first and a count: `a / b`.
+  const modelLabel = (session.models?.length ?? 0) > 1 ? session.models!.join(' / ') : modelName;
   const agentLabel = session.agents?.join(' · ') ?? '';
   useTenantNames();
   const tenantLabel = session.tenants?.map(tenantName).join(' · ') ?? '';
@@ -202,7 +203,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
               textTransform: 'uppercase',
               letterSpacing: '0.5px',
             }}>
-              {modelName}{extraModels > 0 && ` +${extraModels}`}
+              {modelLabel}
             </span>
             )}
 
