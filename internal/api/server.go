@@ -173,7 +173,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		return fmt.Errorf("opening embedded UI assets: %w", err)
 	}
 	if _, err := fs.Stat(uiDist, "index.html"); err == nil {
-		mux.Handle("/", http.FileServer(http.FS(uiDist)))
+		mux.Handle("/", newUIFiles(uiDist))
 		logx.Debugf("serving UI embedded in binary")
 	} else {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
