@@ -99,6 +99,20 @@ export function LiveStreamingView() {
   useEffect(() => {
     if (focusId) setOpenId(focusId);
   }, [focusId]);
+  // A tenant switch starts clean: the page, the open panel, the golden pick and the pager belong to the tenant
+  // they were made in, and a failed first fetch of the new tenant must not leave the old one's rows on show.
+  const firstTenantRef = useRef(true);
+  useEffect(() => {
+    if (firstTenantRef.current) {
+      firstTenantRef.current = false;
+      return;
+    }
+    setPageIds([]);
+    setNextCursor(null);
+    setListTotal(null);
+    setOpenId(null);
+    setSelectedGoldenId(null);
+  }, [pickedTenant]);
   const loadSessionRef = useRef<(id: string) => void>(() => {});
   const fetchPageRef = useRef<(cursor: string) => void>(() => {});
   // The list is paged by the server: the ids of the page on show, and the cursor of the next one.
@@ -660,7 +674,7 @@ export function LiveStreamingView() {
     .filter(s => !removedIds.has(s.sessionId));
   // A linked session is shown alone, whatever the time range, search and non-LLM filter say.
   const focused = focusId ? Array.from(activeSessions.values()).filter(s => s.sessionId === focusId) : null;
-  const openSession = openId ? activeSessions.get(openId) : undefined;
+  const openSession = openId && !removedIds.has(openId) ? activeSessions.get(openId) : undefined;
   const sessions = focused ?? pageSessions;
   const activeLiveSessions = sessions
     .filter(s => s.status === 'active')
@@ -782,6 +796,7 @@ export function LiveStreamingView() {
                 onRemove={() => {
                   setRemovedIds(prev => new Set(prev).add(session.sessionId));
                   actions.removeSession(session.sessionId);
+                  if (openId === session.sessionId) setOpenId(null);
                   if (selectedGoldenId === session.sessionId) setSelectedGoldenId(null);
                   setComparisonSessionIds(prev => {
                     if (!prev.has(session.sessionId)) return prev;

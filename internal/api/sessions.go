@@ -1074,6 +1074,25 @@ type sessionScopedUpdate struct {
 }
 
 // List returns every session's summary, oldest first.
+// TenantCounts is how many sessions each tenant key has: the whole archive when there is one, else what is in
+// memory.
+func (s *SessionStore) TenantCounts() map[string]int {
+	if s.store != nil {
+		if counts, err := s.store.TenantCounts(); err == nil {
+			return counts
+		} else {
+			logx.Warnf("session archive: counting tenants: %v", err)
+		}
+	}
+	counts := map[string]int{}
+	for _, sum := range s.List() {
+		for _, k := range sum.Tenants {
+			counts[k]++
+		}
+	}
+	return counts
+}
+
 func (s *SessionStore) List() []SessionSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()

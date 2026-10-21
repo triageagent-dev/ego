@@ -120,7 +120,7 @@ export function useTenantNames(): void {
 
 export async function fetchTenants(): Promise<TenantOption[]> {
   const res = await fetch('/api/tenants');
-  if (!res.ok) return [];
+  if (!res.ok) throw new Error(`tenants: HTTP ${res.status}`);
   const body = await res.json();
   const options = (body.data ?? []) as TenantOption[];
   setNames(options);
@@ -129,8 +129,9 @@ export async function fetchTenants(): Promise<TenantOption[]> {
 
 const OPTIONS_REFRESH_MS = 60_000;
 
-/** The tenants the reader may pick from, refreshed every minute; null until the first answer. A remembered pick the
- * role no longer covers is dropped rather than shown as an empty view. */
+/** The tenants the reader may pick from, refreshed every minute; null until the first answer. A refresh that fails
+ * (a sign-in that lapsed, a rollout) keeps the last list, so the pick is not judged against an empty one. A
+ * remembered pick that a successful answer does not cover is dropped rather than shown as an empty view. */
 export function useTenantOptions(): TenantOption[] | null {
   const picked = useSelectedTenant();
   const [options, setOptions] = useState<TenantOption[] | null>(null);
@@ -140,7 +141,9 @@ export function useTenantOptions(): TenantOption[] | null {
     const load = () =>
       fetchTenants()
         .then((o) => active && setOptions(o))
-        .catch(() => active && setOptions([]));
+        .catch(() => {
+          // keep the previous list; a transient failure must not reset the pick
+        });
     load();
     const id = setInterval(load, OPTIONS_REFRESH_MS);
     return () => {

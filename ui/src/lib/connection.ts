@@ -90,6 +90,10 @@ async function health(): Promise<{ version?: string } | null> {
   }
 }
 
+// Counts the health probes started on close; an answer from an older probe, or one that lands after the socket
+// reopened, must not overwrite the state the live socket set.
+let probeSeq = 0;
+
 function connect() {
   if (!started || ws) return;
   set({ feed: 'connecting' });
@@ -99,6 +103,7 @@ function connect() {
   // A handler of a socket that was replaced or stopped must not touch the current state.
   socket.onopen = () => {
     if (ws !== socket) return;
+    probeSeq++;
     backoff = 1_000;
     lastSeen = Date.now();
     set({ server: 'up', feed: 'open', checkedAt: Date.now() });
@@ -125,7 +130,11 @@ function connect() {
     ws = null;
     if (!started) return;
     set({ feed: 'closed', checkedAt: Date.now() });
-    void health().then((h) => started && set({ server: h ? 'up' : 'down', checkedAt: Date.now() }));
+    const probe = ++probeSeq;
+    void health().then((h) => {
+      if (!started || probe !== probeSeq) return;
+      set({ server: h ? 'up' : 'down', checkedAt: Date.now() });
+    });
     retryTimer = setTimeout(() => {
       retryTimer = null;
       connect();

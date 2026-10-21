@@ -21,7 +21,7 @@ import (
 type uiFiles struct {
 	fsys  fs.FS
 	mu    sync.Mutex
-	files map[string]*uiFile // nil value: the file does not exist
+	files map[string]*uiFile
 }
 
 type uiFile struct {
@@ -42,20 +42,22 @@ func (u *uiFiles) load(name string) *uiFile {
 	if f, ok := u.files[name]; ok {
 		return f
 	}
-	var f *uiFile
-	if raw, err := fs.ReadFile(u.fsys, name); err == nil {
-		sum := sha256.Sum256(raw)
-		f = &uiFile{raw: raw, etag: `"` + hex.EncodeToString(sum[:8]) + `"`, ctype: mime.TypeByExtension(path.Ext(name))}
-		if f.ctype == "" {
-			f.ctype = http.DetectContentType(raw)
-		}
-		if len(raw) >= minGzipBytes && compressible(f.ctype) {
-			var buf bytes.Buffer
-			zw, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
-			_, _ = zw.Write(raw)
-			if zw.Close() == nil && buf.Len() < len(raw) {
-				f.gz = buf.Bytes()
-			}
+	// A miss is not remembered: the set of names that do not exist is unbounded, and the caller chooses them.
+	raw, err := fs.ReadFile(u.fsys, name)
+	if err != nil {
+		return nil
+	}
+	sum := sha256.Sum256(raw)
+	f := &uiFile{raw: raw, etag: `"` + hex.EncodeToString(sum[:8]) + `"`, ctype: mime.TypeByExtension(path.Ext(name))}
+	if f.ctype == "" {
+		f.ctype = http.DetectContentType(raw)
+	}
+	if len(raw) >= minGzipBytes && compressible(f.ctype) {
+		var buf bytes.Buffer
+		zw, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+		_, _ = zw.Write(raw)
+		if zw.Close() == nil && buf.Len() < len(raw) {
+			f.gz = buf.Bytes()
 		}
 	}
 	u.files[name] = f

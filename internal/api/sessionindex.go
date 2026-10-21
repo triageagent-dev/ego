@@ -229,6 +229,29 @@ type sessionPageFilter struct {
 	scored   *bool
 }
 
+// TenantCounts counts the indexed sessions of every tenant key, over the whole archive. The tenant switcher is
+// built from it, so a tenant whose sessions left memory, or that is quiet since a restart, is still offered.
+func (s *SQLiteStore) TenantCounts() (map[string]int, error) {
+	rows, err := s.db.Query(`SELECT tenants FROM session_index WHERE tenants != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var tenants string
+		if err := rows.Scan(&tenants); err != nil {
+			return nil, err
+		}
+		for _, k := range strings.Split(strings.Trim(tenants, indexSep), indexSep) {
+			if k != "" {
+				counts[k]++
+			}
+		}
+	}
+	return counts, rows.Err()
+}
+
 // tenantLike narrows the tenants column for a tenant pick; ok is false for patterns SQL cannot express, which the
 // Go check still applies.
 func tenantLike(want string) (string, bool) {

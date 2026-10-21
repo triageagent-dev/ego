@@ -62,8 +62,9 @@ func newTenantOption(key string, sessions int) tenantOption {
 }
 
 // tenantsHandler implements GET /api/tenants: the tenants the caller may switch between. They come from the
-// sessions in memory, narrowed to the caller's grants, so a limited user is only ever offered their own. A tenant
-// that left only usage rows behind is not listed, and neither are senders with no data yet.
+// sessions in the archive (in memory without one), narrowed to the caller's grants, so a limited user is only ever
+// offered their own. A tenant that left only usage rows behind is not listed, and neither are senders with no
+// data yet.
 func tenantsHandler(store *SessionStore, names *TenantNames) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -75,16 +76,12 @@ func tenantsHandler(store *SessionStore, names *TenantNames) http.HandlerFunc {
 			writeEvaluateError(w, http.StatusForbidden, "this view is not available to an agent-scoped role")
 			return
 		}
-		counts := map[string]int{}
-		for _, s := range store.List() {
-			for _, k := range s.Tenants {
-				if info.AllowsAnyTenant([]string{k}) {
-					counts[k]++
-				}
-			}
-		}
+		counts := store.TenantCounts()
 		out := make([]tenantOption, 0, len(counts))
 		for k, n := range counts {
+			if !info.AllowsAnyTenant([]string{k}) {
+				continue
+			}
 			o := newTenantOption(k, n)
 			o.Name = names.Name(k)
 			out = append(out, o)
