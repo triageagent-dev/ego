@@ -1,9 +1,8 @@
 import React, { useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { useUiMode } from '../../lib/mode';
 
-// A view's title and subtitle are drawn in the classic layout's header bar, which has the room, and above the view
-// in the terminal layout, which has no header. The view renders them once; where they land depends on the mode.
+// A view's title and subtitle are drawn in the header bar, which has the room; until the bar has mounted they are
+// drawn in the view itself. The view renders them once.
 let slot: HTMLElement | null = null;
 const listeners = new Set<() => void>();
 
@@ -27,8 +26,7 @@ interface PageTitleProps {
 }
 
 export const PageTitle: React.FC<PageTitleProps> = ({ children, className, style }) => {
-  const [mode] = useUiMode();
   const el = useSyncExternalStore(subscribe, () => slot);
-  if (mode === 'classic' && el) return createPortal(children, el);
+  if (el) return createPortal(children, el);
   return <div className={className} style={style}>{children}</div>;
 };

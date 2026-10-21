@@ -29,7 +29,7 @@ const readCollapsed = (): boolean => {
   }
 };
 
-// The classic shell: the same six views as the tab bar, in a left sidebar.
+// The views in a left sidebar, with the flags and the day's usage under them.
 export const Sidebar: React.FC = () => {
   const { actions, state } = useTraceContext();
   const active = tabForView(state.currentView);

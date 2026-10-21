@@ -1,23 +1,23 @@
-/* ego - terminal-style theme: monospace, thin rules, titled boxes. */
+/* ego theme: roomy, rounded, a proportional face, with the sidebar shell. */
 :root {
   /* Surfaces */
-  --bg-primary: #14161f;
-  --bg-surface: #1b1d2b;
-  --bg-elevated: #20222f;
-  --card-bg: #1b1d2b;
-  --bg-selected: #2b2547;
+  --bg-primary: #1a1d24;
+  --bg-surface: #252a36;
+  --bg-elevated: #2d3342;
+  --card-bg: #252a36;
+  --bg-selected: rgba(181, 171, 252, 0.14);
 
   /* Text */
-  --text-primary: #e9e9ed;
-  --text-secondary: #c9ccdb;
-  --text-tertiary: #8a8ea3;
-  --text-muted: #6f7387;
+  --text-primary: #e8eef3;
+  --text-secondary: #a8b2c1;
+  --text-tertiary: #6b7586;
+  --text-muted: #6b7586;
 
   /* Accents */
   --accent-primary: #b5abfc;
   --accent-purple: #a79ff0;
-  --accent-cyan: #67e8f9;
-  --accent-magenta: #e879f9;
+  --accent-cyan: #b5abfc;
+  --accent-magenta: #b5abfc;
   --accent-lime: #4ade80;
   --accent-orange: #f59e0b;
 
@@ -28,10 +28,10 @@
   --status-info: #60a5fa;
 
   /* Rules */
-  --border: #24263a;
-  --border-default: #3a3d55;
+  --border: #3a4052;
+  --border-default: #3a4052;
   --border-focus: #b5abfc;
-  --radius: 3px;
+  --radius: 6px;
 
   /* Glows */
   --glow-success: 0 0 12px rgba(74, 222, 128, 0.25);
@@ -39,46 +39,13 @@
   --glow-info: 0 0 12px rgba(181, 171, 252, 0.2);
   --glow-warning: 0 0 12px rgba(245, 158, 11, 0.25);
 
-  /* Type: one monospace face everywhere */
-  --font-mono: Menlo, 'JetBrains Mono', 'SF Mono', Consolas, monospace;
-  --font-display: var(--font-mono);
-  --font-body: var(--font-mono);
-  --body-size: 13px;
-
-  /* Density of the data views (see components/ui/page.ts) */
-  --page-pad: 12px 18px 28px;
-  --title-size: 15px;
-  --title-case: lowercase;
-  --tile-pad: 7px 14px;
-  --tile-value: 1.2rem;
-  --card-surface: transparent;
-}
-
-/* classic: roomier, rounded, proportional font, with the sidebar shell */
-:root[data-mode='classic'] {
-  --bg-primary: #1a1d24;
-  --bg-surface: #252a36;
-  --bg-elevated: #2d3342;
-  --card-bg: #252a36;
-  --bg-selected: rgba(181, 171, 252, 0.14);
-
-  --text-primary: #e8eef3;
-  --text-secondary: #a8b2c1;
-  --text-tertiary: #6b7586;
-  --text-muted: #6b7586;
-
-  --accent-cyan: #b5abfc;
-  --accent-magenta: #b5abfc;
-
-  --border: #3a4052;
-  --border-default: #3a4052;
-  --radius: 6px;
-
+  /* Type */
   --font-mono: 'IBM Plex Mono', Menlo, monospace;
   --font-display: 'Archivo', sans-serif;
   --font-body: 'Archivo', sans-serif;
   --body-size: 14px;
 
+  /* Density of the data views (see components/ui/page.ts) */
   --page-pad: 28px 32px 48px;
   --title-size: 1.5rem;
   --title-case: none;

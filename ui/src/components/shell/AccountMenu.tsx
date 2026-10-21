@@ -4,11 +4,10 @@ import { ChevronDown, LogIn, LogOut, Settings, User } from 'lucide-react';
 import { clearFlags } from '../../lib/flagged';
 import { useMe } from '../../lib/me';
 import { setSelectedTenant, useSelectedTenant, useTenantOptions } from '../../lib/tenant';
-import { ModeSwitch } from './ModeSwitch';
 import { TenantPicker } from './TenantPicker';
 
-// The classic header's account menu: the tenant picker, the interface style and the way out. It is there without a
-// sign-in too (a local server has none), as the home of the style switch.
+// The header's account menu: the tenant picker, the settings and the way out. It is there without a sign-in too (a
+// local server has none), as the home of the tenant picker and the settings.
 export const AccountMenu: React.FC = () => {
   const me = useMe();
   const options = useTenantOptions();
@@ -77,10 +76,6 @@ export const AccountMenu: React.FC = () => {
               <span css={noAccessStyle} title="No role binding covers you: ask an admin to add your GitHub team">no access</span>
             </div>
           )}
-          <div css={rowStyle}>
-            <span css={mutedStyle}>interface</span>
-            <ModeSwitch />
-          </div>
           <div css={dividerStyle} />
           <button
             css={itemStyle}
@@ -169,10 +164,6 @@ const rowStyle = css`
   justify-content: space-between;
   gap: 12px;
   padding: 5px 6px;
-`;
-
-const mutedStyle = css`
-  color: var(--text-tertiary);
 `;
 
 const noAccessStyle = css`

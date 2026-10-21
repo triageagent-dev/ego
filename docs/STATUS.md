@@ -29,7 +29,7 @@ What ego supports today, and what it does not.
 - Eval sets: build from a golden session, save, edit, download.
 - Session spans with attributes and errors; readable rendering of long prompts and answers.
 - Token usage ledger (`/api/usage`) from `gen_ai.usage.*`, grouped by call kind, tenant, model and service.
-- Failed sessions (`GET /api/online/failed?hours=24&limit=5`): the sessions with an online score below its threshold (status `failed`; an errored metric is not a failure), the one scored last first, limited to a tenant-limited role's tenants. The classic sidebar shows them behind a red flag (a green one when there are none).
+- Failed sessions (`GET /api/online/failed?hours=24&limit=5`): the sessions with an online score below its threshold (status `failed`; an errored metric is not a failure), the one scored last first, limited to a tenant-limited role's tenants. The sidebar shows them behind a red flag (a green one when there are none).
 - Caps and limits, read only (`GET /api/usage/limits`, `usagelimits.go`): the interactive evaluation's daily judge tokens, concurrency and per-request bounds, the online budget (not for tenant- or agent-limited roles), and the session and usage retention, each with what is used where it is counted. The UI shows them on the settings page (account menu), beside the evaluation defaults (judge model, pass threshold, trajectory match type) it keeps per browser.
 - Persistence with `--session-db` (SQLite): sessions, runs, eval sets, role bindings; bounded memory
   (`--session-memory`) and retention (`--session-retention`).

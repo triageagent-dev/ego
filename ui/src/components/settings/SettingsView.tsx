@@ -5,7 +5,6 @@ import { useLiveData } from '../../lib/connection';
 import { useMe } from '../../lib/me';
 import type { LimitItem } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
-import { ModeSwitch } from '../shell/ModeSwitch';
 import { VersionLink } from '../shell/VersionLink';
 import { errorStyle, pageStyle, subtitleStyle, tileLabelStyle, tilesStyle, tileStyle, tileSubStyle, tileValueStyle, titleStyle } from '../ui/page';
 import { EvalSettingsForm } from './EvalSettingsForm';
@@ -71,7 +70,7 @@ export const SettingsView: React.FC = () => {
       <header css={headerRowStyle}>
         <PageTitle>
           <h1 css={titleStyle}>settings</h1>
-          <p css={subtitleStyle}>the evaluation defaults, the limits this server runs with, and the interface</p>
+          <p css={subtitleStyle}>the evaluation defaults and the limits this server runs with</p>
         </PageTitle>
       </header>
 
@@ -98,14 +97,6 @@ export const SettingsView: React.FC = () => {
             <h2 css={sectionTitleStyle}>evaluation</h2>
             <p css={hintStyle}>Used by every evaluation you start; kept in this browser.</p>
             <EvalSettingsForm showTrajectory />
-          </section>
-
-          <section css={sectionStyle}>
-            <h2 css={sectionTitleStyle}>interface</h2>
-            <div css={lineStyle}>
-              <span css={rowLabelStyle}>Style</span>
-              <ModeSwitch />
-            </div>
           </section>
 
           <section css={sectionStyle}>

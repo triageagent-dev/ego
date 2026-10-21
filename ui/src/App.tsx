@@ -9,10 +9,8 @@ import { LiveStreamingView } from './components/streaming/LiveStreamingView';
 import { RunsView } from './components/runs/RunsView';
 import { UsageView } from './components/usage/UsageView';
 import { QualityView } from './components/quality/QualityView';
-import { TabBar } from './components/shell/TabBar';
 import { ClassicHeader } from './components/shell/ClassicHeader';
 import { Sidebar } from './components/shell/Sidebar';
-import { useUiMode } from './lib/mode';
 import { startConnectionMonitor } from './lib/connection';
 import { TABS, tabForView, viewForHash } from './components/shell/routes';
 import { SettingsView } from './components/settings/SettingsView';
@@ -24,7 +22,6 @@ function useShellNavigation() {
   const { state, actions } = useTraceContext();
   const { currentView } = state;
   const { setCurrentView } = actions;
-  const [mode, setMode] = useUiMode();
 
   // The hash is read at load and when it really changes, never when `actions` is rebuilt (it is, whenever the
   // trace files change): that re-ran this with the old hash right after a view switch and switched straight back.
@@ -64,9 +61,6 @@ function useShellNavigation() {
       if (tab) {
         setCurrentView(tab.view);
         e.preventDefault();
-      } else if (e.key === 't') {
-        setMode(mode === 'tui' ? 'classic' : 'tui');
-        e.preventDefault();
       } else if (e.key === '/') {
         const box = document.querySelector<HTMLInputElement>('input[placeholder*="earch"]');
         if (box) {
@@ -77,15 +71,14 @@ function useShellNavigation() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [setCurrentView, mode, setMode]);
+  }, [setCurrentView]);
 }
 
-// How much larger the classic layout is drawn than its pixel sizes say.
-const CLASSIC_ZOOM = 1.15;
+// How much larger the layout is drawn than its pixel sizes say.
+const ZOOM = 1.15;
 
 function AppContent() {
   const { state } = useTraceContext();
-  const [mode] = useUiMode();
   useShellNavigation();
   useEffect(() => startConnectionMonitor(), []);
 
@@ -103,20 +96,16 @@ function AppContent() {
     </main>
   );
 
+  // The layout is drawn in small pixel sizes; zoom scales text, spacing and icons together, so nothing ends up out
+  // of proportion. The height is divided by the zoom to still fill the window.
   return (
-    <div style={mode === 'tui'
-      ? { display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', ['--view-h' as string]: '100vh' }
-      // The classic layout is drawn in small pixel sizes; zoom scales text, spacing and icons together, so
-      // nothing ends up out of proportion. The height is divided by the zoom to still fill the window.
-      : { display: 'flex', flexDirection: 'row', height: `${100 / CLASSIC_ZOOM}vh`, zoom: CLASSIC_ZOOM, overflow: 'hidden', ['--view-h' as string]: `${100 / CLASSIC_ZOOM}vh` }}>
+    <div style={{ display: 'flex', flexDirection: 'row', height: `${100 / ZOOM}vh`, zoom: ZOOM, overflow: 'hidden', ['--view-h' as string]: `${100 / ZOOM}vh` }}>
       <SessionExpiredBanner />
-      {mode === 'tui' ? <TabBar /> : <Sidebar />}
-      {mode === 'tui' ? views : (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
-          <ClassicHeader />
-          {views}
-        </div>
-      )}
+      <Sidebar />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
+        <ClassicHeader />
+        {views}
+      </div>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { ConnectionDot } from './ConnectionDot';
 import { setTitleSlot } from './PageTitle';
 import { VersionLink } from './VersionLink';
 
-// The top bar of the classic layout: the title of the view on the left (drawn by the view, see PageTitle) and the
+// The top bar: the title of the view on the left (drawn by the view, see PageTitle) and the
 // version and the account menu on the right, which holds the tenant picker.
 export const ClassicHeader: React.FC = () => (
   <header css={headerStyle}>
