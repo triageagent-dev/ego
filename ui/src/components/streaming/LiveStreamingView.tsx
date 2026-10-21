@@ -680,8 +680,21 @@ export function LiveStreamingView() {
           display: 'flex',
           gap: '10px',
           alignItems: 'center',
+          justifyContent: 'flex-end',
           flexWrap: 'wrap',
         }}>
+          {focusId && (
+            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+              showing one session{' '}
+              <button
+                onClick={() => { location.hash = '#sessions'; }}
+                style={{ padding: 0, border: 'none', background: 'none', color: 'var(--accent-primary)', font: 'inherit', cursor: 'pointer' }}
+              >
+                show all
+              </button>
+            </span>
+          )}
+          {pagerInRow}
           {completedSessions.length > 0 && (
             <button
               onClick={() => {
@@ -761,46 +774,32 @@ export function LiveStreamingView() {
           />
 
 
-          {focusId && (
-            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
-              showing one session{' '}
+          <div style={{
+            display: 'flex',
+            gap: '2px',
+            padding: '1px',
+            borderRadius: 'var(--radius)',
+            border: '1px solid var(--border-default)',
+          }}>
+            {TIME_RANGES.map(range => (
               <button
-                onClick={() => { location.hash = '#sessions'; }}
-                style={{ padding: 0, border: 'none', background: 'none', color: 'var(--accent-primary)', font: 'inherit', cursor: 'pointer' }}
+                key={range.key}
+                onClick={() => setTimeRange(range.key)}
+                style={{
+                  padding: '2px 9px',
+                  borderRadius: 'var(--radius)',
+                  border: 'none',
+                  background: timeRange === range.key ? 'var(--bg-selected)' : 'transparent',
+                  color: timeRange === range.key ? 'var(--accent-magenta)' : 'var(--text-tertiary)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
               >
-                show all
+                {range.label}
               </button>
-            </span>
-          )}
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            {pagerInRow}
-            <div style={{
-              display: 'flex',
-              gap: '2px',
-              padding: '1px',
-              borderRadius: 'var(--radius)',
-              border: '1px solid var(--border-default)',
-            }}>
-              {TIME_RANGES.map(range => (
-                <button
-                  key={range.key}
-                  onClick={() => setTimeRange(range.key)}
-                  style={{
-                    padding: '2px 9px',
-                    borderRadius: 'var(--radius)',
-                    border: 'none',
-                    background: timeRange === range.key ? 'var(--bg-selected)' : 'transparent',
-                    color: timeRange === range.key ? 'var(--accent-magenta)' : 'var(--text-tertiary)',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {range.label}
-                </button>
-              ))}
-            </div>
+            ))}
           </div>
         </div>
       </div>
