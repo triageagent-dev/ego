@@ -187,6 +187,10 @@ func (e *OnlineEngine) LabelSession(info RoleInfo, by string, in mcptools.LabelI
 	if info.Role != RoleAdmin && info.Role != RoleMember {
 		return nil, &statusError{http.StatusForbidden, "this role cannot label sessions"}
 	}
+	// A label is a person's verdict and the score of record: the agent being judged must not write its own.
+	if info.FromSender {
+		return nil, &statusError{http.StatusForbidden, "a sender token cannot label sessions"}
+	}
 	in.SessionID, in.Metric, in.Note = strings.TrimSpace(in.SessionID), strings.TrimSpace(in.Metric), strings.TrimSpace(in.Note)
 	switch {
 	case in.SessionID == "" || in.Metric == "":

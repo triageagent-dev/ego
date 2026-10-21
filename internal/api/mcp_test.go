@@ -377,6 +377,10 @@ func TestMCPRoute_SenderTokenAuthenticatesAsTenantLimitedMember(t *testing.T) {
 	if _, res := callTool(t, h, coreToken, "list_role_bindings", nil); !res.IsError {
 		t.Error("sender token listed role bindings")
 	}
+	// The agent under evaluation never labels: a label is the score of record, and it would be scoring itself.
+	if _, res := callTool(t, h, coreToken, "label_session", map[string]any{"session_id": "s1", "metric": "m", "verdict": "agree"}); !res.IsError {
+		t.Errorf("sender token labelled a session: %+v", res)
+	}
 
 	// The shared ingest token names no sender and opens nothing; neither does an unknown or missing token.
 	for name, tok := range map[string]string{"shared otlp token": "the-shared-otlp-token", "unknown token": "egs_nope", "no token": ""} {

@@ -274,6 +274,9 @@ type RoleInfo struct {
 	// Unresolved is set when the request's team membership is unknown and a team binding could have changed
 	// its role: the request is refused rather than given defaultRole.
 	Unresolved bool
+	// FromSender is set when a sender's ingest token authenticated the request: the agent under evaluation, not a
+	// person. It may read its findings and register corrections, never label, since a label is the score of record.
+	FromSender bool
 }
 
 // CanWrite reports whether info's role permits any mutating request
@@ -529,7 +532,7 @@ func roleInfoOrOpen(ctx context.Context) RoleInfo {
 func roleForIdentity(r *http.Request, roleStore *RoleStore, org string, ghTokens *githubTokenValidator, id identity) RoleInfo {
 	// A sender's ingest token reads its own tenants and nothing else; no role binding can widen it.
 	if id.Kind == identitySender {
-		return RoleInfo{Role: RoleMember, Tenants: []string{id.Sender + "/*"}}
+		return RoleInfo{Role: RoleMember, Tenants: []string{id.Sender + "/*"}, FromSender: true}
 	}
 	if id.Kind == tokenKindAPI {
 		info := RoleInfo{Role: id.Role, IsAdmin: id.Role == RoleAdmin && len(id.Tenants) == 0}
