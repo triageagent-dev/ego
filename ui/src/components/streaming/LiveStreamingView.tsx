@@ -5,7 +5,7 @@ import { config } from '../../config';
 import { onServerDown, onServerUp, setFeed } from '../../lib/connection';
 import { parseHash } from '../shell/routes';
 import { Pager, PAGE_SIZE, clampPage } from '../ui/Pager';
-import { inTenant, useSelectedTenant } from '../../lib/tenant';
+import { inTenant, tenantName, useSelectedTenant } from '../../lib/tenant';
 import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
 
 type TimeRangeKey = '1h' | '6h' | '12h' | 'day' | '7d' | 'all';
@@ -528,6 +528,9 @@ export function LiveStreamingView() {
 
               return newMap;
             });
+            // The agent, model and tenant badges come from the spans seen so far; the last spans of a session
+            // (a voice session's model turns) arrive after it started, so take the final set from the server.
+            requestResync();
             break;
 
         }
@@ -705,42 +708,30 @@ export function LiveStreamingView() {
   };
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
-  // Mirrors every field SessionCard/SessionMetadata actually display for a
-  // session (model/provider badges, turn+token counts, started date,
-  // session/trace ID, and the arbitrary service.name/service.version-style
-  // resource attrs in session.metadata) rather than a blind JSON.stringify
-  // dump, so "found nothing" searches on those exact visible values work.
+  // Matches what the card header shows: tenant, agent kind, model, provider, ids, root span name, counts and
+  // start time. Conversation text and metadata are left out, so "voice" finds voice sessions and not every
+  // session whose prompt mentions the word.
   const matchesSearch = (s: LiveSession) => {
     if (!normalizedQuery) return true;
 
     const firstModelInfo = s.invocations?.[0]?.modelInfo;
     const modelName = s.metadata?.model || s.liveStats?.model || firstModelInfo?.models?.[0] || '';
-    const providerName = firstModelInfo?.provider || '';
     const totalTokens = (s.liveStats?.totalInputTokens || 0) + (s.liveStats?.totalOutputTokens || 0);
 
     const haystacks: string[] = [
       s.sessionId,
       s.traceId,
       s.evalSetId ?? '',
+      s.rootSpanName ?? '',
+      ...(s.agents ?? []),
+      ...(s.tenants ?? []).flatMap(t => [t, tenantName(t)]),
+      ...(s.models ?? []),
       modelName,
-      providerName,
+      firstModelInfo?.provider || '',
       String(s.invocations?.length ?? ''),
       totalTokens ? String(totalTokens) : '',
       s.startedAt ? new Date(s.startedAt).toLocaleString() : '',
     ];
-
-    for (const inv of s.invocations || []) {
-      if (inv.userText) haystacks.push(inv.userText);
-      if (inv.agentText) haystacks.push(inv.agentText);
-      for (const tc of inv.toolCalls || []) haystacks.push(tc.name);
-      if (inv.modelInfo?.provider) haystacks.push(inv.modelInfo.provider);
-      for (const m of inv.modelInfo?.models || []) haystacks.push(m);
-    }
-
-    for (const [key, value] of Object.entries(s.metadata || {})) {
-      haystacks.push(key);
-      if (value != null) haystacks.push(String(value));
-    }
 
     return haystacks.some(h => h.toLowerCase().includes(normalizedQuery));
   };
