@@ -3,11 +3,11 @@ import { css } from '@emotion/react';
 import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { Run } from '../../lib/types';
+import { formatStarted, modelsLabel } from '../../lib/trace-helpers';
 import {
   STATUS_COLORS,
   evalSetGroup,
   formatDuration,
-  formatTimestamp,
   passRate,
   runDurationMs,
 } from './runHistory';
@@ -25,12 +25,16 @@ export const RunsHistoryTable: React.FC<RunsHistoryTableProps> = ({ runs, onSele
       title: 'When',
       dataIndex: 'createdAt',
       key: 'when',
-      render: (value: string) => <span css={monoStyle}>{formatTimestamp(value)}</span>,
+      width: 130,
+      render: (value: string) => (
+        <span css={monoStyle} title={new Date(value).toLocaleString()}>{formatStarted(value)}</span>
+      ),
     },
     {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
+      width: 100,
       render: (status: Run['status']) => (
         <span css={statusStyle}>
           <span css={dotStyle} style={{ background: STATUS_COLORS[status] }} />
@@ -41,22 +45,27 @@ export const RunsHistoryTable: React.FC<RunsHistoryTableProps> = ({ runs, onSele
     {
       title: 'Eval set',
       key: 'evalSet',
-      render: (_: unknown, run: Run) => (
-        <span css={evalSetCellStyle}>{evalSetGroup(run).label}</span>
-      ),
+      ellipsis: true,
+      render: (_: unknown, run: Run) => {
+        const label = evalSetGroup(run).label;
+        return <span css={evalSetCellStyle} title={label}>{label}</span>;
+      },
     },
     {
       title: 'Agent',
       key: 'agent',
+      width: 170,
+      ellipsis: true,
       render: (_: unknown, run: Run) => {
         const agents = run.summary?.agents;
         if (!Array.isArray(agents) || agents.length === 0) return <span css={mutedStyle}>-</span>;
-        return <span css={agentCellStyle}>{agents.join(', ')}</span>;
+        return <span css={agentCellStyle} title={agents.join('\n')}>{agents.join(', ')}</span>;
       },
     },
     {
       title: 'Traces',
       key: 'traces',
+      width: 80,
       align: 'right',
       render: (_: unknown, run: Run) => (
         <span css={monoStyle}>{run.summary?.trace_count ?? '-'}</span>
@@ -65,6 +74,7 @@ export const RunsHistoryTable: React.FC<RunsHistoryTableProps> = ({ runs, onSele
     {
       title: 'Results',
       key: 'results',
+      width: 130,
       render: (_: unknown, run: Run) => {
         const counts = run.summary?.result_counts;
         if (!counts) return <span css={mutedStyle}>-</span>;
@@ -85,6 +95,7 @@ export const RunsHistoryTable: React.FC<RunsHistoryTableProps> = ({ runs, onSele
     {
       title: 'Pass rate',
       key: 'passRate',
+      width: 140,
       render: (_: unknown, run: Run) => {
         const rate = passRate(run);
         if (rate === null) return <span css={mutedStyle}>-</span>;
@@ -108,6 +119,7 @@ export const RunsHistoryTable: React.FC<RunsHistoryTableProps> = ({ runs, onSele
     {
       title: 'Duration',
       key: 'duration',
+      width: 100,
       align: 'right',
       render: (_: unknown, run: Run) => (
         <span css={monoStyle}>{formatDuration(runDurationMs(run))}</span>
@@ -116,10 +128,12 @@ export const RunsHistoryTable: React.FC<RunsHistoryTableProps> = ({ runs, onSele
     {
       title: 'Models',
       key: 'models',
+      width: 190,
+      ellipsis: true,
       render: (_: unknown, run: Run) => {
         const models = run.summary?.performance_metrics?.models;
         if (!Array.isArray(models) || models.length === 0) return <span css={mutedStyle}>-</span>;
-        return <span css={modelsStyle}>{models.join(', ')}</span>;
+        return <span css={modelsStyle} title={models.join('\n')}>{modelsLabel(models)}</span>;
       },
     },
   ];
@@ -132,6 +146,7 @@ export const RunsHistoryTable: React.FC<RunsHistoryTableProps> = ({ runs, onSele
         dataSource={rows}
         pagination={{ pageSize: 10, hideOnSinglePage: true }}
         size="small"
+        tableLayout="fixed"
         onRow={run => ({
           onClick: () => onSelectRun?.(run.runId),
           style: { cursor: onSelectRun ? 'pointer' : 'default' },
@@ -142,6 +157,9 @@ export const RunsHistoryTable: React.FC<RunsHistoryTableProps> = ({ runs, onSele
 };
 
 const tableStyle = css`
+  width: 100%;
+  min-width: 0;
+
   .ant-table {
     background: var(--bg-surface);
     border: 1px solid var(--border-default);

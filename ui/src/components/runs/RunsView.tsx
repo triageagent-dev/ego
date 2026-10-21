@@ -270,13 +270,19 @@ const emptyStateStyle = css`
 
 
 
+// minmax(0, ...) and min-width: 0: a chart canvas keeps the width it had, and with plain 1fr columns that pushed
+// the page wider than the table below it.
 const chartsGridStyle = css`
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 12px;
 
+  > * {
+    min-width: 0;
+  }
+
   @media (max-width: 1100px) {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 `;
