@@ -50,22 +50,22 @@ func usageLimits(store *SessionStore, online *OnlineEngine, info RoleInfo, now t
 
 	capTokens, spent, running := interactiveEval.snapshot(now)
 	out = append(out,
-		limitDTO{Key: "eval.tokens", Label: "Judge tokens per day", Group: "Evaluation you start", Limit: capTokens, Used: counted(spent), Unit: "tokens",
+		limitDTO{Key: "eval.tokens", Label: "Judge tokens per day", Group: "Evaluate page", Limit: capTokens, Used: counted(spent), Unit: "tokens",
 			Note: "Shared by everyone who evaluates here; resets at 00:00 UTC."},
-		limitDTO{Key: "eval.running", Label: "Evaluations at once", Group: "Evaluation you start", Limit: maxConcurrentEvals, Used: counted(int64(running)), Unit: "count"},
-		limitDTO{Key: "eval.traces", Label: "Traces in one evaluation", Group: "Evaluation you start", Limit: maxTraceFiles, Unit: "count"},
-		limitDTO{Key: "eval.metrics", Label: "Metrics in one evaluation", Group: "Evaluation you start", Limit: maxEvaluators, Unit: "count"},
-		limitDTO{Key: "eval.samples", Label: "Judge samples per metric", Group: "Evaluation you start", Limit: maxJudgeSamples, Unit: "count"},
-		limitDTO{Key: "eval.rubrics", Label: "Rubrics per metric", Group: "Evaluation you start", Limit: maxRubrics, Unit: "count"},
+		limitDTO{Key: "eval.running", Label: "Evaluations at once", Group: "Evaluate page", Limit: maxConcurrentEvals, Used: counted(int64(running)), Unit: "count"},
+		limitDTO{Key: "eval.traces", Label: "Traces in one evaluation", Group: "Evaluate page", Limit: maxTraceFiles, Unit: "count"},
+		limitDTO{Key: "eval.metrics", Label: "Metrics in one evaluation", Group: "Evaluate page", Limit: maxEvaluators, Unit: "count"},
+		limitDTO{Key: "eval.samples", Label: "Judge samples per metric", Group: "Evaluate page", Limit: maxJudgeSamples, Unit: "count"},
+		limitDTO{Key: "eval.rubrics", Label: "Rubrics per metric", Group: "Evaluate page", Limit: maxRubrics, Unit: "count"},
 	)
 
 	// The online budget is not per tenant, so a role limited to tenants or agents does not see it, as on the quality page.
 	if online != nil && !info.Scoped() && !info.TenantScoped() {
 		b := online.budget.Status(now)
 		out = append(out,
-			limitDTO{Key: "online.tokens", Label: "Judge tokens per day", Group: "Online scoring", Limit: b.Caps.JudgeTokensPerDay, Used: counted(b.Spent.JudgeTokens), Unit: "tokens",
+			limitDTO{Key: "online.tokens", Label: "Judge tokens per day", Group: "Live scoring", Limit: b.Caps.JudgeTokensPerDay, Used: counted(b.Spent.JudgeTokens), Unit: "tokens",
 				Note: "Scoring of live sessions and the findings pass; resets at 00:00 UTC."},
-			limitDTO{Key: "online.jev", Label: "Jev calls per day", Group: "Online scoring", Limit: b.Caps.JevCallsPerDay, Used: counted(b.Spent.JevCalls), Unit: "calls"},
+			limitDTO{Key: "online.jev", Label: "Jev calls per day", Group: "Live scoring", Limit: b.Caps.JevCallsPerDay, Used: counted(b.Spent.JevCalls), Unit: "calls"},
 		)
 	}
 

@@ -7,7 +7,7 @@ import type { LimitItem } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
 import { ModeSwitch } from '../shell/ModeSwitch';
 import { VersionLink } from '../shell/VersionLink';
-import { errorStyle, pageStyle, subtitleStyle, titleStyle } from '../ui/page';
+import { errorStyle, pageStyle, subtitleStyle, tileLabelStyle, tilesStyle, tileStyle, tileSubStyle, tileValueStyle, titleStyle } from '../ui/page';
 import { EvalSettingsForm } from './EvalSettingsForm';
 
 // 1,234,567 -> 1.2M
@@ -23,24 +23,27 @@ function amount(n: number, unit: LimitItem['unit']): string {
   return short(n);
 }
 
-const LimitRow: React.FC<{ item: LimitItem }> = ({ item }) => {
+// One limit as a tile, like the usage page's: the figure in use (or the limit, for one that is not counted), what it is
+// out of, and a thin bar for a running total. Red and amber are for budgets that stop work; a full cache is normal.
+const LimitTile: React.FC<{ item: LimitItem }> = ({ item }) => {
   const unlimited = item.limit === 0;
-  const pct = item.used !== undefined && !unlimited ? Math.min(100, (item.used / item.limit) * 100) : null;
+  const counted = item.used !== undefined;
+  const pct = counted && !unlimited ? Math.min(100, (item.used! / item.limit) * 100) : null;
+  const budget = item.unit === 'tokens' || item.unit === 'calls';
+  const color = !budget ? 'var(--accent-primary)' : pct !== null && pct >= 90 ? 'var(--status-failure)' : pct !== null && pct >= 70 ? 'var(--status-warning)' : 'var(--accent-primary)';
+  const daily = budget ? ' a day' : '';
   return (
-    <div css={rowStyle} title={item.note}>
-      <div css={rowHeadStyle}>
-        <span css={rowLabelStyle}>{item.label}</span>
-        <span css={rowValueStyle}>
-          {item.used !== undefined && <>{amount(item.used, item.unit)} of </>}
-          {unlimited ? 'no limit' : amount(item.limit, item.unit)}
-        </span>
+    <div css={tileStyle} title={item.note}>
+      <div css={tileLabelStyle}>{item.label}</div>
+      <div css={tileValueStyle}>{counted ? short(item.used!) : amount(item.limit, item.unit)}</div>
+      <div css={tileSubStyle}>
+        {counted ? `of ${unlimited ? 'no limit' : amount(item.limit, item.unit) + daily}` : item.unit === 'days' ? 'then deleted' : 'at most'}
       </div>
       {pct !== null && (
         <div css={trackStyle}>
-          <div css={fillStyle} style={{ width: `${pct}%`, background: pct >= 90 ? 'var(--status-failure)' : pct >= 70 ? 'var(--status-warning)' : 'var(--accent-primary)' }} />
+          <div css={fillStyle} style={{ width: `${pct}%`, background: color }} />
         </div>
       )}
-      {item.note && <div css={noteStyle}>{item.note}</div>}
     </div>
   );
 };
@@ -75,6 +78,23 @@ export const SettingsView: React.FC = () => {
       <div css={columnsStyle}>
         <div>
           <section css={sectionStyle}>
+            <h2 css={sectionTitleStyle}>caps and limits</h2>
+            <p css={hintStyle}>Read only: set when the server starts or in its online configuration. Daily budgets reset at 00:00 UTC.</p>
+            {error && <div css={errorStyle}>{error}</div>}
+            {limits === null && !error && <div css={noteStyle}>Loading…</div>}
+            {[...groups.entries()].map(([group, items]) => (
+              <div key={group} css={groupStyle}>
+                <div css={groupTitleStyle}>{group}</div>
+                <div css={tilesStyle}>
+                  {items.map((item) => <LimitTile key={item.key} item={item} />)}
+                </div>
+              </div>
+            ))}
+          </section>
+        </div>
+
+        <div>
+          <section css={sectionStyle}>
             <h2 css={sectionTitleStyle}>evaluation</h2>
             <p css={hintStyle}>Used by every evaluation you start; kept in this browser.</p>
             <EvalSettingsForm showTrajectory />
@@ -104,21 +124,6 @@ export const SettingsView: React.FC = () => {
               <span css={rowLabelStyle}>Server</span>
               <VersionLink />
             </div>
-          </section>
-        </div>
-
-        <div>
-          <section css={sectionStyle}>
-            <h2 css={sectionTitleStyle}>caps and limits · read only</h2>
-            <p css={hintStyle}>Set when the server starts or in its online configuration; not changed here.</p>
-            {error && <div css={errorStyle}>{error}</div>}
-            {limits === null && !error && <div css={noteStyle}>Loading…</div>}
-            {[...groups.entries()].map(([group, items]) => (
-              <div key={group} css={groupStyle}>
-                <div css={groupTitleStyle}>{group}</div>
-                {items.map((item) => <LimitRow key={item.key} item={item} />)}
-              </div>
-            ))}
           </section>
         </div>
       </div>
@@ -182,25 +187,9 @@ const groupStyle = css`
 
 const groupTitleStyle = css`
   margin-bottom: 4px;
-  color: var(--accent-magenta);
+  color: var(--text-muted);
   font-size: 11.5px;
   text-transform: lowercase;
-`;
-
-const rowStyle = css`
-  padding: 5px 0;
-  border-bottom: 1px solid var(--border-subtle);
-
-  &:last-child {
-    border-bottom: none;
-  }
-`;
-
-const rowHeadStyle = css`
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
 `;
 
 const rowLabelStyle = css`
@@ -217,7 +206,7 @@ const rowValueStyle = css`
 
 const trackStyle = css`
   height: 4px;
-  margin-top: 4px;
+  margin-top: 6px;
   border-radius: var(--radius);
   background: var(--bg-elevated);
   overflow: hidden;
