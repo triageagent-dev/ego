@@ -403,24 +403,15 @@ export const UploadView: React.FC = () => {
     <section css={boxStyle}>
           <h2 css={detailsTitleStyle}>traces</h2>
           <p css={detailsHintStyle}>
-            {fromSessions ? 'Loaded from the sessions you picked.' : 'The traces to score. Click a file to edit it.'}
+            The sessions to score. Click one to edit its trace.
           </p>
-          {!fromSessions && (
-            <FileDropZone
-              title="Drop trace files here"
-              description="Upload one or more trace files (.json or .jsonl)"
-              multiple
-              accept=".json,.jsonl"
-              onChange={actions.setTraceFiles}
-            />
-          )}
           {traceCount === 0 && (
             <SessionPicker onUse={(ids) => actions.setTraceFiles(ids.map((id) => new SessionTraceFile(id)))} />
           )}
           {traceCount > 0 && (
             <div css={fileBoxStyle}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-                <span>{traceCount} file(s){fromSessions ? ' loaded from live sessions' : ' selected'}:</span>
+                <span>{traceCount} session{traceCount === 1 ? '' : 's'} selected:</span>
                 <Button size="small" onClick={() => actions.setTraceFiles([])}>Choose others</Button>
               </div>
               {state.traceFiles.map((file, idx) => (

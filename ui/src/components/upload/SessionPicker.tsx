@@ -64,7 +64,7 @@ export const SessionPicker: React.FC<{ onUse: (sessionIds: string[]) => void }> 
   return (
     <div css={wrapStyle}>
       <div css={headStyle}>
-        <span css={titleStyle}>or pick from sessions</span>
+        <span css={titleStyle}>pick the sessions to score</span>
         <input
           css={searchStyle}
           value={query}
