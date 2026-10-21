@@ -754,24 +754,6 @@ export function LiveStreamingView() {
             scored only
           </button>
 
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search sessions…"
-            aria-label="Search sessions"
-            style={{
-              padding: '3px 9px',
-              borderRadius: 'var(--radius)',
-              border: '1px solid var(--border-default)',
-              background: 'transparent',
-              color: 'var(--text-primary)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '12px',
-              width: '170px',
-              outline: 'none',
-            }}
-          />
 
 
           <div style={{
@@ -801,6 +783,24 @@ export function LiveStreamingView() {
               </button>
             ))}
           </div>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search sessions…"
+            aria-label="Search sessions"
+            style={{
+              padding: '3px 9px',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--border-default)',
+              background: 'transparent',
+              color: 'var(--text-primary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '12px',
+              width: '170px',
+              outline: 'none',
+            }}
+          />
         </div>
       </div>
 
