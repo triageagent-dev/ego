@@ -194,11 +194,16 @@ export function LiveStreamingView() {
   }, [selectedGoldenId]);
 
   const mountedRef = useRef(true);
-  // What the user cleared or removed from the view. A re-fetch of the
-  // session list (on connect, or on a resync after dropped events) must not
-  // bring those back. Lives for this page view, as the clear itself does.
-  const [clearedBefore, setClearedBefore] = useState(0);
+  // What the user removed from the view. A re-fetch of the session list (on connect, or on a resync after dropped
+  // events) must not bring it back. Lives for this page view.
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
+  // Only the live sessions are listed. A toggle like the others, remembered per browser, so it can be turned off.
+  const [hideDone, setHideDone] = useState(() => stored('ego.hideDone') === '1');
+  const toggleHideDone = () =>
+    setHideDone((v) => {
+      store('ego.hideDone', v ? '' : '1');
+      return !v;
+    });
 
   useEffect(() => {
     mountedRef.current = true;
@@ -652,8 +657,7 @@ export function LiveStreamingView() {
   const pageSessions = pageIds
     .map(id => activeSessions.get(id))
     .filter((s): s is LiveSession => !!s)
-    .filter(s => !removedIds.has(s.sessionId))
-    .filter(s => !(s.status === 'complete' && Date.parse(s.startedAt) < clearedBefore));
+    .filter(s => !removedIds.has(s.sessionId));
   // A linked session is shown alone, whatever the time range, search and non-LLM filter say.
   const focused = focusId ? Array.from(activeSessions.values()).filter(s => s.sessionId === focusId) : null;
   const openSession = openId ? activeSessions.get(openId) : undefined;
@@ -662,10 +666,10 @@ export function LiveStreamingView() {
     .filter(s => s.status === 'active')
     .sort(byStartedAtDesc);
   const completedSessions = sessions
-    .filter(s => s.status === 'complete')
+    .filter(s => s.status === 'complete' && !hideDone)
     .sort(byStartedAtDesc);
   const allSessions = [...activeLiveSessions, ...completedSessions];
-  const renderPager = (inline: boolean) => !focused && (pageIdx > 0 || nextCursor) ? (
+  const renderPager = (inline: boolean) => !focused && !hideDone && (pageIdx > 0 || nextCursor) ? (
     <CursorPager
       inline={inline}
       page={pageIdx}
@@ -685,12 +689,20 @@ export function LiveStreamingView() {
   const listBody = allSessions.length === 0 ? (
     <>
     <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
-      {debouncedQuery || pickedTenant
+      {hideDone ? 'no live sessions, the finished ones are hidden' : debouncedQuery || pickedTenant
         ? 'no sessions match'
         : timeRange === 'all'
           ? 'no sessions'
           : 'no sessions in this range'}
-      {timeRange !== 'all' && (
+      {hideDone && (
+        <button
+          onClick={toggleHideDone}
+          style={{ marginLeft: '10px', padding: 0, border: 'none', background: 'none', color: 'var(--accent-primary)', font: 'inherit', cursor: 'pointer' }}
+        >
+          show finished
+        </button>
+      )}
+      {!hideDone && timeRange !== 'all' && (
         <button
           onClick={() => setTimeRange('all')}
           style={{
@@ -823,30 +835,23 @@ export function LiveStreamingView() {
             </span>
           )}
           {pagerInRow}
-          {completedSessions.length > 0 && (
-            <button
-              onClick={() => {
-                setClearedBefore(Date.now());
-                actions.clearAllSessions();
-                if (selectedGoldenId && completedSessions.some(s => s.sessionId === selectedGoldenId)) {
-                  setSelectedGoldenId(null);
-                }
-              }}
-              title="Hide the finished sessions on this page until they are loaded again"
-              style={{
-                padding: '3px 9px',
-                borderRadius: 'var(--radius)',
-                border: '1px solid var(--border-default)',
-                background: 'transparent',
-                color: 'var(--text-tertiary)',
-                fontSize: '12px',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              hide done
-            </button>
-          )}
+          <button
+            onClick={toggleHideDone}
+            aria-pressed={hideDone}
+            title="List only the live sessions"
+            style={{
+              padding: '3px 9px',
+              borderRadius: 'var(--radius)',
+              border: `1px solid ${hideDone ? 'var(--accent-primary)' : 'var(--border-default)'}`,
+              background: 'transparent',
+              color: hideDone ? 'var(--text-primary)' : 'var(--text-tertiary)',
+              fontSize: '12px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            hide done
+          </button>
           <button
             onClick={toggleShowNoLLM}
             aria-pressed={showNoLLM}

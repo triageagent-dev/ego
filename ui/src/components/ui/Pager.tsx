@@ -74,6 +74,14 @@ export const CursorPager: React.FC<CursorPagerProps> = ({ page, hasNext, onFirst
 
 const inlinePagerStyle = css`
   padding: 0;
+  font-size: 12px;
+
+  button {
+    min-width: 0;
+    padding: 3px 9px;
+    font-size: 12px;
+    line-height: normal;
+  }
 `;
 
 const pagerStyle = css`
