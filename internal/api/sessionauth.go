@@ -28,9 +28,16 @@ type identity struct {
 	Tenants  []string
 	TokenID  string
 	Expiry   int64
+	Sender   string // identitySender only: the sender whose ingest token authenticated the request.
 }
 
 const identityGitHub = "github"
+
+// identitySender is a sender authenticated by its ingest token, on /mcp only; Username is "sender:<id>".
+const identitySender = "sender"
+
+// mcpPath is where the MCP tools are served.
+const mcpPath = "/mcp"
 
 func withIdentity(ctx context.Context, id identity) context.Context {
 	return context.WithValue(ctx, identityContextKey{}, id)
@@ -81,8 +88,9 @@ func authenticate(r *http.Request, secret string, ghTokens *githubTokenValidator
 	return identity{}, false
 }
 
-// apiPathPrefixes.
-var apiPathPrefixes = []string{"/api/", "/stream"}
+// apiPathPrefixes are the paths whose clients are programs: an unauthenticated request gets a 401, not a redirect to
+// the login page.
+var apiPathPrefixes = []string{"/api/", "/stream", mcpPath}
 
 func isAPIPath(path string) bool {
 	for _, prefix := range apiPathPrefixes {
@@ -116,5 +124,28 @@ func requireSession(secret string, ghTokens *githubTokenValidator, revoked *revo
 			return
 		}
 		http.Redirect(w, r, "/auth/login", http.StatusFound)
+	})
+}
+
+// senderGate lets a sender's ingest token through to direct, the role-resolving handler, as the sender itself:
+// the agent that sends its traces with that token reads its own verdicts with it, and needs no second credential.
+// Any other request, including one bearing the shared --otlp-token (which names no sender), goes to session, the
+// usual login check. It applies to the MCP path only, so a token minted for sending traces opens nothing else.
+//
+// Without a session secret there is no login and every caller is an admin, and without a SenderStore there are no
+// sender tokens: the gate is then inert and session is returned as it is.
+func senderGate(secret string, senders *SenderStore, direct, session http.Handler) http.Handler {
+	if secret == "" || senders == nil {
+		return session
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if token, ok := bearerToken(r.Header.Get("Authorization")); ok {
+			if sender, found := senders.Resolve(token); found {
+				id := identity{Username: "sender:" + sender, Kind: identitySender, Sender: sender}
+				direct.ServeHTTP(w, r.WithContext(withIdentity(r.Context(), id)))
+				return
+			}
+		}
+		session.ServeHTTP(w, r)
 	})
 }

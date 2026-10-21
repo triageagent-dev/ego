@@ -29,7 +29,7 @@ What ego supports today, and what it does not.
 - Persistence with `--session-db` (SQLite): sessions, runs, eval sets, role bindings; bounded memory
   (`--session-memory`) and retention (`--session-retention`).
 - Online evaluation: sampling, per-kind evaluators, daily judge budget, regression detection, Discord, webhook
-  and event notifications (`docs/online-evaluation.md`).
+  and event notifications (`docs/online-evaluation.md`); `GET /api/online/quality`, `/api/online/alerts/{id}/explain` and `/api/online/sessions/{id}/explain` back the MCP tools of the same names.
 
 **Access**
 - GitHub OAuth restricted to an org, signed session cookies, bearer tokens from `ego auth mint-token`, or a raw
@@ -37,7 +37,7 @@ What ego supports today, and what it does not.
 - Roles `admin`, `member`, `viewer`, optionally scoped to agent names (sessions, traces, runs and the live feed;
   Tokens, Quality and eval sets are closed to a scoped role); inert when no session secret is set. Unknown team
   membership is refused, never defaulted. A session with several agents is visible to a role scoped to any one.
-- Tenants (`senders.go`, `ingestauth.go`, `tenantview.go`): a token identifies a sender, a sender sends many tenants labelled on its spans, and a tenant is `<sender>/<label>`. Grants (role bindings, `mint-token --tenants`) name keys, `<sender>/*` or `*`; `--default-role none` gives nobody access without a grant; the UI has a tenant switcher (`/api/tenants`, `?tenant=` narrows usage and quality); an admin can give a tenant key a display name (`/api/admin/tenant-names`, `tenantnames.go`). Tenant-limited roles get no runs, eval sets, budget status or evaluations.
+- Tenants (`senders.go`, `ingestauth.go`, `tenantview.go`): a token identifies a sender, a sender sends many tenants labelled on its spans, and a tenant is `<sender>/<label>`. Grants (role bindings, `mint-token --tenants`) name keys, `<sender>/*` or `*`; `--default-role none` gives nobody access without a grant; the UI has a tenant switcher (`/api/tenants`, `?tenant=` narrows usage and quality); an admin can give a tenant key a display name (`/api/admin/tenant-names`, `tenantnames.go`). Tenant-limited roles get no eval sets, budget status or evaluations. They read runs and run results only for the online evaluation runs of their tenants (`online_evals` maps a run to its tenant); every other run stays closed to them.
 - Interactive evaluation is bounded: at most 4 run at once, 50 trace files, 20 evaluators and 8 judge samples per request, one daily judge-token cap shared by all callers (429 when used up), 8192 output tokens per judge call. Vertex managed evaluation and Jev report no token counts and are limited by the concurrency and request caps only.
 - Judge prompts: quoted trace text is fenced (block markers in it are defanged) and every call starts with a notice that quoted text is data. This lowers prompt-injection risk, it does not remove it; Jev (decision) prompts are not covered. Chat notifications strip markup and mentions from span-derived names.
 - Tokens (`token.go`): cookies and API tokens are different kinds, each with an id and issue time; API tokens carry the role they were minted with; an admin can revoke one token or everything issued to a subject (`/api/admin/revocations`), and logout revokes its cookie. The format changed in this release: older cookies and minted tokens stop working and must be re-minted. A GitHub org member removed from the org keeps a cookie for up to 12 h.
@@ -45,9 +45,12 @@ What ego supports today, and what it does not.
 - Cross-origin POST/PUT/DELETE and WebSocket upgrades from a browser are refused (`origin.go`); logout is POST-only. DNS rebinding of the no-login local mode is not checked.
 - `/api/health` is never gated. The OTLP receivers take an optional bearer token (`--otlp-token`) instead of the login.
 
-**MCP** (`ego mcp`, stdio): `list_metrics`, `evaluate_traces`, `list_sessions`, `summarize_session`,
-`list_runs`, `get_run_results`; with `--admin-tools` also `list_role_bindings`, `set_role_binding`, `delete_role_binding`.
-`evaluate_traces` reads only under `--trace-dir`; the `gh` token goes only to https or loopback servers.
+**MCP** (`internal/mcptools`): one tool registry, two transports. `ego mcp` (stdio) is a REST client of a running `serve`; `serve` mounts the same tools at `POST /mcp` (MCP streamable HTTP, stateless; `GET` answers 405, as nothing is ever pushed) and runs them in-process against the stores, so a role's agent and tenant limits apply to every tool.
+- Tools: `list_metrics`, `list_sessions`, `summarize_session`, `list_runs`, `get_run_results`, and for online evaluation `get_quality` (open alerts, hourly series, sessions scored, today's judge budget), `explain_regression` (an alert, its suspect and its worst sessions with the judge's evidence) and `explain_session`. The evidence is the per-sentence verdicts of `hallucinations_v1` (unsupported, contradictory and disputed first), per-rubric verdicts, trajectory comparisons and the rationale of `jev_*` decisions, read from the stored online run results. Tools that need online evaluation answer an error when it is not configured.
+- `evaluate_traces` reads trace files from local disk and exists only on stdio (it reads only under `--trace-dir`); `serve` does not register it. `list_role_bindings`, `set_role_binding` and `delete_role_binding` need an admin on both transports; over stdio they are registered only with `--admin-tools`.
+- `/mcp` is behind the same login and roles as `/api`. In addition a sender's ingest token (`SenderStore`) authenticates there, and only there, as a `member` limited to `<sender>/*`; the shared `--otlp-token` does not (it names no sender). Without `--session-secret` there is no login and `/mcp` is open like every other route.
+- Tenant-limited callers get no shared judge budget in `get_quality`, and an agent-scoped role has no online tools (as on the REST endpoints).
+- The `gh` token goes only to https or loopback servers.
 
 ## Not supported yet
 
@@ -55,7 +58,6 @@ What ego supports today, and what it does not.
 - Performance metrics (token and latency percentiles) in the `/api/evaluate` response.
 - `POST /api/streaming/evaluate-sessions` (evaluate every session against a golden one in one call); the UI
   does the same through `create-eval-set` plus `/api/evaluate`.
-- Mounting the MCP server inside `serve`; it is a separate stdio process.
 - Custom evaluators over a stdin/stdout JSON contract, and per-request judge credentials.
 - A trace waterfall view and a span store with retention.
 

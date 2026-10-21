@@ -113,20 +113,62 @@ func listRunsHandler(store *SQLiteStore) http.HandlerFunc {
 				limit = clampLimit(n, limit)
 			}
 		}
-		runs, err := store.ListRuns(q["status"], limit, q.Get("before"))
+		visible, err := store.ListRunsFor(roleInfoOrOpen(r.Context()), q["status"], limit, q.Get("before"))
 		if err != nil {
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to list runs: "+err.Error())
 			return
 		}
-		info := roleInfoOrOpen(r.Context())
-		visible := make([]runDTO, 0, len(runs))
-		for _, run := range runs {
-			if runVisibleForRole(run, info) {
-				visible = append(visible, run)
-			}
-		}
 		writeJSON(w, http.StatusOK, map[string]any{"data": visible, "error": nil})
 	}
+}
+
+// tenantRunScan is how many recent runs are examined to find the online runs of a tenant-limited role: the
+// newest runs mostly belong to other tenants, so the page size cannot bound the scan.
+const tenantRunScan = 2000
+
+// ListRunsFor lists the runs info may see, newest first, at most limit.
+func (s *SQLiteStore) ListRunsFor(info RoleInfo, statuses []string, limit int, before string) ([]runDTO, error) {
+	fetch := limit
+	var tenants map[string]string
+	if info.TenantScoped() {
+		fetch = tenantRunScan
+		var err error
+		if tenants, err = s.OnlineRunTenants(); err != nil {
+			return nil, err
+		}
+	}
+	runs, err := s.ListRuns(statuses, fetch, before)
+	if err != nil {
+		return nil, err
+	}
+	visible := make([]runDTO, 0, min(len(runs), limit))
+	for _, run := range runs {
+		if len(visible) == limit {
+			break
+		}
+		if runVisibleToRole(run, info, tenants[run.RunID]) {
+			visible = append(visible, run)
+		}
+	}
+	return visible, nil
+}
+
+// GetRunFor returns a run if info may see it; ok is false for a missing run and a run out of scope alike.
+func (s *SQLiteStore) GetRunFor(info RoleInfo, runID string) (run runDTO, ok bool, err error) {
+	run, ok, err = s.GetRun(runID)
+	if err != nil || !ok {
+		return runDTO{}, false, err
+	}
+	tenant := ""
+	if info.TenantScoped() {
+		if tenant, _, err = s.OnlineRunTenant(runID); err != nil {
+			return runDTO{}, false, err
+		}
+	}
+	if !runVisibleToRole(run, info, tenant) {
+		return runDTO{}, false, nil
+	}
+	return run, true, nil
 }
 
 // getRunHandler implements GET /api/runs/{id}.
@@ -140,12 +182,12 @@ func getRunHandler(store *SQLiteStore) http.HandlerFunc {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		run, ok, err := store.GetRun(r.PathValue("id"))
+		run, ok, err := store.GetRunFor(roleInfoOrOpen(r.Context()), r.PathValue("id"))
 		if err != nil {
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to fetch run: "+err.Error())
 			return
 		}
-		if !ok || !runVisibleForRole(run, roleInfoOrOpen(r.Context())) {
+		if !ok {
 			writeEvaluateError(w, http.StatusNotFound, "run not found")
 			return
 		}
@@ -168,12 +210,12 @@ func getRunResultsHandler(store *SQLiteStore) http.HandlerFunc {
 		// getRunHandler does - a restricted viewer must not be able to
 		// read a run's result rows just because they know its ID, even
 		// without ever seeing it via GET /api/runs or GET /api/runs/{id}.
-		run, ok, err := store.GetRun(r.PathValue("id"))
+		_, ok, err := store.GetRunFor(roleInfoOrOpen(r.Context()), r.PathValue("id"))
 		if err != nil {
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to fetch run: "+err.Error())
 			return
 		}
-		if !ok || !runVisibleForRole(run, roleInfoOrOpen(r.Context())) {
+		if !ok {
 			writeEvaluateError(w, http.StatusNotFound, "run not found")
 			return
 		}

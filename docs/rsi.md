@@ -44,12 +44,15 @@ skill (section 6). Everything stays producer-agnostic: nothing in ego names an a
   `online_evals` for one of its tenants; every other run stays closed. Judge rationales live in run results, so
   without this the agent cannot read its own verdicts.
 - `httpRoute.rootPaths` in the chart gets `/mcp`.
+- **Transport.** Stateless streamable HTTP: no session id is issued, so replicas share nothing. `GET` answers 405
+  (nothing is pushed to a client). `evaluate_traces` reads local files and stays stdio only; `serve` does not
+  register it.
 
 Tools (all transports; tenant-scoped unless noted):
 
 | Tool | Does |
 |---|---|
-| `get_quality` | `kind?`, `hours?` (default 24): open alerts, hourly series per metric, sessions scored, budget used today. One call to answer "how am I doing". |
+| `get_quality` | `kind?`, `hours?` (default 24): open alerts, hourly series per metric, sessions scored, budget used today (not given to a tenant-limited caller: the meter is shared). One call to answer "how am I doing". |
 | `explain_regression` | `alert_id`: the alert, its suspect, and its worst sessions each with per-metric scores, the judge rationale, and the per-sentence verdicts (`unsupported`, `contradictory`, `disputed` first) or rubric verdicts. |
 | `explain_session` | `session_id`: the same evidence for one session, so an agent can look at a session it chooses. |
 | `get_findings` | `kind?`, `state?` (open, corrected, resolved, stale; default open), `since?`: findings newest first. |
@@ -164,7 +167,7 @@ verified. Helm renders it from `online.findings` values.
 ## Phases
 
 1. MCP in `serve` with sender-token auth, the tool registry package, tenant-limited runs, `get_quality`,
-   `explain_regression`, `explain_session`; chart `rootPaths`.
+   `explain_regression`, `explain_session`; chart `rootPaths`. **Implemented (2026-10-21).**
 2. Findings pass, store, API, sinks, MCP `get_findings`; corrections store, API, sampling burst, verification,
    sinks, MCP `register_correction` + `list_corrections`.
 3. Labels store, API, agreement gate, anchor re-scoring, MCP `label_session`; Quality view and inspector; the

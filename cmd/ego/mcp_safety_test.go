@@ -3,7 +3,12 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"testing"
+
+	"github.com/triageagent-dev/ego/internal/api"
+	"github.com/triageagent-dev/ego/internal/mcptools"
 )
 
 func TestConfineToRoot(t *testing.T) {
@@ -57,7 +62,7 @@ func TestTokenSafeFor(t *testing.T) {
 
 func TestRoleToolsNeedAdminOption(t *testing.T) {
 	has := func(opts mcpOptions, name string) bool {
-		return newMCPServer(&mcpBackend{}, opts).GetTool(name) != nil
+		return newMCPServer(mcptools.NewREST("", "", nil), opts).GetTool(name) != nil
 	}
 	for _, name := range []string{"list_role_bindings", "set_role_binding", "delete_role_binding"} {
 		if has(mcpOptions{}, name) {
@@ -69,5 +74,28 @@ func TestRoleToolsNeedAdminOption(t *testing.T) {
 	}
 	if !has(mcpOptions{}, "list_sessions") {
 		t.Error("read-only tools must stay available")
+	}
+}
+
+// The stdio command and the MCP endpoint of serve register one registry: the same tools, but for evaluate_traces,
+// which reads local files and so is stdio only.
+func TestStdioToolsAreServeToolsPlusEvaluateTraces(t *testing.T) {
+	rest := mcptools.NewREST("", "", nil)
+	var stdio, serve []string
+	for name := range newMCPServer(rest, mcpOptions{adminTools: true}).ListTools() {
+		stdio = append(stdio, name)
+	}
+	for _, tool := range mcptools.Tools(rest, api.MCPToolOptions()) {
+		serve = append(serve, tool.Tool.Name)
+	}
+	sort.Strings(stdio)
+	sort.Strings(serve)
+	want := append(append([]string{}, serve...), "evaluate_traces")
+	sort.Strings(want)
+	if !slices.Equal(stdio, want) {
+		t.Errorf("stdio tools = %v\nserve tools + evaluate_traces = %v", stdio, want)
+	}
+	if slices.Contains(serve, "evaluate_traces") {
+		t.Error("serve registers evaluate_traces")
 	}
 }

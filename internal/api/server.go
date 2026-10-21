@@ -17,6 +17,7 @@ import (
 
 	"github.com/triageagent-dev/ego/internal/adk"
 	"github.com/triageagent-dev/ego/internal/logx"
+	"github.com/triageagent-dev/ego/internal/mcptools"
 	"github.com/triageagent-dev/ego/internal/online"
 	"github.com/triageagent-dev/ego/internal/otlp"
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
@@ -150,6 +151,9 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/online/status", onlineStatusHandler(onlineEngine))
 	mux.HandleFunc("/api/online/series", onlineSeriesHandler(onlineEngine))
 	mux.HandleFunc("/api/online/alerts", onlineAlertsHandler(onlineEngine))
+	mux.HandleFunc("/api/online/alerts/{id}/explain", onlineExplainAlertHandler(onlineEngine))
+	mux.HandleFunc("/api/online/sessions/{id}/explain", onlineExplainSessionHandler(onlineEngine))
+	mux.HandleFunc("/api/online/quality", onlineQualityHandler(onlineEngine))
 	mux.HandleFunc("/api/admin/roles", adminRolesHandler(roleStore))
 	mux.HandleFunc("/api/admin/roles/{id}", adminRoleByIDHandler(roleStore))
 	mux.HandleFunc("/api/admin/revocations", adminRevocationsHandler(revoked))
@@ -237,6 +241,8 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	}
 	topMux.Handle("/", requireSession(sessionSecret, ghTokens, revoked, withRole(roleStore, roleOrg, ghTokens, mux.ServeHTTP)))
 
+	topMux.Handle(mcpPath, mcpRoute(sessionSecret, senderStore, roleStore, roleOrg, ghTokens, revoked, newMCPBackend(store, archive, onlineEngine, roleStore)))
+
 	go func() {
 		logx.Infof("ego listening on %s", addr)
 		// No write timeout: the live feed, server-sent events and streaming evaluations are long-lived.
@@ -261,6 +267,20 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		logx.Infof("received %s, shutting down", sig)
 		return nil
 	}
+}
+
+// MCPToolOptions are the tools `serve` offers at /mcp: the whole registry but evaluate_traces, which reads files
+// from the local disk and so exists only in `ego mcp`. The role-binding tools are there; the backend requires an
+// admin for them.
+func MCPToolOptions() mcptools.Options {
+	return mcptools.Options{Admin: true}
+}
+
+// mcpRoute is the MCP endpoint behind the same login and roles as /api. Agents also get in with the ingest token
+// of their sender, as a member limited to that sender's tenants.
+func mcpRoute(secret string, senders *SenderStore, roleStore *RoleStore, org string, ghTokens *githubTokenValidator, revoked *revocations, backend mcptools.Backend) http.Handler {
+	roled := withRole(roleStore, org, ghTokens, mcptools.NewHTTPHandler(backend, MCPToolOptions()).ServeHTTP)
+	return senderGate(secret, senders, roled, requireSession(secret, ghTokens, revoked, roled))
 }
 
 // healthHandler implements GET /api/health, enveloped the same way..., "error": null} response shape (confirmed
@@ -382,7 +402,11 @@ func sessionsHandler(store *SessionStore) http.HandlerFunc {
 // sessionInScope reports whether the request's role may see the session: always for an unscoped role, otherwise
 // only when one of the session's agents is in scope. A session out of scope is answered like a missing one.
 func sessionInScope(store *SessionStore, r *http.Request, sessionID string) bool {
-	info := roleInfoOrOpen(r.Context())
+	return sessionVisible(store, roleInfoOrOpen(r.Context()), sessionID)
+}
+
+// sessionVisible is sessionInScope for a role already resolved, as the MCP tools have it.
+func sessionVisible(store *SessionStore, info RoleInfo, sessionID string) bool {
 	if !info.Scoped() && !info.TenantScoped() {
 		return true
 	}

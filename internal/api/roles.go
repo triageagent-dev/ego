@@ -348,9 +348,17 @@ func (info RoleInfo) AllowsAnyAgent(agentNames []string) bool {
 }
 
 // runVisibleForRole hides a run from a scoped role unless one of the run's agents is in scope; a run that is
-// still running (no Summary yet) or whose agent could not be resolved is hidden too.
+// still running (no Summary yet) or whose agent could not be resolved is hidden too. A tenant-limited role sees
+// no run here: use runVisibleToRole with the run's tenant.
 func runVisibleForRole(run runDTO, info RoleInfo) bool {
-	if info.TenantScoped() {
+	return runVisibleToRole(run, info, "")
+}
+
+// runVisibleToRole is runVisibleForRole for a run that may belong to a tenant: an online evaluation run, whose
+// tenant online_evals records ("" for every other run). A tenant-limited role sees a run only when it is one of
+// its tenants' online runs; both limits must allow.
+func runVisibleToRole(run runDTO, info RoleInfo, tenant string) bool {
+	if info.TenantScoped() && !info.AllowsAnyTenant([]string{tenant}) {
 		return false
 	}
 	if !info.Scoped() {
@@ -515,10 +523,14 @@ func roleInfoOrOpen(ctx context.Context) RoleInfo {
 	return RoleInfo{Role: RoleAdmin, IsAdmin: true}
 }
 
-// roleForIdentity resolves id's access level. An API token acts with the role it was minted with and nothing
+// roleForIdentity resolves id's access level. A sender token is a member limited to the sender's tenants. An API token acts with the role it was minted with and nothing
 // else, so its label does not pick up the role of a GitHub user of the same name. Everyone else gets the
 // strongest matching role binding (see EffectiveRole); unknown team membership comes back Unresolved.
 func roleForIdentity(r *http.Request, roleStore *RoleStore, org string, ghTokens *githubTokenValidator, id identity) RoleInfo {
+	// A sender's ingest token reads its own tenants and nothing else; no role binding can widen it.
+	if id.Kind == identitySender {
+		return RoleInfo{Role: RoleMember, Tenants: []string{id.Sender + "/*"}}
+	}
 	if id.Kind == tokenKindAPI {
 		info := RoleInfo{Role: id.Role, IsAdmin: id.Role == RoleAdmin && len(id.Tenants) == 0}
 		if len(id.Tenants) > 0 {

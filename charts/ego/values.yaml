@@ -120,7 +120,8 @@ networkPolicy:
 
 # -- Gateway API HTTPRoutes. The UI is built unprefixed, so its assets and
 # API live at root paths; rootPaths lists the ones claimed on the shared
-# host. A new endpoint under /api needs an entry here.
+# host. A new endpoint under /api needs an entry here, and so does /mcp (the
+# MCP tools for agents).
 httpRoute:
   enabled: false
   hostname: ""
@@ -154,6 +155,7 @@ httpRoute:
     - /api/tenants
     - /api/streaming
     - /api/validate
+    - /mcp
     - /stream
     - /auth
 

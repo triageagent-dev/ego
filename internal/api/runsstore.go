@@ -282,9 +282,19 @@ func scanRun(row rowScanner) (runDTO, error) {
 
 // GetRunResults returns every result row for one run, oldest first.
 func (s *SQLiteStore) GetRunResults(runID string) ([]runResultRowDTO, error) {
+	return s.queryRunResults(`run_id = ?`, runID)
+}
+
+// GetRunResultsOfItem returns the result rows of one eval-set item of a run, oldest first. For an online run the
+// item is a session, and a run holds a whole hour of them.
+func (s *SQLiteStore) GetRunResultsOfItem(runID, itemID string) ([]runResultRowDTO, error) {
+	return s.queryRunResults(`run_id = ? AND eval_set_item_id = ?`, runID, itemID)
+}
+
+func (s *SQLiteStore) queryRunResults(where string, args ...any) ([]runResultRowDTO, error) {
 	rows, err := s.db.Query(`SELECT result_id, run_id, eval_set_item_id, eval_set_item_name, evaluator_name,
 		evaluator_type, status, score, per_invocation_scores_json, trace_id, details_json, error_text, created_at
-		FROM run_results WHERE run_id = ? ORDER BY created_at ASC, result_id ASC`, runID)
+		FROM run_results WHERE `+where+` ORDER BY created_at ASC, result_id ASC`, args...)
 	if err != nil {
 		return nil, err
 	}

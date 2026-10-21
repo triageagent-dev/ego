@@ -40,10 +40,11 @@ streaming** path for the UI.
   dispatch: names in `judgeMetrics` go to `internal/judge` (Gemini via `google.golang.org/genai`, local prompt
   built here); names in `vertexEvalMetrics` go to `internal/vertexeval` (Vertex AI Managed Eval Service via
   ADC, structured instances, scored server-side); everything else goes to `eval.RunMetrics` (local, no
-  API key/context dependency by design). `mcp.go` is a thin MCP client over the `serve` REST API.
+  API key/context dependency by design). `mcp.go` is `ego mcp` (stdio): the `internal/mcptools` registry over a REST backend, plus `evaluate_traces`, which reads local files and is stdio only.
 - `internal/trace` (Span/Trace model, Jaeger JSON) → `internal/loader` (format auto-detect: Jaeger vs OTLP
   JSON/JSONL) → `internal/adk` (`ConvertTrace` auto-detects ADK `gcp.vertex.agent.*` attrs vs
   GenAI-semconv/OpenInference, `genai_converter.go`) → `internal/eval` / `internal/judge` / `internal/vertexeval`.
+- `internal/mcptools`: the one MCP tool registry (`Tools`/`NewServer`), a `Backend` interface, and two backends: `REST` (a client of `serve`, used by `ego mcp`) and the in-process `mcpBackend` in `internal/api/mcpbackend.go`, which reads the stores with the request's `RoleInfo`. Define a tool once, here; never in `cmd/ego` or `internal/api`. `ExtractEvidence` (`internal/api/evidence.go`) is the one reader of stored judge details.
 - `internal/otlp`: AnyValue decoding, protobuf↔JSON bridge, OTLP export → Span/Trace.
 - `internal/incremental`: real-time span/log → conversation-element updates pushed to the UI.
 - `internal/api`: everything behind `serve`.
@@ -66,7 +67,8 @@ streaming** path for the UI.
     secret is set (otherwise `nil` and the feature is fully inert - preserve that). Roles admin > member >
     viewer; viewers get 403 on write endpoints. An agent-scoped role (`RoleInfo.Scoped`) fails closed:
     sessions, traces, runs and the hub feed (`registerFor`) are filtered by agent, views that cannot be attributed
-    to an agent use `denyScoped`, and unknown teams give `Unresolved` (refused, never `defaultRole`). Tenant limits (`RoleInfo.Tenants`: keys, `<sender>/*`, `*`) work the same way; ingest resolves a token to a sender (`SenderStore`) and the tenant key is `<sender>/<label>`.
+    to an agent use `denyScoped`, and unknown teams give `Unresolved` (refused, never `defaultRole`). Tenant limits (`RoleInfo.Tenants`: keys, `<sender>/*`, `*`) work the same way; ingest resolves a token to a sender (`SenderStore`) and the tenant key is `<sender>/<label>`. A tenant-limited role reads only the online runs of its tenants (`online_evals.run_id`; `runVisibleToRole`, `ListRunsFor`, `GetRunFor`).
+  - `POST /mcp` (`mcpRoute` in `server.go`): the `internal/mcptools` registry over MCP streamable HTTP, behind `requireSession` + `withRole` like `/api`. `senderGate` (`sessionauth.go`) additionally accepts a sender's ingest token on that path only, as a `member` limited to `<sender>/*` (`roleForIdentity`); the shared `--otlp-token` never authenticates there. Keep it inert when `SenderStore` is nil or there is no session secret. `/mcp` must stay in `httpRoute.rootPaths`.
 - `ui/`: React + Vite + Ant Design, embedded into the binary. Edited here like any other code.
 - `samples/`: sample traces and eval sets; used by tests and the quickstart.
 

@@ -259,3 +259,121 @@ func (s *SQLiteStore) PruneOnline(cutoff time.Time) error {
 	}
 	return nil
 }
+
+// OnlineEval returns the stored scoring record of one session.
+func (s *SQLiteStore) OnlineEval(sessionID string) (onlineEvalRow, bool, error) {
+	var e onlineEvalRow
+	err := s.db.QueryRow(`SELECT session_id, trace_id, at_ms, tenant, kind, service, profile, lane, reasons,
+		judge_tokens, jev_calls, run_id FROM online_evals WHERE session_id = ?`, sessionID).Scan(
+		&e.SessionID, &e.TraceID, &e.AtMs, &e.Tenant, &e.Kind, &e.Service, &e.Profile, &e.Lane, &e.Reasons,
+		&e.JudgeTokens, &e.JevCalls, &e.RunID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return onlineEvalRow{}, false, nil
+	}
+	return e, err == nil, err
+}
+
+// onlineSessionScore is one stored score of a session with the version and model it was produced at.
+type onlineSessionScore struct {
+	Metric  string
+	Score   *float64
+	Status  string
+	Version string
+	Model   string
+}
+
+// OnlineScoresOf returns every score of one session, ordered by metric name.
+func (s *SQLiteStore) OnlineScoresOf(sessionID string) ([]onlineSessionScore, error) {
+	rows, err := s.db.Query(`SELECT metric, score, status, version, model FROM online_scores
+		WHERE session_id = ? ORDER BY metric`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []onlineSessionScore
+	for rows.Next() {
+		var sc onlineSessionScore
+		var score sql.NullFloat64
+		if err := rows.Scan(&sc.Metric, &score, &sc.Status, &sc.Version, &sc.Model); err != nil {
+			return nil, err
+		}
+		if score.Valid {
+			sc.Score = &score.Float64
+		}
+		out = append(out, sc)
+	}
+	return out, rows.Err()
+}
+
+// OnlineAlert returns one alert by id.
+func (s *SQLiteStore) OnlineAlert(id string) (*online.Alert, bool, error) {
+	var data string
+	err := s.db.QueryRow(`SELECT data FROM online_alerts WHERE alert_id = ?`, id).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	var a online.Alert
+	if err := json.Unmarshal([]byte(data), &a); err != nil {
+		return nil, false, err
+	}
+	return &a, true, nil
+}
+
+type onlineScoredCount struct {
+	Tenant   string
+	Kind     string
+	Sessions int
+}
+
+// OnlineScoredCounts counts the sessions scored since sinceMs per tenant and kind.
+func (s *SQLiteStore) OnlineScoredCounts(sinceMs int64) ([]onlineScoredCount, error) {
+	rows, err := s.db.Query(`SELECT tenant, kind, COUNT(*) FROM online_evals WHERE at_ms >= ?
+		GROUP BY tenant, kind ORDER BY tenant, kind`, sinceMs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []onlineScoredCount
+	for rows.Next() {
+		var c onlineScoredCount
+		if err := rows.Scan(&c.Tenant, &c.Kind, &c.Sessions); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// OnlineRunTenants maps the id of every online run to its tenant. An hourly run holds the sessions of one
+// (tenant, kind), so a run has one tenant; this is what makes a run attributable to a tenant-limited role.
+func (s *SQLiteStore) OnlineRunTenants() (map[string]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT run_id, tenant FROM online_evals WHERE run_id != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var id, tenant string
+		if err := rows.Scan(&id, &tenant); err != nil {
+			return nil, err
+		}
+		out[id] = tenant
+	}
+	return out, rows.Err()
+}
+
+// OnlineRunTenant returns the tenant of one online run; ok is false for a run that online evaluation did not make.
+func (s *SQLiteStore) OnlineRunTenant(runID string) (tenant string, ok bool, err error) {
+	if runID == "" {
+		return "", false, nil
+	}
+	err = s.db.QueryRow(`SELECT tenant FROM online_evals WHERE run_id = ? LIMIT 1`, runID).Scan(&tenant)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return tenant, err == nil, err
+}

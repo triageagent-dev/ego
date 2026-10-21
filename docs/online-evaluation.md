@@ -130,6 +130,9 @@ flapping.
   decisions by reason.
 - `GET /api/online/series?hours=N`: hourly (tenant, kind, metric) mean and n.
 - `GET /api/online/alerts?state=open|all`.
+- `GET /api/online/quality?kind=&hours=N` (default 24), `GET /api/online/alerts/{id}/explain` and
+  `GET /api/online/sessions/{id}/explain`: the data behind the MCP tools `get_quality`,
+  `explain_regression` and `explain_session` (`docs/rsi.md`).
 - A **Quality** view in the sidebar shows the trend per kind and metric, the
   alerts, and the budget gauge.
 
