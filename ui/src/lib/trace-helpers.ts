@@ -91,3 +91,13 @@ export function formatSpanDuration(ms: number): string {
   const totalSeconds = Math.round(ms / 1000);
   return `${Math.floor(totalSeconds / 60)}m ${String(totalSeconds % 60).padStart(2, '0')}s`;
 }
+
+// A model id as the row shows it: without the provider path, the date stamp and the preview/latest marker,
+// which tell the reader nothing the provider badge and the full-name tooltip do not.
+export function shortModel(id: string): string {
+  const short = id
+    .slice(id.lastIndexOf('/') + 1)
+    .replace(/-(\d{8}|\d{4}-\d{2}-\d{2})$/, '')
+    .replace(/-(preview|latest)(-\d{2}-\d{2,4})?$/, '');
+  return short || id;
+}
