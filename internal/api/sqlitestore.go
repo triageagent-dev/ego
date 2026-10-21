@@ -61,6 +61,10 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 		db.Close()
 		return nil, fmt.Errorf("creating sessions.updated_at index: %w", err)
 	}
+	if err := ensureSessionIndexSchema(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if err := ensureRunsSchema(db); err != nil {
 		db.Close()
 		return nil, err
@@ -144,6 +148,7 @@ func (s *SQLiteStore) SaveAll(sessions map[string]*Session) error {
 	rows := make([]struct {
 		id, data, updatedAt string
 	}, 0, len(sessions))
+	index := make([]sessionIndexRow, 0, len(sessions))
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	for id, session := range sessions {
@@ -153,6 +158,7 @@ func (s *SQLiteStore) SaveAll(sessions map[string]*Session) error {
 			continue
 		}
 		rows = append(rows, struct{ id, data, updatedAt string }{id, string(data), now})
+		index = append(index, indexRowOf(session))
 	}
 	if len(rows) == 0 {
 		return nil
@@ -176,11 +182,17 @@ func (s *SQLiteStore) SaveAll(sessions map[string]*Session) error {
 			return err
 		}
 	}
+	if err := writeIndexRows(tx, index); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
 // Delete removes one session's archived row.
 func (s *SQLiteStore) Delete(sessionID string) error {
+	if _, err := s.db.Exec("DELETE FROM session_index WHERE session_id = ?", sessionID); err != nil {
+		return err
+	}
 	_, err := s.db.Exec("DELETE FROM sessions WHERE session_id = ?", sessionID)
 	return err
 }
@@ -309,7 +321,11 @@ func (s *SQLiteStore) ForEachSnapshot(fn func(sessionSnapshot)) error {
 
 // PruneSessions deletes sessions last updated before cutoff.
 func (s *SQLiteStore) PruneSessions(cutoff time.Time) (int64, error) {
-	res, err := s.db.Exec("DELETE FROM sessions WHERE updated_at < ?", cutoff.UTC().Format(time.RFC3339))
+	at := cutoff.UTC().Format(time.RFC3339)
+	if _, err := s.db.Exec("DELETE FROM session_index WHERE session_id IN (SELECT session_id FROM sessions WHERE updated_at < ?)", at); err != nil {
+		return 0, err
+	}
+	res, err := s.db.Exec("DELETE FROM sessions WHERE updated_at < ?", at)
 	if err != nil {
 		return 0, err
 	}

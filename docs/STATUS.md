@@ -10,6 +10,7 @@ What ego supports today, and what it does not.
 - Conventions: ADK (`gcp.vertex.agent.*`), OTel GenAI semantic conventions and OpenInference.
 - Sessions group by `ego.session_name`, then `gen_ai.conversation.id`, then a synthetic name.
 - A session search (the Sessions view's box, `GET /api/streaming/sessions?q=`, `list_sessions` `query`) reads memory and the archive: the newest 2000 archived rows that mention the text, up to 200 of them returned; the other filters only narrow memory.
+- The Sessions view pages from the server: `GET /api/streaming/sessions?limit=&cursor=` returns the newest sessions first with a `next` cursor (absent on the last page). Filters `since`, `tenant`, `agent`, `complete`, `llm=true` (hide sessions with no LLM call) and `q` (session and trace id, tenant, agent, model, service, root span name; not the conversation) run against an index table in the archive (`session_index`, kept by every save and filled in at start for an older archive), the caller's role is checked on every row, and only the page's sessions are loaded. One request reads at most 20000 index rows, so a role that sees few sessions may get a short page with a cursor to go on. Without `limit` the answer is the whole in-memory list as before (what the MCP `list_sessions` uses).
 - An invocation's answer is the last call of the agent that opened it (`gen_ai.agent.name`); a later call by another agent in the same conversation (a verifier, a guard) is not scored as the answer.
 
 **Metrics**

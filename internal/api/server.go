@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -394,6 +395,28 @@ func sessionsHandler(store *SessionStore) http.HandlerFunc {
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": nil, "error": err.Error()})
+			return
+		}
+		// ?limit= pages the list: newest first, ?cursor= from the previous answer's "next", filters in the archive.
+		if lim := r.URL.Query().Get("limit"); lim != "" {
+			n, err := strconv.Atoi(lim)
+			if err != nil || n < 1 {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]any{"data": nil, "error": "limit must be a positive number"})
+				return
+			}
+			llm, _ := strconv.ParseBool(r.URL.Query().Get("llm"))
+			page, err := store.Page(SessionPageRequest{Filter: filter, LLMOnly: llm, Cursor: r.URL.Query().Get("cursor"), Limit: n}, allowedBy(info))
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]any{"data": nil, "error": err.Error()})
+				return
+			}
+			var next any
+			if page.Next != "" {
+				next = page.Next
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": page.Items, "next": next, "error": nil})
 			return
 		}
 		// The optional filters narrow what the role already allows; a query also reaches the archive.

@@ -483,6 +483,14 @@ func (s *SessionStore) LoadPersisted() error {
 	if len(snapshots) > 0 {
 		logx.Infof("restored %d session(s) from archive", len(snapshots))
 	}
+	// An archive written before the session list was paged has no index rows yet; add them without holding up start.
+	go func() {
+		if n, err := s.store.BackfillSessionIndex(s.usageTenantAttr); err != nil {
+			logx.Warnf("session archive: indexing for the session list: %v", err)
+		} else if n > 0 {
+			logx.Infof("session archive: indexed %d archived session(s) for the session list", n)
+		}
+	}()
 	return nil
 }
 

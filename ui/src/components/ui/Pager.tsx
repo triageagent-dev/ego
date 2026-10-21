@@ -39,6 +39,27 @@ export const Pager: React.FC<PagerProps> = ({ total, page, onChange, pageSize = 
   );
 };
 
+interface CursorPagerProps {
+  page: number; // zero-based
+  hasNext: boolean;
+  onFirst: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}
+
+// Pager for a list the server pages with a cursor: there is no total, only "is there a next page".
+export const CursorPager: React.FC<CursorPagerProps> = ({ page, hasNext, onFirst, onPrev, onNext }) => {
+  if (page === 0 && !hasNext) return null;
+  return (
+    <nav css={pagerStyle} aria-label="Pagination">
+      <button onClick={onFirst} disabled={page === 0} title="Newest">«</button>
+      <button onClick={onPrev} disabled={page === 0} title="Newer">‹</button>
+      <span>page {page + 1}</span>
+      <button onClick={onNext} disabled={!hasNext} title="Older">›</button>
+    </nav>
+  );
+};
+
 const pagerStyle = css`
   display: flex;
   align-items: center;

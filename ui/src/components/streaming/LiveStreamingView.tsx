@@ -4,8 +4,8 @@ import { SessionCard } from './SessionCard';
 import { config } from '../../config';
 import { onServerDown, onServerUp, setFeed } from '../../lib/connection';
 import { parseHash } from '../shell/routes';
-import { Pager, clampPage } from '../ui/Pager';
-import { inTenant, tenantName, useSelectedTenant } from '../../lib/tenant';
+import { CursorPager } from '../ui/Pager';
+import { useSelectedTenant } from '../../lib/tenant';
 import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
 
 type TimeRangeKey = '1h' | '6h' | '12h' | 'day' | '7d' | 'all';
@@ -70,13 +70,16 @@ export function LiveStreamingView() {
   const activeSessions = state.streamingSessions;
   const setActiveSessions = actions.setStreamingSessions;
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('1h');
-  const [donePage, setDonePage] = useState(0);
   const pickedTenant = useSelectedTenant();
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   // A session linked to by id (#sessions?session=...): shown alone and opened.
   const [focusId, setFocusId] = useState<string | null>(() => parseHash(location.hash).params.get('session'));
   const loadSessionRef = useRef<(id: string) => void>(() => {});
-  const searchSessionsRef = useRef<(q: string) => void>(() => {});
+  const fetchPageRef = useRef<(cursor: string) => void>(() => {});
+  // The list is paged by the server: the ids of the page on show, and the cursor of the next one.
+  const [pageIds, setPageIds] = useState<string[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   // Sessions whose trace made no LLM call (a server's per-request or
   // per-event trace) are hidden unless asked for; the choice is remembered
   // per browser.
@@ -97,6 +100,29 @@ export function LiveStreamingView() {
       return !v;
     });
   };
+  // What the server is asked for. A change of any of these starts again at the newest page.
+  const listParams = (() => {
+    const p = new URLSearchParams({ limit: String(SESSIONS_PAGE) });
+    const ms = TIME_RANGES.find(r => r.key === timeRange)?.ms;
+    if (ms) p.set('since', `${ms / 3_600_000}h`);
+    if (pickedTenant) p.set('tenant', pickedTenant.endsWith('/*') ? pickedTenant.slice(0, -1) : pickedTenant);
+    if (debouncedQuery) p.set('q', debouncedQuery);
+    if (!showNoLLM) p.set('llm', 'true');
+    return p;
+  })();
+  const listKey = listParams.toString();
+  const listParamsRef = useRef(listParams);
+  // cursors[i] is the cursor that fetched page i; the first page has none.
+  const [stack, setStack] = useState<{ key: string; cursors: string[] }>({ key: listKey, cursors: [''] });
+  const cursors = stack.key === listKey ? stack.cursors : [''];
+  const pageIdx = cursors.length - 1;
+  const cursorsRef = useRef(cursors);
+  // The feed handlers read the current filter and page through refs; synced before the fetch effect below runs.
+  useEffect(() => {
+    listParamsRef.current = listParams;
+    cursorsRef.current = cursors;
+  });
+  const goToPage = (next: string[]) => setStack({ key: listKey, cursors: next });
   const [selectedGoldenId, setSelectedGoldenId] = useState<string | null>(null);
   const [isPreparingEvaluation, setIsPreparingEvaluation] = useState(false);
   // Sessions explicitly opted in as extra comparison traces alongside the
@@ -148,116 +174,136 @@ export function LiveStreamingView() {
   // What the user cleared or removed from the view. A re-fetch of the
   // session list (on connect, or on a resync after dropped events) must not
   // bring those back. Lives for this page view, as the clear itself does.
-  const clearedBeforeRef = useRef<number>(0);
-  const removedIdsRef = useRef<Set<string>>(new Set());
+  const [clearedBefore, setClearedBefore] = useState(0);
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     mountedRef.current = true;
 
-    // With an id, fetches just that session (read back from the archive if it left memory) and shows it even
-    // if it was cleared or removed from this view before.
-    const fetchExistingSessions = async (onlyId?: string, query?: string) => {
+    type ServerSession = {
+      sessionId: string;
+      traceId: string;
+      evalSetId: string | null;
+      spanCount: number;
+      isComplete: boolean;
+      startedAt: string;
+      completedAt?: string | null;
+      metadata: Record<string, unknown>;
+      invocations?: StreamingInvocation[];
+      rootSpanName?: string;
+      agents?: string[];
+      tenants?: string[];
+      models?: string[];
+      llmCalls?: number;
+      errors?: number;
+      durationMs?: number;
+    };
+
+    // Folds server summaries into the shared session map: unknown ones are added, known ones take the server's
+    // identities and, when their completion event was missed, the server's completion.
+    const mergeSessions = (sessions: ServerSession[]) => {
+      setActiveSessions(prev => {
+        const newMap = new Map(prev);
+        for (const s of sessions) {
+          const existing = newMap.get(s.sessionId);
+          if (existing) {
+            if (s.agents?.join() !== existing.agents?.join() || s.models?.join() !== existing.models?.join() || s.tenants?.join() !== existing.tenants?.join()) {
+              newMap.set(s.sessionId, { ...existing, agents: s.agents, models: s.models, tenants: s.tenants });
+            }
+            // Events for this session may have been dropped: take the
+            // server's completion rather than staying "active" forever.
+            if (existing.status === 'active' && s.isComplete) {
+              newMap.set(s.sessionId, {
+                ...existing,
+                status: 'complete',
+                agents: s.agents,
+                tenants: s.tenants,
+                models: s.models,
+                invocations: s.invocations,
+                liveElements: s.invocations?.length
+                  ? invocationsToElements(s.invocations)
+                  : existing.liveElements,
+                completedAt: s.completedAt,
+                rootSpanName: s.rootSpanName,
+                llmCalls: s.llmCalls,
+                errors: s.errors,
+                durationMs: s.durationMs,
+              });
+            }
+            continue;
+          }
+          newMap.set(s.sessionId, {
+            sessionId: s.sessionId,
+            traceId: s.traceId,
+            evalSetId: s.evalSetId,
+            spans: [],
+            status: s.isComplete ? 'complete' : 'active',
+            metadata: (s.metadata ?? {}) as Record<string, string>,
+            invocations: s.invocations,
+            liveElements: s.invocations?.length
+              ? invocationsToElements(s.invocations)
+              : [],
+            liveStats: { totalInputTokens: 0, totalOutputTokens: 0 },
+            startedAt: s.startedAt,
+            completedAt: s.completedAt,
+            rootSpanName: s.rootSpanName,
+            agents: s.agents,
+            tenants: s.tenants,
+            models: s.models,
+            llmCalls: s.llmCalls,
+            errors: s.errors,
+            durationMs: s.durationMs,
+          });
+        }
+        return newMap;
+      });
+    };
+
+    // Fetches just one session (read back from the archive if it left memory) and shows it even if it was
+    // cleared or removed from this view before.
+    const fetchExistingSessions = async (onlyId: string) => {
       try {
-        const res = await fetch(
-          onlyId
-            ? `${config.api.endpoints.streamingSessions}?id=${encodeURIComponent(onlyId)}`
-            : query
-              ? `${config.api.endpoints.streamingSessions}?q=${encodeURIComponent(query)}`
-              : config.api.endpoints.streamingSessions,
-        );
+        const res = await fetch(`${config.api.endpoints.streamingSessions}?id=${encodeURIComponent(onlyId)}`);
         if (!res.ok) return;
         const envelope = await res.json();
-        const sessions: Array<{
-          sessionId: string;
-          traceId: string;
-          evalSetId: string | null;
-          spanCount: number;
-          isComplete: boolean;
-          startedAt: string;
-          completedAt?: string | null;
-          metadata: Record<string, unknown>;
-          invocations?: StreamingInvocation[];
-          rootSpanName?: string;
-          agents?: string[];
-          tenants?: string[];
-          models?: string[];
-          llmCalls?: number;
-          errors?: number;
-          durationMs?: number;
-        }> = envelope.data;
         if (!mountedRef.current) return;
-
-        setActiveSessions(prev => {
-          const newMap = new Map(prev);
-          for (const s of sessions) {
-            const existing = newMap.get(s.sessionId);
-            if (existing) {
-              if (s.agents?.join() !== existing.agents?.join() || s.models?.join() !== existing.models?.join() || s.tenants?.join() !== existing.tenants?.join()) {
-                newMap.set(s.sessionId, { ...existing, agents: s.agents, models: s.models, tenants: s.tenants });
-              }
-              // Events for this session may have been dropped: take the
-              // server's completion rather than staying "active" forever.
-              if (existing.status === 'active' && s.isComplete) {
-                newMap.set(s.sessionId, {
-                  ...existing,
-                  status: 'complete',
-                  agents: s.agents,
-                  tenants: s.tenants,
-                  models: s.models,
-                  invocations: s.invocations,
-                  liveElements: s.invocations?.length
-                    ? invocationsToElements(s.invocations)
-                    : existing.liveElements,
-                  completedAt: s.completedAt,
-                  rootSpanName: s.rootSpanName,
-                  llmCalls: s.llmCalls,
-                  errors: s.errors,
-                  durationMs: s.durationMs,
-                });
-              }
-              continue;
-            }
-            if (!onlyId && !query && removedIdsRef.current.has(s.sessionId)) continue;
-            if (!onlyId && !query && s.isComplete && Date.parse(s.startedAt) < clearedBeforeRef.current) continue;
-            newMap.set(s.sessionId, {
-              sessionId: s.sessionId,
-              traceId: s.traceId,
-              evalSetId: s.evalSetId,
-              spans: [],
-              status: s.isComplete ? 'complete' : 'active',
-              metadata: (s.metadata ?? {}) as Record<string, string>,
-              invocations: s.invocations,
-              liveElements: s.invocations?.length
-                ? invocationsToElements(s.invocations)
-                : [],
-              liveStats: { totalInputTokens: 0, totalOutputTokens: 0 },
-              startedAt: s.startedAt,
-              completedAt: s.completedAt,
-              rootSpanName: s.rootSpanName,
-              agents: s.agents,
-              tenants: s.tenants,
-              models: s.models,
-              llmCalls: s.llmCalls,
-              errors: s.errors,
-              durationMs: s.durationMs,
-            });
-          }
-          return newMap;
-        });
+        mergeSessions(envelope.data ?? []);
       } catch {
         // backend not ready yet - will retry on next SSE connect
       }
     };
 
-    // One re-fetch for a burst of resync signals or unknown-session events.
+    // One page of the list, from the server: it filters, orders and cuts the page, so the browser holds a page
+    // however many sessions the server has. A later answer for an older request is dropped.
+    let pageSeq = 0;
+    const fetchPage = async (cursor: string) => {
+      const seq = ++pageSeq;
+      try {
+        const params = new URLSearchParams(listParamsRef.current);
+        if (cursor) params.set('cursor', cursor);
+        const res = await fetch(`${config.api.endpoints.streamingSessions}?${params}`);
+        if (!res.ok) return;
+        const envelope = await res.json();
+        if (!mountedRef.current || seq !== pageSeq) return;
+        const sessions: ServerSession[] = envelope.data ?? [];
+        mergeSessions(sessions);
+        setPageIds(sessions.map(s => s.sessionId));
+        setNextCursor(envelope.next ?? null);
+      } catch {
+        // backend not ready yet - will retry on next SSE connect
+      }
+    };
+
+    // One re-fetch for a burst of resync signals or unknown-session events. Only the newest page follows the
+    // live feed; a page further back is a stable position and is left as it is.
     let resyncTimer: ReturnType<typeof setTimeout> | null = null;
     loadSessionRef.current = (id) => void fetchExistingSessions(id);
-    searchSessionsRef.current = (q) => void fetchExistingSessions(undefined, q);
+    fetchPageRef.current = (cursor) => void fetchPage(cursor);
     const requestResync = () => {
-      if (resyncTimer) return;
+      if (resyncTimer || cursorsRef.current.length > 1) return;
       resyncTimer = setTimeout(() => {
         resyncTimer = null;
-        fetchExistingSessions();
+        fetchPage('');
       }, 1000);
     };
 
@@ -277,7 +323,7 @@ export function LiveStreamingView() {
         }
         retryDelayRef.current = 1000;
         setFeed('open');
-        fetchExistingSessions();
+        fetchPage(cursorsRef.current[cursorsRef.current.length - 1]);
       };
 
       // onclose fires for every disconnection (clean or not, including
@@ -333,6 +379,7 @@ export function LiveStreamingView() {
               });
               return newMap;
             });
+            requestResync();
             break;
 
           case 'resync':
@@ -596,19 +643,21 @@ export function LiveStreamingView() {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
-  // The box also searches the archive: a session evicted from memory is fetched by the query and joins the list,
-  // where the same client-side match shows it.
+  // The box filters on the server, so typing waits for a pause before asking.
   useEffect(() => {
-    const q = searchQuery.trim();
-    if (q.length < 3) return;
-    const t = setTimeout(() => searchSessionsRef.current(q), 400);
+    const t = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 300);
     return () => clearTimeout(t);
   }, [searchQuery]);
+
+  // A new page, or a new filter: ask the server. Declared after the feed effect, so fetchPageRef is set.
+  useEffect(() => {
+    fetchPageRef.current(cursors[cursors.length - 1]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listKey, cursors.join('|')]);
 
   // Declared after the feed effect above, so loadSessionRef is already set when this first runs.
   useEffect(() => {
     if (!focusId) return;
-    removedIdsRef.current.delete(focusId);
     loadSessionRef.current(focusId);
   }, [focusId]);
 
@@ -716,52 +765,16 @@ export function LiveStreamingView() {
   const byStartedAtDesc = (a: LiveSession, b: LiveSession) =>
     (Date.parse(b.startedAt) || 0) - (Date.parse(a.startedAt) || 0);
 
-  const cutoff = TIME_RANGES.find(r => r.key === timeRange)?.ms;
-  const withinRange = (s: LiveSession) => {
-    if (cutoff == null) return true;
-    const started = Date.parse(s.startedAt);
-    return !Number.isNaN(started) && started >= Date.now() - cutoff;
-  };
-
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-  // Matches what the card header shows: tenant, agent kind, model, provider, ids, root span name, counts and
-  // start time. Conversation text and metadata are left out, so "voice" finds voice sessions and not every
-  // session whose prompt mentions the word.
-  const matchesSearch = (s: LiveSession) => {
-    if (!normalizedQuery) return true;
-
-    const firstModelInfo = s.invocations?.[0]?.modelInfo;
-    const modelName = s.metadata?.model || s.liveStats?.model || firstModelInfo?.models?.[0] || '';
-    const totalTokens = (s.liveStats?.totalInputTokens || 0) + (s.liveStats?.totalOutputTokens || 0);
-
-    const haystacks: string[] = [
-      s.sessionId,
-      s.traceId,
-      s.evalSetId ?? '',
-      s.rootSpanName ?? '',
-      ...(s.agents ?? []),
-      ...(s.tenants ?? []).flatMap(t => [t, tenantName(t)]),
-      ...(s.models ?? []),
-      modelName,
-      firstModelInfo?.provider || '',
-      String(s.invocations?.length ?? ''),
-      totalTokens ? String(totalTokens) : '',
-      s.startedAt ? new Date(s.startedAt).toLocaleString() : '',
-    ];
-
-    return haystacks.some(h => h.toLowerCase().includes(normalizedQuery));
-  };
-
-  // A session made no LLM call once it is complete, or once its root span
-  // has arrived (the root ends last, so the trace is in) with none so far.
-  const hasNoLLM = (s: LiveSession) =>
-    !s.invocations?.length && (s.llmCalls ?? 0) === 0 &&
-    (s.status === 'complete' || !!s.rootSpanName);
+  // The page on show, as the server cut it. What was cleared or removed from this view stays out when the page is
+  // fetched again.
+  const pageSessions = pageIds
+    .map(id => activeSessions.get(id))
+    .filter((s): s is LiveSession => !!s)
+    .filter(s => !removedIds.has(s.sessionId))
+    .filter(s => !(s.status === 'complete' && Date.parse(s.startedAt) < clearedBefore));
   // A linked session is shown alone, whatever the time range, search and non-LLM filter say.
   const focused = focusId ? Array.from(activeSessions.values()).filter(s => s.sessionId === focusId) : null;
-  const matched = focused ?? Array.from(activeSessions.values()).filter(withinRange).filter(matchesSearch).filter(s => inTenant(s.tenants, pickedTenant));
-  const hiddenNoLLM = focused || showNoLLM ? 0 : matched.filter(hasNoLLM).length;
-  const sessions = focused || showNoLLM ? matched : matched.filter(s => !hasNoLLM(s));
+  const sessions = focused ?? pageSessions;
   const activeLiveSessions = sessions
     .filter(s => s.status === 'active')
     .sort(byStartedAtDesc);
@@ -769,9 +782,15 @@ export function LiveStreamingView() {
     .filter(s => s.status === 'complete')
     .sort(byStartedAtDesc);
   const allSessions = [...activeLiveSessions, ...completedSessions];
-  // Finished sessions are shown a page at a time; live ones always are all shown.
-  const donePageIdx = clampPage(donePage, completedSessions.length, SESSIONS_PAGE);
-  const visibleCompleted = completedSessions.slice(donePageIdx * SESSIONS_PAGE, (donePageIdx + 1) * SESSIONS_PAGE);
+  const pager = !focused && (pageIdx > 0 || nextCursor) ? (
+    <CursorPager
+      page={pageIdx}
+      hasNext={!!nextCursor}
+      onFirst={() => goToPage([''])}
+      onPrev={() => goToPage(cursors.slice(0, -1))}
+      onNext={() => nextCursor && goToPage([...cursors, nextCursor])}
+    />
+  ) : null;
 
   return (
     <div style={{
@@ -826,7 +845,7 @@ export function LiveStreamingView() {
                 whiteSpace: 'nowrap',
               }}
             >
-              {showNoLLM ? 'hide non-LLM' : `show non-LLM${hiddenNoLLM ? ` (${hiddenNoLLM})` : ''}`}
+              {showNoLLM ? 'hide non-LLM' : 'show non-LLM'}
             </button>
 
             <input
@@ -909,7 +928,7 @@ export function LiveStreamingView() {
             {completedSessions.length > 0 && (
               <button
                 onClick={() => {
-                  clearedBeforeRef.current = Date.now();
+                  setClearedBefore(Date.now());
                   actions.clearAllSessions();
                   if (selectedGoldenId && completedSessions.some(s => s.sessionId === selectedGoldenId)) {
                     setSelectedGoldenId(null);
@@ -1050,9 +1069,11 @@ export function LiveStreamingView() {
 
 
       {allSessions.length === 0 ? (
+        <>
+        {pager}
         <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
-          {hiddenNoLLM > 0
-            ? `${hiddenNoLLM} hidden (no LLM call)`
+          {debouncedQuery || pickedTenant
+            ? 'no sessions match'
             : timeRange === 'all'
               ? 'no sessions'
               : 'no sessions in this range'}
@@ -1073,8 +1094,10 @@ export function LiveStreamingView() {
             </button>
           )}
         </p>
+        </>
       ) : (
         <div>
+          {pager}
           {activeLiveSessions.length > 0 && (
             <div>
               <h2 style={{
@@ -1119,11 +1142,10 @@ export function LiveStreamingView() {
                 alignItems: 'center',
                 gap: '8px',
               }}>
-                done ({completedSessions.length})
+                done
               </h2>
-              <Pager total={completedSessions.length} page={donePageIdx} onChange={setDonePage} pageSize={SESSIONS_PAGE} />
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px' }}>
-                {visibleCompleted.map(session => (
+                {completedSessions.map(session => (
                   <SessionCard
                     key={session.sessionId}
                     defaultExpanded={focusId === session.sessionId}
@@ -1133,7 +1155,7 @@ export function LiveStreamingView() {
                       selectedGoldenId === session.sessionId ? null : session.sessionId
                     )}
                     onRemove={() => {
-                      removedIdsRef.current.add(session.sessionId);
+                      setRemovedIds(prev => new Set(prev).add(session.sessionId));
                       actions.removeSession(session.sessionId);
                       if (selectedGoldenId === session.sessionId) setSelectedGoldenId(null);
                       setComparisonSessionIds(prev => {
@@ -1155,9 +1177,9 @@ export function LiveStreamingView() {
                   />
                 ))}
               </div>
-              <Pager total={completedSessions.length} page={donePageIdx} onChange={setDonePage} pageSize={SESSIONS_PAGE} />
             </div>
           )}
+          {pager}
         </div>
       )}
     </div>
