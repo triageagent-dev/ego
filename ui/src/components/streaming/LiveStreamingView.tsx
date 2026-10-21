@@ -524,10 +524,8 @@ export function LiveStreamingView() {
             }
             setActiveSessions(prev => {
               const session = prev.get(data.sessionId);
-              if (!session) {
-                console.warn('[Streaming] Token update for unknown session:', data.sessionId);
-                return prev;
-              }
+              // The list holds one page; a session that is not on it (older, another tenant, outside the range) is not an error.
+              if (!session) return prev;
 
               const newStats = {
                 ...session.liveStats,
