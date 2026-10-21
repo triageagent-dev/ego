@@ -45,11 +45,10 @@ export const LabelButtons: React.FC<LabelButtonsProps> = ({ sessionId, metric, l
       </button>
       <input css={noteStyle} placeholder="note (optional)" maxLength={1000} value={note}
         onChange={e => setNote(e.target.value)} onKeyDown={e => e.stopPropagation()} />
-      {latest && (
-        <span css={dimStyle}>
-          {latest.by ? `${latest.by} ` : ''}{latest.verdict}d{latest.note ? `: ${latest.note}` : ''}
-        </span>
-      )}
+      {/* Always rendered: the row must fill all six grid cells, or the next row starts in the wrong column. */}
+      <span css={dimStyle}>
+        {latest ? `${latest.by ? `${latest.by} ` : ''}${latest.verdict}d${latest.note ? `: ${latest.note}` : ''}` : null}
+      </span>
       {error && <span css={errStyle}>{error}</span>}
     </span>
   );
