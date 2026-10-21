@@ -65,7 +65,9 @@ What ego supports today, and what it does not.
 - `/v1/logs` ingestion, for frameworks that keep message content in log records instead of span attributes.
 - Performance metrics (token and latency percentiles) in the `/api/evaluate` response.
 - `POST /api/streaming/evaluate-sessions` (evaluate every session against a golden one in one call); the UI
-  does the same through `create-eval-set` plus `/api/evaluate`.
+  does the same through `/api/evaluate` with `session_ids` and `eval_set_session_id` in a JSON body (the server
+  reads its own stored traces under the caller's role; `/api/convert` takes `session_ids` the same way). Uploads
+  as multipart files still work, but a WAF that blocks multipart bodies (OWASP signature 921120) refuses them.
 - Custom evaluators over a stdin/stdout JSON contract, and per-request judge credentials.
 - A trace waterfall view and a span store with retention.
 
