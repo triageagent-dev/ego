@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { css } from '@emotion/react';
-import { Radio, Play, FileJson, History, Coins, Gauge } from 'lucide-react';
+import { Radio, Play, FileJson, History, Coins, Gauge, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useTraceContext } from '../../context/TraceContext';
 import type { ViewType } from '../../lib/types';
 import { UserMenu } from './UserMenu';
@@ -19,40 +19,69 @@ const ICONS: Partial<Record<ViewType, React.ReactNode>> = {
   builder: <FileJson size={18} />,
 };
 
+const COLLAPSED_KEY = 'ego.sidebar.collapsed';
+
+const readCollapsed = (): boolean => {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
 // The classic shell: the same six views as the tab bar, in a left sidebar.
 export const Sidebar: React.FC = () => {
   const { actions, state } = useTraceContext();
   const active = tabForView(state.currentView);
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const toggle = () => {
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem(COLLAPSED_KEY, c ? '0' : '1');
+      } catch {
+        // the choice just does not survive a reload
+      }
+      return !c;
+    });
+  };
 
   return (
-    <nav css={sidebarStyle}>
-      <div css={brandStyle} onClick={() => actions.setCurrentView('streaming')}>
-        <img src="/favicon.svg" alt="" css={brandMarkStyle} />
-        <span css={brandNameStyle}>ego</span>
+    <nav css={[sidebarStyle, collapsed && collapsedStyle]}>
+      <div css={[brandStyle, collapsed && collapsedBrandStyle]}>
+        <div css={brandLinkStyle} onClick={() => actions.setCurrentView('streaming')}>
+          <img src="/favicon.svg" alt="" css={brandMarkStyle} />
+          {!collapsed && <span css={brandNameStyle}>ego</span>}
+        </div>
+        <button css={toggleStyle} onClick={toggle} title={collapsed ? 'Show menu' : 'Hide menu'} aria-label={collapsed ? 'Show menu' : 'Hide menu'}>
+          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+        </button>
       </div>
 
       <div css={navListStyle}>
         {TABS.map((t) => (
           <button
             key={t.view}
-            css={[navItemStyle, active?.view === t.view && activeItemStyle]}
+            css={[navItemStyle, collapsed && collapsedItemStyle, active?.view === t.view && activeItemStyle]}
             onClick={() => actions.setCurrentView(t.view)}
+            title={collapsed ? t.label : undefined}
           >
             {ICONS[t.view]}
-            {t.label}
+            {!collapsed && t.label}
           </button>
         ))}
       </div>
 
-      <div css={footerStyle}>
-        <TenantSwitch />
-        <UserMenu />
-        <ModeSwitch />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <ConnectionDot />
-          <VersionLink />
+      {!collapsed && (
+        <div css={footerStyle}>
+          <TenantSwitch stacked />
+          <UserMenu />
+          <ModeSwitch />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <ConnectionDot />
+            <VersionLink />
+          </div>
         </div>
-      </div>
+      )}
     </nav>
   );
 };
@@ -72,13 +101,50 @@ const sidebarStyle = css`
 const brandStyle = css`
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 0 16px 14px;
   border-bottom: 1px solid var(--border-default);
   margin-bottom: 12px;
+`;
+
+const brandLinkStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 8px;
   cursor: pointer;
 `;
 
+const toggleStyle = css`
+  display: inline-flex;
+  padding: 3px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+  }
+`;
+
+// Icon rail: the views stay one click away, the labels and the footer are hidden.
+const collapsedStyle = css`
+  width: 56px;
+`;
+
+const collapsedBrandStyle = css`
+  flex-direction: column;
+  padding: 0 0 12px;
+  gap: 10px;
+`;
+
+const collapsedItemStyle = css`
+  justify-content: center;
+  padding: 10px 0;
+`;
 const brandMarkStyle = css`
   display: block;
   width: 20px;

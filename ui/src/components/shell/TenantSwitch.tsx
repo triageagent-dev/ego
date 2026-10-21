@@ -8,7 +8,7 @@ const REFRESH_MS = 60_000;
 
 // Picks which tenant the sessions, usage and quality views show. Admins see every tenant and can switch between
 // them; anyone else is offered only the tenants their team grants. Hidden when there is nothing to choose from.
-export const TenantSwitch: React.FC = () => {
+export const TenantSwitch: React.FC<{ stacked?: boolean }> = ({ stacked }) => {
   const picked = useSelectedTenant();
   const [options, setOptions] = useState<TenantOption[] | null>(null);
 
@@ -38,9 +38,9 @@ export const TenantSwitch: React.FC = () => {
 
   const senders = Array.from(new Set(options.map((o) => o.sender ?? ''))).sort();
   return (
-    <label css={wrapStyle} title="Tenant">
+    <label css={[wrapStyle, stacked && stackedStyle]} title="Tenant">
       <span>tenant</span>
-      <select css={selectStyle} value={picked} onChange={(e) => setSelectedTenant(e.target.value)}>
+      <select css={[selectStyle, stacked && stackedSelectStyle]} value={picked} onChange={(e) => setSelectedTenant(e.target.value)}>
         <option value="">all</option>
         {senders.map((s) =>
           s ? (
@@ -77,4 +77,18 @@ const selectStyle = css`
   background: var(--bg-surface);
   color: var(--accent-magenta);
   font: inherit;
+`;
+
+// In a narrow column the label sits above the select and the select fills the width.
+const stackedStyle = css`
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+`;
+
+const stackedSelectStyle = css`
+  max-width: none;
+  width: 100%;
 `;
