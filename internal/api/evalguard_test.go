@@ -31,7 +31,7 @@ func TestValidateEvalConfig(t *testing.T) {
 
 func TestEvalGuardBudgetAndConcurrency(t *testing.T) {
 	g := newEvalGuard(100)
-	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC() // add() reads the wall clock, so a fixed date here would be a different day.
 
 	var releases []func()
 	for i := 0; i < maxConcurrentEvals; i++ {
