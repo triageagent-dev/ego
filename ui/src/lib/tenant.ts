@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 
 // The tenant the reader picked in the switcher; '' means every tenant their role covers. A tenant key is
 // "<sender>/<tenant>" (two senders can both send a tenant called "acme"); "<sender>/*" means all of a sender's.
@@ -88,8 +88,26 @@ function setNames(options: TenantOption[]): void {
   window.dispatchEvent(new Event(NAMES_CHANGED));
 }
 
-// Re-renders the component when the tenant names are loaded or change.
+const NAMES_REFRESH_MS = 60_000;
+let namesLoadedAt = 0;
+let namesLoading = false;
+
+// Loads the names unless they are fresh: whoever shows a name asks for it, so it does not depend on the tenant
+// switcher (which is not on screen when the sidebar is hidden) having been drawn.
+function ensureNames(): void {
+  if (namesLoading || Date.now() - namesLoadedAt < NAMES_REFRESH_MS) return;
+  namesLoading = true;
+  fetchTenants()
+    .catch(() => undefined)
+    .finally(() => {
+      namesLoadedAt = Date.now();
+      namesLoading = false;
+    });
+}
+
+// Re-renders the component when the tenant names are loaded or change, and makes sure they are loaded.
 export function useTenantNames(): void {
+  useEffect(ensureNames, []);
   useSyncExternalStore(
     (onChange) => {
       window.addEventListener(NAMES_CHANGED, onChange);
