@@ -131,7 +131,7 @@ export const QualityView: React.FC = () => {
         <PageTitle>
           <h1 css={titleStyle}>quality</h1>
           <p css={subtitleStyle}>
-            online evaluation of sampled live sessions · hourly scores are also runs
+            how sampled live sessions score on the metrics you chose
           </p>
         </PageTitle>
       </header>
