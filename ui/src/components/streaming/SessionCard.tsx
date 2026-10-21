@@ -5,7 +5,7 @@ import { LiveConversationPanel } from './LiveConversationPanel';
 import type { ConversationElement } from './LiveConversationPanel';
 import { SessionMetadata } from './SessionMetadata';
 import { OnlineScoresPanel } from './OnlineScoresPanel';
-import { formatSpanDuration, formatTurnTime, modelsLabel } from '../../lib/trace-helpers';
+import { formatSpanDuration, formatTurnTime, formatStarted, modelsLabel } from '../../lib/trace-helpers';
 import { tenantName, useTenantNames } from '../../lib/tenant';
 
 interface Invocation {
@@ -115,7 +115,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
   // The line under the badges: when, what ran, how many calls, and errors last.
   const details: Array<{ key: string; text: string; error?: boolean }> = [];
   if (session.startedAt) {
-    details.push({ key: 'when', text: new Date(session.startedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) });
+    details.push({ key: 'when', text: formatStarted(session.startedAt) });
   }
   if (session.rootSpanName) details.push({ key: 'root', text: session.rootSpanName });
   if (session.status === 'complete' && session.llmCalls != null) {

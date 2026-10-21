@@ -114,3 +114,16 @@ export function modelsLabel(ids: string[]): string {
   while (parts.every((p) => p.length > shared + 1 && p[shared] === parts[0][shared])) shared++;
   return [names[0], ...parts.slice(1).map((p) => p.slice(shared).join('-'))].join(' / ');
 }
+
+// When a session started, as short as it can be read: `21 Oct, 18:55`, with the year only when it is not this one.
+export function formatStarted(iso: string): string {
+  const d = new Date(iso);
+  const thisYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    ...(thisYear ? {} : { year: 'numeric' }),
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
