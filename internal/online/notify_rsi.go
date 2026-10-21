@@ -36,7 +36,12 @@ type FindingPayload struct {
 	SuggestedCorrection string   `json:"suggestedCorrection"`
 	Confidence          string   `json:"confidence"`
 	Sessions            []string `json:"sessions"`
-	Link                string   `json:"link,omitempty"`
+	// Scored, Mean and Below describe the series over the finding's window: sessions scored, their mean, how
+	// many were under the threshold.
+	Scored int     `json:"scored"`
+	Mean   float64 `json:"mean"`
+	Below  int     `json:"below"`
+	Link   string  `json:"link,omitempty"`
 }
 
 // FindingPayloadOf builds the webhook body for a finding event.
@@ -49,7 +54,7 @@ func FindingPayloadOf(event string, f *Finding, cfg *Config) FindingPayload {
 		Type: FindingWebhookType, Event: event, FindingID: f.ID, Tenant: f.Tenant, Kind: f.Kind, Metric: f.Metric,
 		FailureMode: f.Diagnosis.FailureMode, Summary: f.Diagnosis.Summary,
 		SuggestedCorrection: f.Diagnosis.SuggestedCorrection, Confidence: f.Diagnosis.Confidence,
-		Sessions: sessions, Link: cfg.PublicURL,
+		Sessions: sessions, Scored: f.Window.N, Mean: f.Window.Mean, Below: f.Window.Below, Link: cfg.PublicURL,
 	}
 }
 
@@ -71,35 +76,36 @@ func FindingEventOf(p FindingPayload) GenericEvent {
 	return e
 }
 
-// FindingText renders a finding event as one Discord message: the failure mode, the suggestion and the sessions.
-// Every value may carry text a model copied from a trace, so all of it goes through chatText.
+// FindingText renders a finding event as one short Discord message: a header with the kind, metric and tenant,
+// the failure mode, the suggestion cut to a few lines, one line of numbers and the link. The evidence session ids
+// are not listed: they are long, and the Quality view behind the link has them. Every value may carry text a
+// model copied from a trace, so all of it goes through chatText.
 func FindingText(p FindingPayload) string {
-	scope := chatText(p.Kind)
-	if p.Tenant != "" {
-		scope = chatText(p.Tenant) + " · " + scope
-	}
-	var b strings.Builder
+	title := "Finding"
 	switch p.Event {
 	case EventResolved:
-		fmt.Fprintf(&b, "**Finding resolved** · %s · `%s`\n", scope, chatText(p.Metric))
+		title = "Finding resolved"
 	case EventStale:
-		fmt.Fprintf(&b, "**Finding stale** · %s · `%s`\n", scope, chatText(p.Metric))
+		title = "Finding stale"
 	case EventUpdated:
-		fmt.Fprintf(&b, "**Finding updated** · %s · `%s`\n", scope, chatText(p.Metric))
-	default:
-		fmt.Fprintf(&b, "**Finding** · %s · `%s`\n", scope, chatText(p.Metric))
+		title = "Finding updated"
 	}
-	b.WriteString(chatTextN(p.FailureMode, 300))
-	if p.Event != EventResolved && p.Event != EventStale {
-		if p.SuggestedCorrection != "" {
-			fmt.Fprintf(&b, "\nSuggested: %s", chatTextN(p.SuggestedCorrection, 500))
+	var b strings.Builder
+	fmt.Fprintf(&b, "**%s** · %s · `%s`", title, chatText(p.Kind), chatText(p.Metric))
+	if p.Tenant != "" {
+		fmt.Fprintf(&b, " · %s", chatText(p.Tenant))
+	}
+	fmt.Fprintf(&b, "\n%s", chatTextN(p.FailureMode, 300))
+	if p.Event != EventResolved && p.Event != EventStale && p.SuggestedCorrection != "" {
+		fmt.Fprintf(&b, "\n**Suggested:** %s", chatTextN(p.SuggestedCorrection, 280))
+	}
+	if p.Scored > 0 {
+		fmt.Fprintf(&b, "\n%d scored, mean %.2f, %d below threshold", p.Scored, p.Mean, p.Below)
+		if n := len(p.Sessions); n > 0 {
+			fmt.Fprintf(&b, " · %d evidence sessions", n)
 		}
-		if len(p.Sessions) > 0 {
-			ids := make([]string, len(p.Sessions))
-			for i, s := range p.Sessions {
-				ids[i] = chatText(s)
-			}
-			fmt.Fprintf(&b, "\nSessions: `%s`", strings.Join(ids, "`, `"))
+		if p.Confidence != "" {
+			fmt.Fprintf(&b, " · confidence %s", chatText(p.Confidence))
 		}
 	}
 	if p.Link != "" {

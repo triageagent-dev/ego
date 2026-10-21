@@ -238,6 +238,7 @@ func TestPayloadsAndGenericEvents(t *testing.T) {
 		FindingData: FindingData{
 			Diagnosis: Diagnosis{FailureMode: "claims `restart` counts\n@everyone", SuggestedCorrection: "quote the output", Confidence: "high"},
 			Sessions:  []string{"s1", "s2"},
+			Window:    FindingWindow{N: 12, Mean: 0.28, Below: 12},
 		}}
 	p := FindingPayloadOf(EventOpen, f, cfg)
 	b, _ := json.Marshal(p)
@@ -261,8 +262,10 @@ func TestPayloadsAndGenericEvents(t *testing.T) {
 	if resolved.Type != "EvalFindingResolved" || resolved.Severity != "info" || stale.Type != "EvalFindingResolved" {
 		t.Errorf("resolved = %+v stale = %+v", resolved, stale)
 	}
+	// The chat text is short: no session id list (the link has them), the numbers on one line.
 	if text := FindingText(p); strings.Contains(text, "@everyone") || strings.Contains(text, "`restart`") ||
-		!strings.Contains(text, "Suggested: quote the output") || !strings.Contains(text, "`s1`, `s2`") {
+		!strings.Contains(text, "**Suggested:** quote the output") || strings.Contains(text, "s1") ||
+		!strings.Contains(text, "2 evidence sessions") || !strings.Contains(text, "confidence high") {
 		t.Errorf("finding text = %q", text)
 	}
 

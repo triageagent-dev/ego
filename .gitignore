@@ -13,3 +13,4 @@
 /deploy/local.mk
 /deploy/k8s.yaml
 /ego
+/.claude/
