@@ -2,6 +2,8 @@ import React from 'react';
 import { css } from '@emotion/react';
 import { Button } from 'antd';
 import { Save } from 'lucide-react';
+import { PageTitle } from '../shell/PageTitle';
+import { titleStyle as pageTitleStyle } from '../ui/page';
 
 interface BuilderHeaderProps {
   onSave: () => void;
@@ -14,12 +16,10 @@ export const BuilderHeader: React.FC<BuilderHeaderProps> = ({
 }) => {
   return (
     <div css={headerStyle}>
-      <div css={leftSectionStyle}>
-        <div css={titleStyle}>
-          <h1>Eval sets</h1>
-          <span css={evalSetIdStyle}>{evalSetId}</span>
-        </div>
-      </div>
+      <PageTitle style={{ display: 'flex', alignItems: 'baseline', gap: '14px' }}>
+        <h1 css={pageTitleStyle}>eval sets</h1>
+        <span css={evalSetIdStyle}>{evalSetId}</span>
+      </PageTitle>
 
       <div css={rightSectionStyle}>
         <Button
@@ -43,24 +43,7 @@ const headerStyle = css`
   background: var(--bg-surface);
 `;
 
-const leftSectionStyle = css`
-  display: flex;
-  align-items: center;
-  gap: 16px;
-`;
 
-const titleStyle = css`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-
-  h1 {
-    margin: 0;
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-`;
 
 const evalSetIdStyle = css`
   font-size: 0.75rem;

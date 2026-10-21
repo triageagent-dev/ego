@@ -24,6 +24,11 @@ export const headerStyle = css`
     flex-wrap: wrap;
     min-width: 0;
   }
+
+  /* With the title drawn in the app's header bar, the controls are alone here. */
+  > :last-child {
+    margin-left: auto;
+  }
 `;
 
 export const titleStyle = css`

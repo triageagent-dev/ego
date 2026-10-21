@@ -7,6 +7,8 @@ import { MetricSelector } from './MetricSelector';
 import { EvalSetEditorDrawer } from './EvalSetEditorDrawer';
 import { TraceEditorDrawer } from './TraceEditorDrawer';
 import { useTraceContext } from '../../context/TraceContext';
+import { PageTitle } from '../shell/PageTitle';
+import { subtitleStyle, titleStyle } from '../ui/page';
 
 const uploadViewStyle = css`
   padding: 12px 18px 24px;
@@ -204,12 +206,12 @@ export const UploadView: React.FC = () => {
 
   return (
     <div css={uploadViewStyle}>
-      <div className="header">
-        <h1 className="title">Evaluate</h1>
-        <p className="subtitle">
+      <PageTitle className="header">
+        <h1 css={titleStyle}>evaluate</h1>
+        <p css={subtitleStyle}>
           traces + a golden set, scored by the metrics you pick
         </p>
-      </div>
+      </PageTitle>
 
       {state.errors.length > 0 && (
         <div role="alert" style={{ margin: '0 0 12px', fontSize: '14px', color: 'var(--status-failure)' }}>

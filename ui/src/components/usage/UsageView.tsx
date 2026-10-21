@@ -16,6 +16,7 @@ import { getUsage, getUsageSessions, StorageUnavailableError } from '../../api/c
 import { tenantNames, useSelectedTenant, useTenantNames } from '../../lib/tenant';
 import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
 import type { UsageBucket, UsageSeries, UsageSession } from '../../lib/types';
+import { PageTitle } from '../shell/PageTitle';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -242,12 +243,12 @@ export const UsageView: React.FC = () => {
   return (
     <div css={pageStyle}>
       <header css={headerStyle}>
-        <div>
+        <PageTitle>
           <h1 css={titleStyle}>usage</h1>
           <p css={subtitleStyle}>
             from LLM spans · cost is estimated from list prices, not billed
           </p>
-        </div>
+        </PageTitle>
         <button css={refreshStyle} onClick={load} disabled={loading} title="Refresh">
           <RefreshCw size={14} css={loading ? spinStyle : undefined} /> Refresh
         </button>

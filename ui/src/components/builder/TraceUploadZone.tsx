@@ -5,6 +5,8 @@ import { message } from 'antd';
 import { convertTraces } from '../../api/client';
 import { generateEvalSet } from '../../lib/evalset-builder';
 import { useTraceContext } from '../../context/TraceContext';
+import { PageTitle } from '../shell/PageTitle';
+import { subtitleStyle, titleStyle } from '../ui/page';
 
 export const TraceUploadZone: React.FC = () => {
   const { actions } = useTraceContext();
@@ -54,10 +56,10 @@ export const TraceUploadZone: React.FC = () => {
   return (
     <div css={containerStyle}>
       <div css={contentStyle}>
-        <div css={headerStyle}>
-          <h1>eval sets</h1>
-          <p>golden references built from traces</p>
-        </div>
+        <PageTitle style={{ display: 'flex', alignItems: 'baseline', gap: '14px', marginBottom: '10px' }}>
+          <h1 css={titleStyle}>eval sets</h1>
+          <p css={subtitleStyle}>golden references built from traces</p>
+        </PageTitle>
 
         <div
           css={dropZoneStyle}
@@ -98,26 +100,6 @@ const contentStyle = css`
   width: 100%;
 `;
 
-const headerStyle = css`
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  margin-bottom: 10px;
-
-  h1 {
-    font-size: 15px;
-    font-weight: 600;
-    margin: 0;
-    color: var(--accent-cyan);
-    text-transform: lowercase;
-  }
-
-  p {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin: 0;
-  }
-`;
 
 const dropZoneStyle = css`
   position: relative;

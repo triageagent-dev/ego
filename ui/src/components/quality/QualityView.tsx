@@ -16,6 +16,7 @@ import { getOnlineAlerts, getOnlineCorrections, getOnlineFindings, getOnlineSeri
 import { sessionLink } from '../shell/routes';
 import { useSelectedTenant } from '../../lib/tenant';
 import type { OnlineAlert, OnlineCorrection, OnlineFinding, OnlineFindingState, OnlineSeriesPoint, OnlineStatus } from '../../lib/types';
+import { PageTitle } from '../shell/PageTitle';
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
 
@@ -134,12 +135,12 @@ export const QualityView: React.FC = () => {
   return (
     <div css={pageStyle}>
       <header css={headerStyle}>
-        <div>
+        <PageTitle>
           <h1 css={titleStyle}>quality</h1>
           <p css={subtitleStyle}>
             online evaluation of sampled live sessions · hourly scores are also runs
           </p>
-        </div>
+        </PageTitle>
         <button css={refreshStyle} onClick={load} disabled={loading} title="Refresh">
           <RefreshCw size={14} css={loading ? spinStyle : undefined} /> Refresh
         </button>

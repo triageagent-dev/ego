@@ -16,6 +16,7 @@ import { PassRateTrendChart } from './PassRateTrendChart';
 import { PerMetricTrendChart } from './PerMetricTrendChart';
 import { RunsHistoryTable } from './RunsHistoryTable';
 import { RunDetailView } from './RunDetailView';
+import { PageTitle } from '../shell/PageTitle';
 
 const ALL_GROUPS = '__all__';
 
@@ -85,10 +86,10 @@ export const RunsView: React.FC = () => {
   return (
     <div css={pageStyle}>
       <header css={headerStyle}>
-        <div>
+        <PageTitle>
           <h1 css={titleStyle}>runs</h1>
           <p css={subtitleStyle}>every evaluation, newest first</p>
-        </div>
+        </PageTitle>
         <div css={controlsStyle}>
           {runs.length > 0 && (
             <Segmented<GroupBy>

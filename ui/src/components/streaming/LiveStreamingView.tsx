@@ -9,6 +9,8 @@ import { useSelectedTenant } from '../../lib/tenant';
 import { store, stored } from '../../lib/stored';
 import { SessionEvalSetFile, SessionTraceFile } from '../../lib/sessionFiles';
 import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
+import { PageTitle } from '../shell/PageTitle';
+import { subtitleStyle, titleStyle } from '../ui/page';
 
 type TimeRangeKey = '1h' | '6h' | '12h' | 'day' | '7d' | 'all';
 
@@ -669,32 +671,10 @@ export function LiveStreamingView() {
       <div style={{
         marginBottom: '12px',
       }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '10px',
-          marginBottom: '8px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '14px', flexWrap: 'wrap' }}>
-            <h1 style={{
-              fontSize: '15px',
-              fontWeight: 600,
-              margin: 0,
-              color: 'var(--accent-cyan)',
-            }}>
-              sessions
-            </h1>
-            <p style={{
-              fontSize: '12px',
-              color: 'var(--text-muted)',
-              margin: 0,
-            }}>
-              pick a golden session, then evaluate the rest
-            </p>
-          </div>
-        </div>
+        <PageTitle style={{ display: 'flex', alignItems: 'baseline', gap: '14px', flexWrap: 'wrap', marginBottom: '8px' }}>
+          <h1 css={titleStyle}>sessions</h1>
+          <p css={subtitleStyle}>pick a golden session, then evaluate the rest</p>
+        </PageTitle>
 
         <div style={{
           display: 'flex',
@@ -702,6 +682,30 @@ export function LiveStreamingView() {
           alignItems: 'center',
           flexWrap: 'wrap',
         }}>
+          {completedSessions.length > 0 && (
+            <button
+              onClick={() => {
+                setClearedBefore(Date.now());
+                actions.clearAllSessions();
+                if (selectedGoldenId && completedSessions.some(s => s.sessionId === selectedGoldenId)) {
+                  setSelectedGoldenId(null);
+                }
+              }}
+              title="Hide the finished sessions on this page until they are loaded again"
+              style={{
+                padding: '3px 9px',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--border-default)',
+                background: 'transparent',
+                color: 'var(--text-tertiary)',
+                fontSize: '12px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              hide done
+            </button>
+          )}
           <button
             onClick={toggleShowNoLLM}
             aria-pressed={showNoLLM}
@@ -737,30 +741,6 @@ export function LiveStreamingView() {
             scored only
           </button>
 
-          {completedSessions.length > 0 && (
-            <button
-              onClick={() => {
-                setClearedBefore(Date.now());
-                actions.clearAllSessions();
-                if (selectedGoldenId && completedSessions.some(s => s.sessionId === selectedGoldenId)) {
-                  setSelectedGoldenId(null);
-                }
-              }}
-              title="Hide the finished sessions on this page until they are loaded again"
-              style={{
-                padding: '3px 9px',
-                borderRadius: 'var(--radius)',
-                border: '1px solid var(--border-default)',
-                background: 'transparent',
-                color: 'var(--text-tertiary)',
-                fontSize: '12px',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              hide done
-            </button>
-          )}
           <input
             type="text"
             value={searchQuery}

@@ -5,6 +5,8 @@ import { TraceTable } from './TraceTable';
 import { SummaryStats } from './SummaryStats';
 import { PerformanceCharts } from './PerformanceCharts';
 import { useTraceContext } from '../../context/TraceContext';
+import { PageTitle } from '../shell/PageTitle';
+import { titleStyle } from '../ui/page';
 
 const dashboardStyle = css`
   max-width: 2400px;
@@ -142,9 +144,9 @@ export const DashboardView: React.FC = () => {
 
   return (
     <div css={dashboardStyle}>
-      <div className="header">
-        <h1 className="title">Evaluation Results</h1>
-      </div>
+      <PageTitle className="header">
+        <h1 css={titleStyle}>evaluation results</h1>
+      </PageTitle>
 
       {state.errors.length > 0 && (
         <div className="errors">
