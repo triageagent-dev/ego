@@ -125,6 +125,8 @@ export function LiveStreamingView() {
   const goToPage = (next: string[]) => setStack({ key: listKey, cursors: next });
   const [selectedGoldenId, setSelectedGoldenId] = useState<string | null>(null);
   const [isPreparingEvaluation, setIsPreparingEvaluation] = useState(false);
+  // Shown under the Continue button: an alert() is easy to miss, and a browser can be told to hide them.
+  const [evaluationError, setEvaluationError] = useState<string | null>(null);
   // Sessions explicitly opted in as extra comparison traces alongside the
   // golden run. Empty by default - evaluating just the golden session on its
   // own (e.g. with a judge-only metric like safety_v1) must not silently
@@ -665,6 +667,7 @@ export function LiveStreamingView() {
     if (!selectedGoldenId) return;
 
     setIsPreparingEvaluation(true);
+    setEvaluationError(null);
 
     try {
       const goldenSession = activeSessions.get(selectedGoldenId);
@@ -756,7 +759,7 @@ export function LiveStreamingView() {
 
     } catch (error) {
       console.error('Failed to prepare evaluation:', error);
-      alert(`Failed to prepare evaluation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setEvaluationError(`Could not prepare the evaluation: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
       setIsPreparingEvaluation(false);
     }
@@ -1026,6 +1029,11 @@ export function LiveStreamingView() {
                 ? `Ready to evaluate ${comparisonSessionIds.size} session${comparisonSessionIds.size !== 1 ? 's' : ''} against this baseline`
                 : 'Evaluating this session on its own. Check "Compare" on a completed session below to add it.'}
             </p>
+            {evaluationError && (
+              <p role="alert" style={{ fontSize: '13px', color: 'var(--status-failure)', margin: '8px 0 0' }}>
+                {evaluationError}
+              </p>
+            )}
           </div>
 
           <button
