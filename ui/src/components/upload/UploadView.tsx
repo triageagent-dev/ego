@@ -259,6 +259,11 @@ const SOURCES = 'sources';
 const SETTINGS = 'settings';
 
 const JUDGE_MODELS = [
+  { value: 'gemini-3.8-flash', provider: 'google' },
+  { value: 'gemini-3.5-flash', provider: 'google' },
+  { value: 'gemini-3.1-pro-preview', provider: 'google' },
+  { value: 'gemini-3-pro-preview', provider: 'google' },
+  { value: 'gemini-3-flash-preview', provider: 'google' },
   { value: 'gemini-2.5-flash', provider: 'google' },
   { value: 'gemini-2.0-flash', provider: 'google' },
   { value: 'anthropic/claude-3.5-sonnet', provider: 'anthropic' },
