@@ -16,3 +16,15 @@ export function store(key: string, value: string): void {
     // blocked or full: not remembered
   }
 }
+
+// Forgets every remembered choice whose key starts with prefix.
+export function clearStored(prefix: string): void {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(prefix)) localStorage.removeItem(key);
+    }
+  } catch {
+    // blocked: nothing was remembered
+  }
+}

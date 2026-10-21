@@ -53,13 +53,18 @@ const STALE_MS = 45_000;
 const WATCH_MS = 5_000;
 const PROBE_TIMEOUT_MS = 4_000;
 const MAX_BACKOFF_MS = 10_000;
+// A socket that has neither opened nor closed by then is stuck; closing it hands over to the reconnect in onclose.
+const CONNECT_TIMEOUT_MS = 10_000;
 
 let ws: WebSocket | null = null;
 let started = false;
 let backoff = 1_000;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let watchTimer: ReturnType<typeof setInterval> | null = null;
+// When the open socket last said anything; 0 until its first message (the heartbeat counts), so a socket that
+// opened and then stays silent is judged from openedAt.
 let lastSeen = 0;
+let openedAt = 0;
 
 const messageListeners = new Set<(data: any) => void>();
 const openListeners = new Set<() => void>();
@@ -94,18 +99,45 @@ async function health(): Promise<{ version?: string } | null> {
 // reopened, must not overwrite the state the live socket set.
 let probeSeq = 0;
 
+// Whether the open socket has been silent for longer than it may be.
+function stale(): boolean {
+  return Date.now() - (lastSeen || openedAt) > STALE_MS;
+}
+
+function scheduleRetry() {
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    connect();
+  }, backoff);
+  backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
+}
+
 function connect() {
   if (!started || ws) return;
   set({ feed: 'connecting' });
-  const socket = new WebSocket(config.websocket.uiUpdatesWs);
+  let socket: WebSocket;
+  try {
+    socket = new WebSocket(config.websocket.uiUpdatesWs);
+  } catch {
+    // a malformed URL or a policy refusal throws instead of closing
+    set({ feed: 'closed', checkedAt: Date.now() });
+    scheduleRetry();
+    return;
+  }
   ws = socket;
+  lastSeen = 0;
+  openedAt = 0;
+  const connectTimer = setTimeout(() => {
+    if (ws === socket && socket.readyState === WebSocket.CONNECTING) socket.close();
+  }, CONNECT_TIMEOUT_MS);
 
   // A handler of a socket that was replaced or stopped must not touch the current state.
   socket.onopen = () => {
+    clearTimeout(connectTimer);
     if (ws !== socket) return;
     probeSeq++;
     backoff = 1_000;
-    lastSeen = Date.now();
+    openedAt = Date.now();
     set({ server: 'up', feed: 'open', checkedAt: Date.now() });
     openListeners.forEach((l) => l());
     void health().then((h) => h?.version && set({ version: h.version }));
@@ -126,6 +158,7 @@ function connect() {
 
   // onclose follows every failure, including a connection that never opened, so reconnecting lives here only.
   socket.onclose = () => {
+    clearTimeout(connectTimer);
     if (ws !== socket) return;
     ws = null;
     if (!started) return;
@@ -135,11 +168,7 @@ function connect() {
       if (!started || probe !== probeSeq) return;
       set({ server: h ? 'up' : 'down', checkedAt: Date.now() });
     });
-    retryTimer = setTimeout(() => {
-      retryTimer = null;
-      connect();
-    }, backoff);
-    backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
+    scheduleRetry();
   };
 }
 
@@ -160,12 +189,12 @@ export function startConnectionMonitor(): () => void {
   connect();
 
   watchTimer = setInterval(() => {
-    if (ws?.readyState === WebSocket.OPEN && Date.now() - lastSeen > STALE_MS) ws.close();
+    if (ws?.readyState === WebSocket.OPEN && stale()) ws.close();
   }, WATCH_MS);
 
   const onVisible = () => {
     if (document.visibilityState !== 'visible') return;
-    if (ws?.readyState === WebSocket.OPEN && Date.now() - lastSeen > STALE_MS) ws.close();
+    if (ws?.readyState === WebSocket.OPEN && stale()) ws.close();
     else reconnectNow();
   };
   const onOnline = () => reconnectNow();
@@ -190,25 +219,56 @@ export function startConnectionMonitor(): () => void {
   };
 }
 
-/** Runs load now, whenever the server says data of the topic changed, and after the feed reconnects or resyncs.
- * load may change (its filters did): it then runs again at once. Replaces a refresh timer and its button. */
-export function useLiveData(topic: string, load: () => unknown): void {
+// A change that arrives this soon after a load finished waits for the rest of the gap, so continuous ingest costs
+// one refetch per gap instead of one per message.
+const LIVE_GAP_MS = 2_000;
+
+/** Runs load now, whenever the server says data of the topic(s) changed, and after the feed reconnects or resyncs.
+ * load may change (its filters did): it then runs again at once. Replaces a refresh timer and its button.
+ * load gets a function that says whether its call is still the newest; an older, slower answer must be dropped
+ * rather than shown over the newer one. */
+export function useLiveData(topic: string | string[], load: (current: () => boolean) => unknown): void {
   const latest = useRef(load);
   latest.current = load;
+  const seq = useRef(0);
+  const doneAt = useRef(0);
+  const run = useRef(async () => {
+    const mine = ++seq.current;
+    try {
+      await latest.current(() => mine === seq.current);
+    } finally {
+      doneAt.current = Date.now();
+    }
+  });
   useEffect(() => {
-    void load();
+    void run.current();
   }, [load]);
+  const topics = ([] as string[]).concat(topic).join('|');
   useEffect(() => {
-    const again = () => void latest.current();
+    const wanted = topics.split('|');
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const again = () => {
+      if (timer) return;
+      const wait = LIVE_GAP_MS - (Date.now() - doneAt.current);
+      if (wait <= 0) {
+        void run.current();
+        return;
+      }
+      timer = setTimeout(() => {
+        timer = null;
+        void run.current();
+      }, wait);
+    };
     const offMessage = onFeedMessage((data) => {
-      if (data?.type === 'resync' || (data?.type === 'changed' && data.topic === topic)) again();
+      if (data?.type === 'resync' || (data?.type === 'changed' && wanted.includes(data.topic))) again();
     });
     const offOpen = onFeedOpen(again);
     return () => {
       offMessage();
       offOpen();
+      if (timer) clearTimeout(timer);
     };
-  }, [topic]);
+  }, [topics]);
 }
 
 function subscribe(l: () => void) {

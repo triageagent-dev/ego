@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { css } from '@emotion/react';
 import { ChevronDown, LogIn, LogOut, User } from 'lucide-react';
+import { clearFlags } from '../../lib/flagged';
 import { useMe } from '../../lib/me';
 import { setSelectedTenant, useSelectedTenant, useTenantOptions } from '../../lib/tenant';
 import { ModeSwitch } from './ModeSwitch';
@@ -21,7 +22,10 @@ export const AccountMenu: React.FC = () => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key !== 'Escape') return;
+      // Marks the key as taken, so the panel behind this popup stays open.
+      e.preventDefault();
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -80,7 +84,7 @@ export const AccountMenu: React.FC = () => {
           {(signedIn || canSignIn) && <div css={dividerStyle} />}
           {signedIn && (
             // A form post, not a link: logout changes state, and the server accepts it only as POST.
-            <form method="post" action="/auth/logout" css={formStyle}>
+            <form method="post" action="/auth/logout" css={formStyle} onSubmit={clearFlags}>
               <button type="submit" css={itemStyle}>
                 <LogOut size={14} />
                 log out

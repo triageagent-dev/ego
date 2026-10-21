@@ -183,7 +183,6 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
         onDoubleClick={(e) => {
           // A double-click on the row opens its details; one on a control inside it does its own thing.
           if ((e.target as HTMLElement).closest('button, a, input, select, textarea, label')) return;
-          window.getSelection()?.removeAllRanges();
           onOpen?.();
         }}
         style={{

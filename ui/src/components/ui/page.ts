@@ -26,7 +26,7 @@ export const headerStyle = css`
   }
 
   /* With the title drawn in the app's header bar, the controls are alone here. */
-  > :last-child {
+  > :last-child:not(:first-child) {
     margin-left: auto;
   }
 `;

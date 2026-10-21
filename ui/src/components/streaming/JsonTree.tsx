@@ -202,6 +202,9 @@ export function parseLooseJSON(text: string): { value: Json; end: number; trunca
   text = t;
   try {
     const v = value();
+    // A bracketed number or word with prose after it ("[1] see above", "[0.5] of the budget") is a citation, not an
+    // array: an array is JSON only when it is all of the text. An object may still be followed by prose.
+    if (t[0] === '[' && text.slice(i).trim()) return null;
     return { value: v, end: i, truncated };
   } catch {
     return null;

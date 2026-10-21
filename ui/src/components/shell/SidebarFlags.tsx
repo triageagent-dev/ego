@@ -21,7 +21,10 @@ export const SidebarFlags: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
       if (!panelRef.current?.contains(t) && !buttonRef.current?.contains(t)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key !== 'Escape') return;
+      // Marks the key as taken, so the panel behind this popup stays open.
+      e.preventDefault();
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);

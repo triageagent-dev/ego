@@ -162,13 +162,15 @@ export const UsageView: React.FC = () => {
   const tenant = useSelectedTenant();
   useTenantNames();
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (current: () => boolean) => {
     try {
       const [s, c] = await Promise.all([getUsage(hours), getUsageSessions(hours, 25)]);
+      if (!current()) return;
       setSeries(s);
       setSessions(c);
       setError(null);
     } catch (err) {
+      if (!current()) return;
       setError(
         err instanceof StorageUnavailableError
           ? 'Token usage needs the session database (start the server with --session-db).'

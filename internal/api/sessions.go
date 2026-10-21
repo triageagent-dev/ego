@@ -287,7 +287,7 @@ type sessionCompleteEvent struct {
 // optionally archived to a SQLiteStore so sessions survive a restart.
 type SessionStore struct {
 	mu               sync.Mutex
-	indexing         sync.WaitGroup // the session-index backfill LoadPersisted starts; Close waits for it
+	indexing         sync.WaitGroup // the session-index backfill LoadPersisted starts; Close waits for it, up to indexingCloseWait
 	sessions         map[string]*Session
 	order            []string
 	hub              *sseHub
@@ -781,6 +781,9 @@ func (s *SessionStore) flushUsage() error {
 	return nil
 }
 
+// indexingCloseWait bounds how long Close waits for the session-index backfill before it flushes and closes anyway.
+const indexingCloseWait = 5 * time.Second
+
 // Close flushes a final snapshot and closes the archive, if configured.
 // Also stops every pending idle/completion timer so no goroutine fires
 // after the store is done.
@@ -797,7 +800,18 @@ func (s *SessionStore) Close() error {
 	if s.store == nil {
 		return nil
 	}
-	s.indexing.Wait()
+	// A backfill that finishes soon is waited for; on a large archive it can outlast the pod's grace period, and
+	// the final snapshot must not be lost to it.
+	indexed := make(chan struct{})
+	go func() {
+		s.indexing.Wait()
+		close(indexed)
+	}()
+	select {
+	case <-indexed:
+	case <-time.After(indexingCloseWait):
+		logx.Warnf("session archive: indexing for the session list still running after %s; closing without it", indexingCloseWait)
+	}
 	if err := s.flushPersist(); err != nil {
 		logx.Errorf("session archive: final snapshot failed: %v", err)
 	}

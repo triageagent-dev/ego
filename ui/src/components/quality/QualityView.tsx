@@ -65,7 +65,7 @@ export const QualityView: React.FC = () => {
   const [notConfigured, setNotConfigured] = useState(false);
   const tenant = useSelectedTenant();
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (current: () => boolean) => {
     try {
       // The judge budget is not per tenant, so a tenant-limited user is refused it; the rest of the view still loads.
       // Findings and corrections are an extra: a server without them, or a role that cannot read them, still
@@ -77,6 +77,7 @@ export const QualityView: React.FC = () => {
         getOnlineFindings().catch(() => [] as OnlineFinding[]),
         getOnlineCorrections().catch(() => [] as OnlineCorrection[]),
       ]);
+      if (!current()) return;
       setStatus(st);
       setSeries(se);
       setAlerts(al);
@@ -85,6 +86,7 @@ export const QualityView: React.FC = () => {
       setError(null);
       setNotConfigured(false);
     } catch (e) {
+      if (!current()) return;
       const off = e instanceof StorageUnavailableError;
       setNotConfigured(off);
       setError(off ? null : (e as Error).message);

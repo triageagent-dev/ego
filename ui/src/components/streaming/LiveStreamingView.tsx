@@ -90,6 +90,7 @@ export function LiveStreamingView() {
     if (!openId) return;
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
+      if (e.defaultPrevented) return;
       if (e.key === 'Escape' && !(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'))) setOpenId(null);
     };
     window.addEventListener('keydown', onKey);
@@ -118,6 +119,8 @@ export function LiveStreamingView() {
   // The list is paged by the server: the ids of the page on show, and the cursor of the next one.
   const [pageIds, setPageIds] = useState<string[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  // While a page is on its way nextCursor is still the previous answer's, so the pager must not use it.
+  const [pageLoading, setPageLoading] = useState(false);
   // How many sessions match the filters: counted by the server with the first page, kept while paging on.
   const [listTotal, setListTotal] = useState<{ n: number; approx: boolean } | null>(null);
   // Sessions whose trace made no LLM call (a server's per-request or
@@ -326,6 +329,7 @@ export function LiveStreamingView() {
     let pageSeq = 0;
     const fetchPage = async (cursor: string) => {
       const seq = ++pageSeq;
+      setPageLoading(true);
       try {
         const params = new URLSearchParams(listParamsRef.current);
         if (cursor) params.set('cursor', cursor);
@@ -340,6 +344,8 @@ export function LiveStreamingView() {
         if (typeof envelope.total === 'number') setListTotal({ n: envelope.total, approx: !!envelope.totalApprox });
       } catch {
         // backend not ready yet - will retry on next SSE connect
+      } finally {
+        if (mountedRef.current && seq === pageSeq) setPageLoading(false);
       }
     };
 
@@ -693,7 +699,7 @@ export function LiveStreamingView() {
       hasNext={!!nextCursor}
       onFirst={() => goToPage([''])}
       onPrev={() => goToPage(cursors.slice(0, -1))}
-      onNext={() => nextCursor && goToPage([...cursors, nextCursor])}
+      onNext={() => nextCursor && !pageLoading && nextCursor !== cursors[pageIdx] && goToPage([...cursors, nextCursor])}
     />
   ) : null;
   // In the filters row at the top, and again below the list, where the next page is wanted.

@@ -1,5 +1,6 @@
 import { css } from '@emotion/react';
 import { User, LogOut } from 'lucide-react';
+import { clearFlags } from '../../lib/flagged';
 import { useMe } from '../../lib/me';
 
 export function UserMenu() {
@@ -29,7 +30,7 @@ export function UserMenu() {
       )}
       {/* A form post, not a link: logout changes state, and the server accepts it only as POST. The 303
        * redirect back to /evals is a plain navigation, so the global 401 interceptor is not involved. */}
-      <form method="post" action="/auth/logout" css={logoutFormStyle}>
+      <form method="post" action="/auth/logout" css={logoutFormStyle} onSubmit={clearFlags}>
         <button type="submit" css={logoutButtonStyle} title="Log out" aria-label="Log out">
           <LogOut size={13} />
         </button>

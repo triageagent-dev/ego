@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { css } from '@emotion/react';
 import { getOnlineStatus, getUsage, listRuns } from '../../api/client';
 import { passRate } from '../runs/runHistory';
 import type { Run, UsageSeries } from '../../lib/types';
 import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
+import { useLiveData } from '../../lib/connection';
 import { useSelectedTenant } from '../../lib/tenant';
 import { useTraceContext } from '../../context/TraceContext';
 
@@ -19,8 +20,6 @@ interface Figures {
   // The average pass rate of the latest runs; null when none has a decided result.
   pass?: number | null;
 }
-
-const REFRESH_MS = 5 * 60_000;
 
 // 1,234,567 -> 1.2M: short enough for the narrow rail.
 function short(n: number): string {
@@ -62,24 +61,19 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
   const tenant = useSelectedTenant();
   const [figures, setFigures] = useState<Figures>({});
 
-  useEffect(() => {
-    let active = true;
-    const load = () =>
-      void Promise.allSettled([getUsage(24), getOnlineStatus(), listRuns({ limit: 200 })]).then(([u, o, r]) => {
-        if (!active) return;
-        setFigures({
-          usage: u.status === 'fulfilled' ? usageTotals(u.value) : undefined,
-          scored: o.status === 'fulfilled' ? o.value.sessionsScored24h : undefined,
-          pass: r.status === 'fulfilled' ? averagePassRate(r.value) : undefined,
-        });
-      });
-    load();
-    const id = setInterval(load, REFRESH_MS);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
+  // The tenant is read by the requests (getUsage narrows by it); the runs list takes no tenant, so the pass rate
+  // stays across everything the role may see.
+  const load = useCallback(async (current: () => boolean) => {
+    const [u, o, r] = await Promise.allSettled([getUsage(24), getOnlineStatus(), listRuns({ limit: 200 })]);
+    if (!current()) return;
+    setFigures({
+      usage: u.status === 'fulfilled' ? usageTotals(u.value) : undefined,
+      scored: o.status === 'fulfilled' ? o.value.sessionsScored24h : undefined,
+      pass: r.status === 'fulfilled' ? averagePassRate(r.value) : undefined,
+    });
   }, [tenant]);
+
+  useLiveData(['usage', 'quality', 'runs'], load);
 
   const day: Row[] = [];
   if (figures.usage) {
