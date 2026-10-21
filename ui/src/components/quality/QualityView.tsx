@@ -161,9 +161,10 @@ export const QualityView: React.FC = () => {
               sub={status.budget.caps.judgeTokensPerDay ? `of ${formatTokens(status.budget.caps.judgeTokensPerDay)} cap` : 'no Gemini judges'} />
             <Tile label="Jev calls today" value={String(status.budget.spent.jevCalls)}
               sub={status.budget.caps.jevCallsPerDay ? `of ${status.budget.caps.jevCallsPerDay} cap` : 'no Jev judges'} />
-            <Tile label="Sessions scored" value={sampled.toLocaleString()} sub="since the server started" />
+            <Tile label="Sessions scored" value={(status.sessionsScored24h ?? sampled).toLocaleString()}
+              sub={status.sessionsScored24h != null ? 'in the last 24 hours' : 'since the server started'} />
             <Tile label="Open alerts" value={String(openAlerts.length)}
-              sub={`${status.profiles.length} profile(s), ${status.sinks.length ? status.sinks.join(', ') : 'no sinks'}`} />
+              sub={`watching ${status.profiles.length} profile${status.profiles.length === 1 ? '' : 's'} · ${status.sinks.length ? `alerts go to ${status.sinks.join(', ')}` : 'no alert channel'}`} />
           </div>
 
           <section css={cardStyle}>

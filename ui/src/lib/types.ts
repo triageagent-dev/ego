@@ -726,6 +726,8 @@ export interface OnlineStatus {
   };
   queue: number;
   counts: Record<string, number>;
+  // Sessions scored in the last 24 hours, counted from the store; absent on a server from before it was added.
+  sessionsScored24h?: number;
   openAlerts: number;
   sinks: string[];
   // Absent on a server from before findings and labels.

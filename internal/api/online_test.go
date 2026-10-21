@@ -286,3 +286,37 @@ func TestOnlineEngine_SkipsSessionsNotWorthJudging(t *testing.T) {
 		t.Errorf("the real session was not judged: counts = %v", e.status().Counts)
 	}
 }
+
+// The count of sessions scored in 24 hours comes from the store, so a restart keeps it, and it leaves out what is
+// older than a day and what a tenant-limited role may not see.
+func TestOnlineStatus_SessionsScored24hIsPersisted(t *testing.T) {
+	e, _, archive, _ := newTestEngine(t, testOnlineConfig)
+	now := time.Date(2026, 10, 4, 12, 30, 0, 0, time.UTC)
+	e.now = func() time.Time { return now }
+
+	insert := func(id, tenant string, at time.Time) {
+		t.Helper()
+		if err := archive.InsertOnlineEval(onlineEvalRow{SessionID: id, AtMs: at.UnixMilli(), Tenant: tenant, Kind: "rca"}, "v1", "m", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert("s1", "core/acme", now.Add(-1*time.Hour))
+	insert("s2", "core/acme", now.Add(-23*time.Hour))
+	insert("s3", "core/other", now.Add(-2*time.Hour))
+	insert("old", "core/acme", now.Add(-25*time.Hour))
+
+	if got := e.status().SessionsScored24h; got != 3 {
+		t.Errorf("sessions scored in 24h = %d, want 3 (the one from 25 hours ago is out)", got)
+	}
+	limited := RoleInfo{Role: RoleViewer, Tenants: []string{"core/acme"}}
+	if got := e.statusFor(limited).SessionsScored24h; got != 2 {
+		t.Errorf("a role limited to one tenant sees %d, want 2", got)
+	}
+
+	// A restart: a new engine over the same store starts its in-memory counters at zero but the count stays.
+	e2 := NewOnlineEngine(e.cfg, archive, e.sessions, "tenant.id")
+	e2.now = e.now
+	if got := e2.status().SessionsScored24h; got != 3 {
+		t.Errorf("after a restart the count = %d, want 3", got)
+	}
+}

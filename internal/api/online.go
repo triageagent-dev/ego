@@ -657,16 +657,19 @@ func (e *OnlineEngine) digest(ctx context.Context, now time.Time) {
 
 // onlineStatusDTO is GET /api/online/status.
 type onlineStatusDTO struct {
-	Profiles   []string            `json:"profiles"`
-	Sampling   online.Sampling     `json:"sampling"`
-	Detector   online.Detector     `json:"detector"`
-	Budget     online.BudgetStatus `json:"budget"`
-	Queue      int                 `json:"queue"`
-	Counts     map[string]int64    `json:"counts"`
-	OpenAlerts int                 `json:"openAlerts"`
-	Sinks      []string            `json:"sinks"`
-	Findings   findingsStatusDTO   `json:"findings"`
-	Labels     labelsStatusDTO     `json:"labels"`
+	Profiles []string            `json:"profiles"`
+	Sampling online.Sampling     `json:"sampling"`
+	Detector online.Detector     `json:"detector"`
+	Budget   online.BudgetStatus `json:"budget"`
+	Queue    int                 `json:"queue"`
+	Counts   map[string]int64    `json:"counts"`
+	// SessionsScored24h is how many sessions were scored in the last 24 hours, counted from the store, so a restart
+	// does not reset it (Counts does, as it counts since the process started).
+	SessionsScored24h int               `json:"sessionsScored24h"`
+	OpenAlerts        int               `json:"openAlerts"`
+	Sinks             []string          `json:"sinks"`
+	Findings          findingsStatusDTO `json:"findings"`
+	Labels            labelsStatusDTO   `json:"labels"`
 }
 
 // status is the unrestricted view; statusFor limits the labels to what info may see.
@@ -696,6 +699,16 @@ func (e *OnlineEngine) statusFor(info RoleInfo) onlineStatusDTO {
 	}
 	st.OpenAlerts = len(e.alerts)
 	e.mu.Unlock()
+	if e.store != nil {
+		since := e.now().Add(-24 * time.Hour).UnixMilli()
+		if counts, err := e.store.OnlineScoredCounts(since); err != nil {
+			logx.Warnf("online: counting the sessions scored in 24 hours: %v", err)
+		} else {
+			for _, c := range filterByTenant(counts, info, func(c onlineScoredCount) string { return c.Tenant }) {
+				st.SessionsScored24h += c.Sessions
+			}
+		}
+	}
 	st.Findings = e.findingsStatus()
 	st.Labels = e.labelsStatus(info)
 	return st
