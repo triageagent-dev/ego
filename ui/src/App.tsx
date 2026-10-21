@@ -25,15 +25,19 @@ function useShellNavigation() {
   const { setCurrentView } = actions;
   const [mode, setMode] = useUiMode();
 
+  // The hash is read at load and when it really changes, never when `actions` is rebuilt (it is, whenever the
+  // trace files change): that re-ran this with the old hash right after a view switch and switched straight back.
+  const setViewRef = useRef(setCurrentView);
+  setViewRef.current = setCurrentView;
   useEffect(() => {
     const fromHash = () => {
       const view = viewForHash(location.hash);
-      if (view) setCurrentView(view);
+      if (view) setViewRef.current(view);
     };
     fromHash();
     window.addEventListener('hashchange', fromHash);
     return () => window.removeEventListener('hashchange', fromHash);
-  }, [setCurrentView]);
+  }, []);
 
   // Skip the first run: the hash read above has not been applied to currentView yet.
   const mounted = useRef(false);
