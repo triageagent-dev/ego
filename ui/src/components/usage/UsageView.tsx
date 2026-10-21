@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
 import { sessionLink } from '../shell/routes';
-import { pageStyle, headerStyle, titleStyle, subtitleStyle, refreshStyle, filterRowStyle, segmentStyle, segLabelStyle, segBtnStyle, segActiveStyle, errorStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle, tileSubStyle, cardStyle, cardTitleStyle } from '../ui/page';
+import { pageStyle, headerStyle, titleStyle, subtitleStyle, filterRowStyle, segmentStyle, segLabelStyle, segBtnStyle, segActiveStyle, errorStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle, tileSubStyle, cardStyle, cardTitleStyle } from '../ui/page';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -11,7 +11,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import { RefreshCw } from 'lucide-react';
+import { useLiveData } from '../../lib/connection';
 import { getUsage, getUsageSessions, StorageUnavailableError } from '../../api/client';
 import { tenantNames, useSelectedTenant, useTenantNames } from '../../lib/tenant';
 import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
@@ -58,7 +58,6 @@ const OTHER_NAMED = 3;
 const NONE = '(none)';
 
 const SURFACE = '#252a36';
-const REFRESH_MS = 60_000;
 
 interface Totals {
   calls: number;
@@ -160,12 +159,10 @@ export const UsageView: React.FC = () => {
   const [series, setSeries] = useState<UsageSeries | null>(null);
   const [sessions, setSessions] = useState<UsageSession[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const tenant = useSelectedTenant();
   useTenantNames();
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
       const [s, c] = await Promise.all([getUsage(hours), getUsageSessions(hours, 25)]);
       setSeries(s);
@@ -177,19 +174,10 @@ export const UsageView: React.FC = () => {
           ? 'Token usage needs the session database (start the server with --session-db).'
           : err instanceof Error ? err.message : String(err),
       );
-    } finally {
-      setLoading(false);
     }
   }, [hours, tenant]);
 
-  useEffect(() => {
-    const first = setTimeout(load, 0);
-    const id = setInterval(load, REFRESH_MS);
-    return () => {
-      clearTimeout(first);
-      clearInterval(id);
-    };
-  }, [load]);
+  useLiveData('usage', load);
 
   const view = useMemo(() => {
     if (!series) return null;
@@ -265,9 +253,6 @@ export const UsageView: React.FC = () => {
             from LLM spans · cost is estimated from list prices, not billed
           </p>
         </PageTitle>
-        <button css={refreshStyle} onClick={load} disabled={loading} title="Refresh">
-          <RefreshCw size={14} css={loading ? spinStyle : undefined} /> Refresh
-        </button>
       </header>
 
       <div css={filterRowStyle}>
@@ -482,11 +467,6 @@ const Tile: React.FC<{ label: string; value: string; sub: string }> = ({ label, 
     <div css={tileSubStyle}>{sub}</div>
   </div>
 );
-
-const spinStyle = css`
-  animation: usage-spin 1s linear infinite;
-  @keyframes usage-spin { to { transform: rotate(360deg); } }
-`;
 
 const burstBannerStyle = css`
   padding: 12px 16px;

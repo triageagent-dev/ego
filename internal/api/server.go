@@ -68,6 +68,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		if err != nil {
 			return fmt.Errorf("opening session archive: %w", err)
 		}
+		archive.SetOnChange(hub.notifyChanged)
 		store = NewSessionStoreWithArchive(hub, archive, limits)
 		if err := store.LoadPersisted(); err != nil {
 			return err

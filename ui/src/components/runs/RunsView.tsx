@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
-import { pageStyle, headerStyle, titleStyle, subtitleStyle, refreshStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle } from '../ui/page';
+import { pageStyle, headerStyle, titleStyle, subtitleStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle } from '../ui/page';
 import { Segmented, Select } from 'antd';
-import { RefreshCw, History, AlertCircle } from 'lucide-react';
+import { History, AlertCircle } from 'lucide-react';
 import type { Run } from '../../lib/types';
 import { listRuns, StorageUnavailableError } from '../../api/client';
+import { useLiveData } from '../../lib/connection';
 import {
   groupRuns,
   metricNamesAcross,
@@ -36,8 +37,7 @@ export const RunsView: React.FC = () => {
     setSelectedGroup(ALL_GROUPS);
   };
 
-  const load = async () => {
-    setLoading(true);
+  const load = useCallback(async () => {
     setError(null);
     setStorageUnavailable(false);
     try {
@@ -52,11 +52,9 @@ export const RunsView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    load();
   }, []);
+
+  useLiveData('runs', load);
 
   const groups = useMemo(() => groupRuns(runs, groupBy), [runs, groupBy]);
 
@@ -119,10 +117,6 @@ export const RunsView: React.FC = () => {
               ]}
             />
           )}
-          <button css={refreshStyle} onClick={load} disabled={loading}>
-            <RefreshCw size={14} className={loading ? 'spinning' : undefined} />
-            Refresh
-          </button>
         </div>
       </header>
 

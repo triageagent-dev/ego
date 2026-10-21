@@ -24,7 +24,7 @@ What ego supports today, and what it does not.
 - Every result says whether an algorithm or an LLM judge produced it.
 
 **Server**
-- REST API and embedded UI; live feed over WebSocket (`/ws/ui-updates`, one per open page, with a heartbeat every 15 s that the status dot reads) with a Server-Sent Events fallback.
+- REST API and embedded UI; live feed over WebSocket (`/ws/ui-updates`, one per open page, with a heartbeat every 15 s that the status dot reads; a debounced `changed` message per topic (`usage`, `quality`, `runs`) makes those views read again, so they have no refresh timer or button) with a Server-Sent Events fallback.
 - Runs (`/api/runs`): evaluations are synchronous and every run is stored.
 - Eval sets: build from a golden session, save, edit, download.
 - Session spans with attributes and errors; readable rendering of long prompts and answers.

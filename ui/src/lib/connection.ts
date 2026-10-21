@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { config } from '../config';
 
 // The UI's link to the ego server. One websocket (/ws/ui-updates) is open for as long as the app is: it carries
@@ -179,6 +179,27 @@ export function startConnectionMonitor(): () => void {
     socket?.close();
     snap = { server: 'unknown', feed: 'connecting', version: snap.version, checkedAt: 0 };
   };
+}
+
+/** Runs load now, whenever the server says data of the topic changed, and after the feed reconnects or resyncs.
+ * load may change (its filters did): it then runs again at once. Replaces a refresh timer and its button. */
+export function useLiveData(topic: string, load: () => unknown): void {
+  const latest = useRef(load);
+  latest.current = load;
+  useEffect(() => {
+    void load();
+  }, [load]);
+  useEffect(() => {
+    const again = () => void latest.current();
+    const offMessage = onFeedMessage((data) => {
+      if (data?.type === 'resync' || (data?.type === 'changed' && data.topic === topic)) again();
+    });
+    const offOpen = onFeedOpen(again);
+    return () => {
+      offMessage();
+      offOpen();
+    };
+  }, [topic]);
 }
 
 function subscribe(l: () => void) {

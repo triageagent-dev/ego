@@ -19,6 +19,21 @@ import (
 // session serialized as a JSON blob, so a field added to Session never needs a migration.
 type SQLiteStore struct {
 	db *sql.DB
+	// onChange, when set, is told which kind of data a write changed (the topic* constants), so the UI can be nudged
+	// to read it again instead of polling.
+	onChange func(topic string)
+}
+
+// SetOnChange registers the callback for writes; call it before the store is used.
+func (s *SQLiteStore) SetOnChange(fn func(topic string)) { s.onChange = fn }
+
+// announce reports a finished write of topic and passes err through, so a write method can end with
+// `return s.announce(topic, err)`. A failed write changed nothing and is not announced.
+func (s *SQLiteStore) announce(topic string, err error) error {
+	if err == nil && s.onChange != nil {
+		s.onChange(topic)
+	}
+	return err
 }
 
 // NewSQLiteStore opens (creating if needed) the archive at path, in WAL

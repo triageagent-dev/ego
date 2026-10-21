@@ -20,7 +20,7 @@ func (s *SQLiteStore) InsertOnlineLabel(l *online.Label) error {
 		(label_id, session_id, tenant, kind, metric, judge_score, verdict, score, note, "by", created_ms)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		l.ID, l.SessionID, l.Tenant, l.Kind, l.Metric, l.JudgeScore, l.Verdict, score, l.Note, l.By, l.CreatedAt.UnixMilli())
-	return err
+	return s.announce(topicQuality, err)
 }
 
 const labelColumns = `label_id, session_id, tenant, kind, metric, judge_score, verdict, score, note, "by", created_ms`

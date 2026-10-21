@@ -22,7 +22,7 @@ func (s *SQLiteStore) UpsertOnlineFinding(f *online.Finding) error {
 		(finding_id, tenant, kind, metric, state, alert_id, created_ms, updated_ms, data)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		f.ID, f.Tenant, f.Kind, f.Metric, f.State, f.AlertID, f.CreatedAt.UnixMilli(), f.UpdatedAt.UnixMilli(), string(b))
-	return err
+	return s.announce(topicQuality, err)
 }
 
 const findingColumns = `finding_id, tenant, kind, metric, state, alert_id, created_ms, updated_ms, data`
@@ -133,7 +133,7 @@ func (s *SQLiteStore) UpsertOnlineCorrection(c *online.Correction) error {
 		(correction_id, tenant, kind, metric, finding_id, version, state, created_ms, verified_ms, data)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.Tenant, c.Kind, c.Metric, c.FindingID, c.Version, c.State, c.CreatedAt.UnixMilli(), verified, string(b))
-	return err
+	return s.announce(topicQuality, err)
 }
 
 const correctionColumns = `correction_id, tenant, kind, metric, finding_id, version, state, created_ms, verified_ms, data`

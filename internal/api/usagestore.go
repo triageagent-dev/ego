@@ -169,7 +169,7 @@ func (s *SQLiteStore) InsertUsage(rows []usageRow) error {
 			return err
 		}
 	}
-	return tx.Commit()
+	return s.announce(topicUsage, tx.Commit())
 }
 
 // PruneUsage deletes rows that started before cutoff.

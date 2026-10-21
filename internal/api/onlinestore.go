@@ -155,7 +155,7 @@ func (s *SQLiteStore) InsertOnlineEval(e onlineEvalRow, version, model string, s
 			return err
 		}
 	}
-	return tx.Commit()
+	return s.announce(topicQuality, tx.Commit())
 }
 
 // OnlineEvalExists reports whether a session was already scored (a session
@@ -335,7 +335,7 @@ func (s *SQLiteStore) UpsertOnlineAlert(a *online.Alert) error {
 	}
 	_, err = s.db.Exec(`INSERT OR REPLACE INTO online_alerts (alert_id, status, updated_ms, data) VALUES (?, ?, ?, ?)`,
 		a.ID, a.Status, a.UpdatedAt.UnixMilli(), string(b))
-	return err
+	return s.announce(topicQuality, err)
 }
 
 // OnlineAlerts lists alerts newest first; status "" lists all.

@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
-import { pageStyle, headerStyle, titleStyle, subtitleStyle, refreshStyle, filterRowStyle, segmentStyle, segBtnStyle, segActiveStyle, errorStyle, noteStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle, tileSubStyle, cardStyle, cardTitleStyle } from '../ui/page';
+import { pageStyle, headerStyle, titleStyle, subtitleStyle, filterRowStyle, segmentStyle, segBtnStyle, segActiveStyle, errorStyle, noteStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle, tileSubStyle, cardStyle, cardTitleStyle } from '../ui/page';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -11,7 +11,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import { RefreshCw } from 'lucide-react';
+import { useLiveData } from '../../lib/connection';
 import { getOnlineAlerts, getOnlineCorrections, getOnlineFindings, getOnlineSeries, getOnlineStatus, StorageUnavailableError } from '../../api/client';
 import { sessionLink } from '../shell/routes';
 import { useSelectedTenant } from '../../lib/tenant';
@@ -33,7 +33,6 @@ const RANGES: { label: string; hours: number }[] = [
 
 // Same categorical slots as the Usage view.
 const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9'];
-const REFRESH_MS = 60_000;
 
 const FINDING_STATES: OnlineFindingState[] = ['open', 'corrected', 'resolved', 'stale'];
 
@@ -64,11 +63,9 @@ export const QualityView: React.FC = () => {
   const [scope, setScope] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
-  const [loading, setLoading] = useState(false);
   const tenant = useSelectedTenant();
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
       // The judge budget is not per tenant, so a tenant-limited user is refused it; the rest of the view still loads.
       // Findings and corrections are an extra: a server without them, or a role that cannot read them, still
@@ -91,16 +88,10 @@ export const QualityView: React.FC = () => {
       const off = e instanceof StorageUnavailableError;
       setNotConfigured(off);
       setError(off ? null : (e as Error).message);
-    } finally {
-      setLoading(false);
     }
   }, [hours, tenant]);
 
-  useEffect(() => {
-    load();
-    const t = setInterval(load, REFRESH_MS);
-    return () => clearInterval(t);
-  }, [load]);
+  useLiveData('quality', load);
 
   const scopes = useMemo(() => [...new Set(series.map(scopeOf))].sort(), [series]);
   const active = scope && scopes.includes(scope) ? scope : scopes[0] ?? null;
@@ -141,9 +132,6 @@ export const QualityView: React.FC = () => {
             online evaluation of sampled live sessions · hourly scores are also runs
           </p>
         </PageTitle>
-        <button css={refreshStyle} onClick={load} disabled={loading} title="Refresh">
-          <RefreshCw size={14} css={loading ? spinStyle : undefined} /> Refresh
-        </button>
       </header>
 
       {error && <div css={errorStyle}>{error}</div>}
@@ -403,11 +391,6 @@ const Tile: React.FC<{ label: string; value: string; sub: string; badge?: string
     <div css={tileSubStyle}>{sub}</div>
   </div>
 );
-
-const spinStyle = css`
-  animation: quality-spin 1s linear infinite;
-  @keyframes quality-spin { to { transform: rotate(360deg); } }
-`;
 
 const chartBoxStyle = css`
   height: 240px;

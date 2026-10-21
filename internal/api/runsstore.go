@@ -101,6 +101,7 @@ func (s *SQLiteStore) CreateRun(spec runSpecSummaryDTO) (runDTO, error) {
 	if err != nil {
 		return runDTO{}, fmt.Errorf("inserting run: %w", err)
 	}
+	s.announce(topicRuns, nil)
 	return run, nil
 }
 
@@ -121,7 +122,7 @@ func (s *SQLiteStore) FinishRun(runID, status string, summary *runSummaryDTO, er
 	}
 	_, err := s.db.Exec(`UPDATE runs SET status = ?, summary_json = ?, error = ?, finished_at = ? WHERE run_id = ?`,
 		status, summaryJSON, errVal, nowRFC3339(), runID)
-	return err
+	return s.announce(topicRuns, err)
 }
 
 // InsertRunResults bulk-inserts one row per (trace, evaluator) result.
@@ -175,7 +176,7 @@ func (s *SQLiteStore) InsertRunResults(runID string, rows []runResultRowDTO) err
 			return err
 		}
 	}
-	return tx.Commit()
+	return s.announce(topicRuns, tx.Commit())
 }
 
 // ListRuns returns runs newest-first, optionally filtered by status and

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"time"
 )
 
 // sseHub fans out events to every connected /stream/ui-updates client.
@@ -11,6 +12,8 @@ type sseHub struct {
 	mu sync.Mutex
 	// clients maps each client's channel to its state.
 	clients map[chan any]*hubClient
+	// pending holds the topics whose "changed" message is scheduled, see notifyChanged.
+	pending map[string]bool
 }
 
 // hubClient is one subscriber. A client with a scoped role only receives events of sessions whose agents are in
@@ -37,7 +40,50 @@ type resyncEvent struct {
 }
 
 func newSSEHub() *sseHub {
-	return &sseHub{clients: map[chan any]*hubClient{}}
+	return &sseHub{clients: map[chan any]*hubClient{}, pending: map[string]bool{}}
+}
+
+// The kinds of stored data a view reads again when told they changed.
+const (
+	topicUsage   = "usage"
+	topicQuality = "quality"
+	topicRuns    = "runs"
+)
+
+// changedEvent tells every client that data of a topic changed. It carries no data, so it is safe for a scoped
+// client too: the view reads the topic again through its own, filtered, endpoint.
+type changedEvent struct {
+	Type  string `json:"type"`
+	Topic string `json:"topic"`
+}
+
+// changeDebounce is how long a "changed" message waits so that a burst of writes (an ingest batch writes hundreds of
+// rows) reaches the views as one; a variable so a test can shorten it.
+var changeDebounce = 2 * time.Second
+
+// notifyChanged sends one "changed" message for topic to every client, shortly after the first write of a burst.
+// A client whose buffer is full is marked for a resync, which makes the view read everything again.
+func (h *sseHub) notifyChanged(topic string) {
+	h.mu.Lock()
+	if h.pending[topic] {
+		h.mu.Unlock()
+		return
+	}
+	h.pending[topic] = true
+	h.mu.Unlock()
+	time.AfterFunc(changeDebounce, func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		delete(h.pending, topic)
+		event := changedEvent{Type: "changed", Topic: topic}
+		for ch, c := range h.clients {
+			select {
+			case ch <- event:
+			default:
+				c.lagged = true
+			}
+		}
+	})
 }
 
 // register subscribes a client that receives every event.
