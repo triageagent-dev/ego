@@ -2,6 +2,8 @@ package mcptools
 
 import (
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,6 +68,80 @@ type SessionListItem struct {
 	IsComplete bool   `json:"is_complete"`
 	SpanCount  int    `json:"span_count"`
 	StartedAt  string `json:"started_at"`
+	// Agent and Tenant join the session's distinct agent names and tenant keys with ", ".
+	Agent   string `json:"agent,omitempty"`
+	Tenant  string `json:"tenant,omitempty"`
+	Service string `json:"service,omitempty"`
+	// ErrorSpans counts spans whose status is ERROR; TotalTokens sums the input and output tokens its LLM spans
+	// reported.
+	ErrorSpans  int   `json:"error_spans"`
+	TotalTokens int64 `json:"total_tokens"`
+}
+
+// SessionFilter narrows list_sessions. The server applies it after the caller's role limits, so a filter can only
+// ever hide sessions the caller may already see. The zero value matches everything.
+type SessionFilter struct {
+	// Agent is an exact agent name (gen_ai.agent.name).
+	Agent string
+	// Tenant is a tenant key, "<sender>/*" or "<sender>/" for every tenant of one sender.
+	Tenant string
+	// Since keeps sessions that started at or after it.
+	Since time.Time
+	// Query is a case-insensitive substring of the session id, an agent name, the service or, for a completed
+	// session, its first user message.
+	Query string
+	// Complete, when set, keeps only completed (true) or still open (false) sessions.
+	Complete *bool
+}
+
+// Values is the filter as the query string of GET /api/streaming/sessions.
+func (f SessionFilter) Values() url.Values {
+	q := url.Values{}
+	if f.Agent != "" {
+		q.Set("agent", f.Agent)
+	}
+	if f.Tenant != "" {
+		q.Set("tenant", wireTenant(f.Tenant))
+	}
+	if !f.Since.IsZero() {
+		q.Set("since", f.Since.UTC().Format(time.RFC3339))
+	}
+	if f.Query != "" {
+		q.Set("q", f.Query)
+	}
+	if f.Complete != nil {
+		q.Set("complete", strconv.FormatBool(*f.Complete))
+	}
+	return q
+}
+
+// wireTenant writes "<sender>/*" as "<sender>/": gateways refuse a "/*" in a query string, and the server reads the
+// short form as the same grant (the UI does the same).
+func wireTenant(t string) string {
+	if strings.HasSuffix(t, "/*") {
+		return strings.TrimSuffix(t, "*")
+	}
+	return t
+}
+
+// ParseSessionFilter reads the query string written by Values.
+func ParseSessionFilter(q url.Values, now time.Time) (SessionFilter, error) {
+	since, err := ParseSince(q.Get("since"), now)
+	if err != nil {
+		return SessionFilter{}, err
+	}
+	f := SessionFilter{
+		Agent: strings.TrimSpace(q.Get("agent")), Tenant: strings.TrimSpace(q.Get("tenant")),
+		Since: since, Query: strings.TrimSpace(q.Get("q")),
+	}
+	if v := q.Get("complete"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return SessionFilter{}, fmt.Errorf("complete must be true or false")
+		}
+		f.Complete = &b
+	}
+	return f, nil
 }
 
 // ToolCall is one tool call of an invocation.

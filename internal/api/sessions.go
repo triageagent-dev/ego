@@ -80,6 +80,11 @@ type SessionSummary struct {
 	// Tenants are the session's tenant keys ("<sender>/<label>"), one per distinct label on its spans.
 	Tenants []string `json:"tenants,omitempty"`
 	Models  []string `json:"models,omitempty"`
+	// Service is the first service.name seen on the session's spans.
+	Service string `json:"service,omitempty"`
+	// TotalTokens sums the input and output tokens of the session's LLM spans: the same spans, and so the same
+	// total, as its rows in the usage ledger.
+	TotalTokens int64 `json:"totalTokens,omitempty"`
 	// DurationMs is the session's span window: earliest span start to
 	// latest span end, in milliseconds. Not CompletedAt - StartedAt, which
 	// is ingest wall-clock and includes the completion grace.
@@ -107,7 +112,10 @@ func summarize(s *Session) SessionSummary {
 	rootName, llmCalls, errs := spanOutline(s.Spans)
 	agents, models := spanIdentities(s.Spans)
 	tenants := sessionTenants(s)
+	service, tokens := spanServiceAndTokens(s.Spans)
 	return SessionSummary{
+		Service:      service,
+		TotalTokens:  tokens,
 		Agents:       agents,
 		Tenants:      tenants,
 		Models:       models,
@@ -128,6 +136,20 @@ func summarize(s *Session) SessionSummary {
 }
 
 const maxIdentities = 6
+
+// spanServiceAndTokens returns the first service.name on spans and the tokens their LLM spans reported.
+func spanServiceAndTokens(spans []*tracepkg.Span) (service string, tokens int64) {
+	for _, sp := range spans {
+		if service == "" {
+			service = sp.TagString(adk.OtelServiceName)
+		}
+		if adk.IsLLMSpan(sp) {
+			in, out, _ := adk.ExtractTokenUsageFromAttrs(sp.Tags)
+			tokens += in + out
+		}
+	}
+	return service, tokens
+}
 
 // spanIdentities returns the distinct agent names (gen_ai.agent.name) and model names on spans, in the order
 // first seen, at most maxIdentities of each.

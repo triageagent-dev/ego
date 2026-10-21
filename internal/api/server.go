@@ -389,6 +389,12 @@ func sessionsHandler(store *SessionStore) http.HandlerFunc {
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": one, "error": nil})
 			return
 		}
+		filter, err := mcptools.ParseSessionFilter(r.URL.Query(), time.Now())
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": nil, "error": err.Error()})
+			return
+		}
 		all := store.List()
 		if info.Scoped() || info.TenantScoped() {
 			visible := all[:0]
@@ -399,6 +405,8 @@ func sessionsHandler(store *SessionStore) http.HandlerFunc {
 			}
 			all = visible
 		}
+		// The optional filters narrow what the role already allows; they come last so they cannot widen it.
+		all = filterSessions(all, filter)
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": all, "error": nil})
 	}
 }

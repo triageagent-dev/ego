@@ -17,13 +17,18 @@ import (
 type Backend interface {
 	Metrics(ctx context.Context) ([]MetricInfo, error)
 
-	// Sessions lists the sessions the caller may see, in no particular order.
-	Sessions(ctx context.Context) ([]SessionListItem, error)
+	// Sessions lists the sessions the caller may see that match filter, in no particular order. The filter applies
+	// after the caller's role limits.
+	Sessions(ctx context.Context, filter SessionFilter) ([]SessionListItem, error)
 	// SessionTraces returns a session's traces and its span count.
 	SessionTraces(ctx context.Context, sessionID string) (traces []*tracepkg.Trace, numSpans int, err error)
 
 	Runs(ctx context.Context, limit int, statuses []string) ([]RunListItem, error)
 	RunResults(ctx context.Context, runID string) (*RunResults, error)
+
+	// Usage answers get_usage from the token usage ledger, limited to the caller's tenants. A role limited to
+	// agents is refused: the ledger cannot be attributed to an agent.
+	Usage(ctx context.Context, q UsageQuery) (*Usage, error)
 
 	// Role bindings require an admin.
 	RoleBindings(ctx context.Context) ([]RoleBinding, error)

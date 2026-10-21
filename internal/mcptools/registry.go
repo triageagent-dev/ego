@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -97,10 +98,24 @@ func Tools(b Backend, o Options) []server.ServerTool {
 
 	tools = append(tools,
 		server.ServerTool{Tool: mcp.NewTool("list_sessions",
-			mcp.WithDescription("List recent streaming trace sessions, ordered most recent first. Use this to discover "+
-				"session IDs for summarize_session. Requires the ego server to be running (ego serve)."),
+			mcp.WithDescription("List recent streaming trace sessions, ordered most recent first, with the agent, tenant, "+
+				"service, error span count and total tokens of each. Use this to discover session IDs for "+
+				"summarize_session. All filters are optional and combine; they only narrow what you may see. `query` "+
+				"matches the session id, the agent names and the service, and the first user message of sessions that "+
+				"have completed (a session still open has no user message yet). Requires the ego server to be running "+
+				"(ego serve)."),
 			mcp.WithNumber("limit", mcp.DefaultNumber(20),
 				mcp.Description("Maximum number of sessions to return.")),
+			mcp.WithString("agent",
+				mcp.Description("Only sessions in which this exact agent name (gen_ai.agent.name) ran.")),
+			mcp.WithString("tenant",
+				mcp.Description("Only sessions of this tenant key, or \"<sender>/*\" for every tenant of one sender.")),
+			mcp.WithString("since",
+				mcp.Description("Only sessions that started at or after this: an RFC 3339 time or a duration such as 24h.")),
+			mcp.WithString("query",
+				mcp.Description("Case-insensitive text to find in the session id, agent names, service or first user message.")),
+			mcp.WithBoolean("complete",
+				mcp.Description("true for finished sessions only, false for sessions still open. Omit for both.")),
 		), Handler: listSessionsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("summarize_session",
@@ -131,6 +146,22 @@ func Tools(b Backend, o Options) []server.ServerTool {
 			mcp.WithString("run_id", mcp.Required(),
 				mcp.Description("Run ID obtained from list_runs.")),
 		), Handler: getRunResultsHandler(b)},
+
+		server.ServerTool{Tool: mcp.NewTool("get_usage",
+			mcp.WithDescription("Token usage of the LLM calls ego has seen, as the Usage view shows it: input, output and "+
+				"total tokens and the call count in the window, the same split by kind (the agent or workflow), tenant, "+
+				"model or service with the largest first, and the sessions that used the most tokens. Scoped to the "+
+				"tenants you may see; refused to a role limited to agents. Requires run history storage on the server "+
+				"(--session-db). No cost is estimated."),
+			mcp.WithNumber("hours", mcp.DefaultNumber(defaultUsageHours),
+				mcp.Description("Window in hours, 1 to 2160.")),
+			mcp.WithString("tenant",
+				mcp.Description("Only this tenant key, or \"<sender>/*\" for every tenant of one sender. Omit for all you may see.")),
+			mcp.WithString("group", mcp.DefaultString(UsageByKind), mcp.Enum(UsageByKind, UsageByTenant, UsageByModel, UsageByService),
+				mcp.Description("What the breakdown groups by.")),
+			mcp.WithNumber("top", mcp.DefaultNumber(defaultUsageTop),
+				mcp.Description("How many of the largest sessions to list, 1 to 100.")),
+		), Handler: getUsageHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_quality",
 			mcp.WithDescription("How the quality of your agent is doing, in one call: open regression alerts, the hourly "+
@@ -277,7 +308,22 @@ func listMetricsHandler(b Backend) server.ToolHandlerFunc {
 func listSessionsHandler(b Backend) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		limit := req.GetInt("limit", 20)
-		out, err := b.Sessions(ctx)
+		since, err := ParseSince(req.GetString("since", ""), time.Now())
+		if err != nil {
+			return toolError(err)
+		}
+		filter := SessionFilter{
+			Agent:  strings.TrimSpace(req.GetString("agent", "")),
+			Tenant: strings.TrimSpace(req.GetString("tenant", "")),
+			Since:  since,
+			Query:  strings.TrimSpace(req.GetString("query", "")),
+		}
+		// A bool argument is only a filter when it was given: false means "still open", absent means both.
+		if _, given := req.GetArguments()["complete"]; given {
+			c := req.GetBool("complete", false)
+			filter.Complete = &c
+		}
+		out, err := b.Sessions(ctx, filter)
 		if err != nil {
 			return toolError(err)
 		}
@@ -288,6 +334,33 @@ func listSessionsHandler(b Backend) server.ToolHandlerFunc {
 		}
 		if out == nil {
 			out = []SessionListItem{}
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func getUsageHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		q := UsageQuery{
+			Hours:  req.GetInt("hours", defaultUsageHours),
+			Tenant: strings.TrimSpace(req.GetString("tenant", "")),
+			Group:  req.GetString("group", UsageByKind),
+			Top:    req.GetInt("top", defaultUsageTop),
+		}
+		if q.Hours < 1 || q.Hours > maxUsageHours {
+			return toolError(fmt.Errorf("hours must be between 1 and %d", maxUsageHours))
+		}
+		if q.Top < 1 || q.Top > maxUsageTop {
+			return toolError(fmt.Errorf("top must be between 1 and %d", maxUsageTop))
+		}
+		switch q.Group {
+		case UsageByKind, UsageByTenant, UsageByModel, UsageByService:
+		default:
+			return toolError(fmt.Errorf("group must be one of kind, tenant, model, service"))
+		}
+		out, err := b.Usage(ctx, q)
+		if err != nil {
+			return toolError(err)
 		}
 		return mcp.NewToolResultStructuredOnly(out), nil
 	}

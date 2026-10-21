@@ -125,21 +125,62 @@ func (b *REST) Metrics(ctx context.Context) ([]MetricInfo, error) {
 	return out, nil
 }
 
-func (b *REST) Sessions(ctx context.Context) ([]SessionListItem, error) {
+func (b *REST) Sessions(ctx context.Context, filter SessionFilter) ([]SessionListItem, error) {
 	var raw []struct {
-		SessionID  string `json:"sessionId"`
-		IsComplete bool   `json:"isComplete"`
-		SpanCount  int    `json:"spanCount"`
-		StartedAt  string `json:"startedAt"`
+		SessionID   string   `json:"sessionId"`
+		IsComplete  bool     `json:"isComplete"`
+		SpanCount   int      `json:"spanCount"`
+		StartedAt   string   `json:"startedAt"`
+		Agents      []string `json:"agents"`
+		Tenants     []string `json:"tenants"`
+		Service     string   `json:"service"`
+		Errors      int      `json:"errors"`
+		TotalTokens int64    `json:"totalTokens"`
 	}
-	if err := b.get(ctx, "/api/streaming/sessions", &raw); err != nil {
+	// The server filters, after the caller's role limits, so the filter cannot widen what the caller sees.
+	path := "/api/streaming/sessions"
+	if q := filter.Values().Encode(); q != "" {
+		path += "?" + q
+	}
+	if err := b.get(ctx, path, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]SessionListItem, len(raw))
 	for i, s := range raw {
-		out[i] = SessionListItem{SessionID: s.SessionID, IsComplete: s.IsComplete, SpanCount: s.SpanCount, StartedAt: s.StartedAt}
+		out[i] = SessionListItem{
+			SessionID: s.SessionID, IsComplete: s.IsComplete, SpanCount: s.SpanCount, StartedAt: s.StartedAt,
+			Agent: strings.Join(s.Agents, ", "), Tenant: strings.Join(s.Tenants, ", "), Service: s.Service,
+			ErrorSpans: s.Errors, TotalTokens: s.TotalTokens,
+		}
 	}
 	return out, nil
+}
+
+// Usage reads the two endpoints the Usage view reads and builds the answer from their rows.
+func (b *REST) Usage(ctx context.Context, q UsageQuery) (*Usage, error) {
+	v := url.Values{}
+	v.Set("hours", strconv.Itoa(q.Hours))
+	if q.Tenant != "" {
+		v.Set("tenant", wireTenant(q.Tenant))
+	}
+	// Whole-day cells are enough for totals and keep the response small; the window is the same either way.
+	cellsQuery := url.Values{"bucket": {"day"}}
+	for k, vals := range v {
+		cellsQuery[k] = vals
+	}
+	var cells struct {
+		Buckets []UsageCell `json:"buckets"`
+	}
+	if err := b.get(ctx, "/api/usage?"+cellsQuery.Encode(), &cells); err != nil {
+		return nil, err
+	}
+	v.Set("group", "session")
+	v.Set("limit", strconv.Itoa(UsageSessionRows))
+	var sessions []UsageSessionRow
+	if err := b.get(ctx, "/api/usage/calls?"+v.Encode(), &sessions); err != nil {
+		return nil, err
+	}
+	return BuildUsage(q, cells.Buckets, sessions), nil
 }
 
 func (b *REST) SessionTraces(ctx context.Context, sessionID string) ([]*tracepkg.Trace, int, error) {

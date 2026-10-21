@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/mcptools"
@@ -44,15 +45,55 @@ func (b *mcpBackend) Metrics(ctx context.Context) ([]mcptools.MetricInfo, error)
 	return out, nil
 }
 
-func (b *mcpBackend) Sessions(ctx context.Context) ([]mcptools.SessionListItem, error) {
+func (b *mcpBackend) Sessions(ctx context.Context, filter mcptools.SessionFilter) ([]mcptools.SessionListItem, error) {
 	info := roleInfoOrOpen(ctx)
-	out := []mcptools.SessionListItem{}
+	var visible []SessionSummary
 	for _, s := range b.sessions.List() {
 		if info.AllowsSession(s.Agents, s.Tenants) {
-			out = append(out, mcptools.SessionListItem{SessionID: s.SessionID, IsComplete: s.IsComplete, SpanCount: s.SpanCount, StartedAt: s.StartedAt})
+			visible = append(visible, s)
 		}
 	}
+	out := []mcptools.SessionListItem{}
+	for _, s := range filterSessions(visible, filter) {
+		out = append(out, mcptools.SessionListItem{
+			SessionID: s.SessionID, IsComplete: s.IsComplete, SpanCount: s.SpanCount, StartedAt: s.StartedAt,
+			Agent: strings.Join(s.Agents, ", "), Tenant: strings.Join(s.Tenants, ", "), Service: s.Service,
+			ErrorSpans: s.Errors, TotalTokens: s.TotalTokens,
+		})
+	}
 	return out, nil
+}
+
+// Usage reads the same two ledger queries as GET /api/usage and /api/usage/calls?group=session, with the same role
+// limits, and builds the answer with the code the REST backend uses.
+func (b *mcpBackend) Usage(ctx context.Context, q mcptools.UsageQuery) (*mcptools.Usage, error) {
+	info := roleInfoOrOpen(ctx)
+	if info.Scoped() {
+		return nil, errors.New("this view is not available to an agent-scoped role")
+	}
+	if b.archive == nil {
+		return nil, errRunsUnavailable
+	}
+	to := time.Now()
+	from := to.Add(-time.Duration(q.Hours) * time.Hour)
+	tenants := narrowTenants(info.Tenants, q.Tenant)
+	buckets, err := b.archive.UsageSeries(from, to, int64(24*time.Hour/time.Millisecond), tenants)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read usage: %w", err)
+	}
+	rows, err := b.archive.TopUsageSessions(from, to, mcptools.UsageSessionRows, tenants)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read usage sessions: %w", err)
+	}
+	cells := make([]mcptools.UsageCell, len(buckets))
+	for i, c := range buckets {
+		cells[i] = mcptools.UsageCell(c)
+	}
+	sessions := make([]mcptools.UsageSessionRow, len(rows))
+	for i, r := range rows {
+		sessions[i] = mcptools.UsageSessionRow(r)
+	}
+	return mcptools.BuildUsage(q, cells, sessions), nil
 }
 
 func (b *mcpBackend) SessionTraces(ctx context.Context, sessionID string) ([]*tracepkg.Trace, int, error) {
