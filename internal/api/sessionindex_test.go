@@ -245,3 +245,35 @@ func TestSessionsHandlerPagesWithLimitAndCursor(t *testing.T) {
 		t.Errorf("an unpaged answer carries a cursor: %v", out["next"])
 	}
 }
+
+func TestSessionPageTotalOnFirstPageOnly(t *testing.T) {
+	store, _, _, _ := pagedFixture(t, 11, 3)
+
+	first, err := store.Page(SessionPageRequest{Limit: 4, Unrestricted: true}, everyone)
+	if err != nil || !first.TotalKnown || first.Total != 11 || first.TotalApprox {
+		t.Fatalf("first page total = %d known %v approx %v, err %v; want 11 exact", first.Total, first.TotalKnown, first.TotalApprox, err)
+	}
+	second, _ := store.Page(SessionPageRequest{Limit: 4, Cursor: first.Next, Unrestricted: true}, everyone)
+	if second.TotalKnown {
+		t.Error("a later page carries a total")
+	}
+
+	// A filter SQL decides, and one only Go can (a role): both count the same sessions the walk serves.
+	byTenant, _ := store.Page(SessionPageRequest{Limit: 4, Unrestricted: true, Filter: mcptools.SessionFilter{Tenant: "rc/a"}}, everyone)
+	if byTenant.Total != 6 {
+		t.Errorf("tenant rc/a total = %d, want 6", byTenant.Total)
+	}
+	limited, _ := store.Page(SessionPageRequest{Limit: 4}, allowedBy(scopedToTenants("rc/b")))
+	if !limited.TotalKnown || limited.Total != 5 || limited.TotalApprox {
+		t.Errorf("limited role total = %d approx %v, want 5 exact", limited.Total, limited.TotalApprox)
+	}
+
+	// Past the count cap the number is a lower bound.
+	oldChunk, oldCap := pageScanChunk, countScanCap
+	pageScanChunk, countScanCap = 2, 4
+	t.Cleanup(func() { pageScanChunk, countScanCap = oldChunk, oldCap })
+	capped, _ := store.Page(SessionPageRequest{Limit: 4}, allowedBy(scopedToTenants("rc/b")))
+	if !capped.TotalApprox || capped.Total < 1 {
+		t.Errorf("capped count = %d approx %v, want a lower bound", capped.Total, capped.TotalApprox)
+	}
+}

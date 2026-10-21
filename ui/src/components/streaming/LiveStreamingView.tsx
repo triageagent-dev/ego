@@ -80,6 +80,8 @@ export function LiveStreamingView() {
   // The list is paged by the server: the ids of the page on show, and the cursor of the next one.
   const [pageIds, setPageIds] = useState<string[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  // How many sessions match the filters: counted by the server with the first page, kept while paging on.
+  const [listTotal, setListTotal] = useState<{ n: number; approx: boolean } | null>(null);
   // Sessions whose trace made no LLM call (a server's per-request or
   // per-event trace) are hidden unless asked for; the choice is remembered
   // per browser.
@@ -317,6 +319,7 @@ export function LiveStreamingView() {
         mergeSessions(sessions);
         setPageIds(sessions.map(s => s.sessionId));
         setNextCursor(envelope.next ?? null);
+        if (typeof envelope.total === 'number') setListTotal({ n: envelope.total, approx: !!envelope.totalApprox });
       } catch {
         // backend not ready yet - will retry on next SSE connect
       }
@@ -814,6 +817,9 @@ export function LiveStreamingView() {
   const pager = !focused && (pageIdx > 0 || nextCursor) ? (
     <CursorPager
       page={pageIdx}
+      total={listTotal?.n}
+      approx={listTotal?.approx}
+      pageSize={SESSIONS_PAGE}
       hasNext={!!nextCursor}
       onFirst={() => goToPage([''])}
       onPrev={() => goToPage(cursors.slice(0, -1))}

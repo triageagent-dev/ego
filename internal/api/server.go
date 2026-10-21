@@ -407,7 +407,10 @@ func sessionsHandler(store *SessionStore) http.HandlerFunc {
 				return
 			}
 			llm, _ := strconv.ParseBool(r.URL.Query().Get("llm"))
-			page, err := store.Page(SessionPageRequest{Filter: filter, LLMOnly: llm, Cursor: r.URL.Query().Get("cursor"), Limit: n}, allowedBy(info))
+			page, err := store.Page(SessionPageRequest{
+				Filter: filter, LLMOnly: llm, Cursor: r.URL.Query().Get("cursor"), Limit: n,
+				Unrestricted: !info.Scoped() && !info.TenantScoped(),
+			}, allowedBy(info))
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
 				_ = json.NewEncoder(w).Encode(map[string]any{"data": nil, "error": err.Error()})
@@ -417,7 +420,11 @@ func sessionsHandler(store *SessionStore) http.HandlerFunc {
 			if page.Next != "" {
 				next = page.Next
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": page.Items, "next": next, "error": nil})
+			out := map[string]any{"data": page.Items, "next": next, "error": nil}
+			if page.TotalKnown {
+				out["total"], out["totalApprox"] = page.Total, page.TotalApprox
+			}
+			_ = json.NewEncoder(w).Encode(out)
 			return
 		}
 		// The optional filters narrow what the role already allows; a query also reaches the archive.

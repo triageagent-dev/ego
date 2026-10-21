@@ -45,16 +45,26 @@ interface CursorPagerProps {
   onFirst: () => void;
   onPrev: () => void;
   onNext: () => void;
+  // How many items match, as counted by the server when the first page was fetched; approx when that is a lower bound.
+  total?: number;
+  approx?: boolean;
+  pageSize?: number;
 }
 
-// Pager for a list the server pages with a cursor: there is no total, only "is there a next page".
-export const CursorPager: React.FC<CursorPagerProps> = ({ page, hasNext, onFirst, onPrev, onNext }) => {
+// Pager for a list the server pages with a cursor: pages are walked one at a time, newest first, and the page count
+// comes from the total the server counted.
+export const CursorPager: React.FC<CursorPagerProps> = ({ page, hasNext, onFirst, onPrev, onNext, total, approx, pageSize = PAGE_SIZE }) => {
   if (page === 0 && !hasNext) return null;
+  const more = approx ? '+' : '';
+  const pages = total ? Math.max(Math.ceil(total / pageSize), page + 1) : null;
   return (
     <nav css={pagerStyle} aria-label="Pagination">
       <button onClick={onFirst} disabled={page === 0} title="Newest">«</button>
       <button onClick={onPrev} disabled={page === 0} title="Newer">‹</button>
-      <span>page {page + 1}</span>
+      <span>
+        page {page + 1}{pages ? ` of ${pages.toLocaleString()}${more}` : ''}
+        {total ? <span css={dimStyle}> · {total.toLocaleString()}{more} sessions</span> : null}
+      </span>
       <button onClick={onNext} disabled={!hasNext} title="Older">›</button>
     </nav>
   );

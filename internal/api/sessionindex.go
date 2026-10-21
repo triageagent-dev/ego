@@ -32,6 +32,8 @@ const maxPageSize = 100
 var (
 	pageScanChunk = 200
 	pageScanCap   = 20000
+	// countScanCap bounds the index rows read to count matches that SQL alone cannot decide.
+	countScanCap = 50000
 )
 
 type sessionIndexRow struct {
@@ -243,11 +245,13 @@ func tenantLike(want string) (string, bool) {
 	return "%" + indexSep + likeEscape(want) + indexSep + "%", true
 }
 
-// indexPage returns up to limit index rows, newest first, older than after, matching f.
-func (s *SQLiteStore) indexPage(f sessionPageFilter, after *sessionKey, limit int) ([]sessionIndexRow, error) {
-	// scored is decided by the scores table, not stored in the index: a session is scored after it was indexed.
-	const scoredExpr = `EXISTS (SELECT 1 FROM online_scores o WHERE o.session_id = session_index.session_id AND o.score IS NOT NULL)`
-	q := `SELECT session_id, started_ms, complete, llm_calls, tenants, agents, search, ` + scoredExpr + ` FROM session_index WHERE 1 = 1`
+// scoredExpr is decided by the scores table, not stored in the index: a session is scored after it was indexed.
+const scoredExpr = `EXISTS (SELECT 1 FROM online_scores o WHERE o.session_id = session_index.session_id AND o.score IS NOT NULL)`
+
+// where is the SQL condition (starting with " AND") and arguments that narrow the index by f, and by the position
+// after when set.
+func (f sessionPageFilter) where(after *sessionKey) (string, []any) {
+	var q string
 	var args []any
 	if !f.since.IsZero() {
 		q += " AND started_ms >= ?"
@@ -288,6 +292,36 @@ func (s *SQLiteStore) indexPage(f sessionPageFilter, after *sessionKey, limit in
 			q += " AND NOT " + scoredExpr
 		}
 	}
+	return q, args
+}
+
+// sqlExact reports whether the SQL condition alone decides the tenant filter (a pattern SQL cannot express is left
+// to the Go check).
+func (f sessionPageFilter) sqlExact() bool {
+	_, ok := tenantLike(f.tenant)
+	return ok || f.tenant == "" || f.tenant == "*"
+}
+
+// countIndex counts the index rows that match f, leaving out the ids in skip (the sessions memory holds, which are
+// counted from memory).
+func (s *SQLiteStore) countIndex(f sessionPageFilter, skip []string) (int, error) {
+	cond, args := f.where(nil)
+	q := "SELECT COUNT(*) FROM session_index WHERE 1 = 1" + cond
+	if len(skip) > 0 {
+		q += " AND session_id NOT IN (?" + strings.Repeat(",?", len(skip)-1) + ")"
+		for _, id := range skip {
+			args = append(args, id)
+		}
+	}
+	var n int
+	err := s.db.QueryRow(q, args...).Scan(&n)
+	return n, err
+}
+
+// indexPage returns up to limit index rows, newest first, older than after, matching f.
+func (s *SQLiteStore) indexPage(f sessionPageFilter, after *sessionKey, limit int) ([]sessionIndexRow, error) {
+	cond, args := f.where(after)
+	q := `SELECT session_id, started_ms, complete, llm_calls, tenants, agents, search, ` + scoredExpr + ` FROM session_index WHERE 1 = 1` + cond
 	q += " ORDER BY started_ms DESC, session_id DESC LIMIT ?"
 	args = append(args, limit)
 	rows, err := s.db.Query(q, args...)
@@ -314,6 +348,11 @@ func (s *SQLiteStore) indexPage(f sessionPageFilter, after *sessionKey, limit in
 type SessionPage struct {
 	Items []SessionSummary
 	Next  string
+	// Total is how many sessions match, counted on the first page only (TotalKnown false on later ones).
+	// TotalApprox means Total is a lower bound: counting under a role that SQL cannot express stops at a cap.
+	Total       int
+	TotalKnown  bool
+	TotalApprox bool
 }
 
 // SessionPageRequest is the filter, position and size of a page.
@@ -322,6 +361,8 @@ type SessionPageRequest struct {
 	LLMOnly bool
 	Cursor  string
 	Limit   int
+	// Unrestricted says the caller's role allows every session, so the total can be counted in SQL.
+	Unrestricted bool
 }
 
 // Page lists the sessions of one page, newest first. Sessions in memory are read from memory (they are the
@@ -376,6 +417,7 @@ func (s *SessionStore) Page(req SessionPageRequest, allow func(SessionSummary) b
 	}
 	inMemory := map[string]bool{}
 	var items []sessionIndexRow
+	memMatches := 0
 	s.mu.Lock()
 	for _, id := range s.order {
 		inMemory[id] = true
@@ -385,7 +427,11 @@ func (s *SessionStore) Page(req SessionPageRequest, allow func(SessionSummary) b
 		}
 		r := indexRowOf(sess)
 		r.Scored = scoredMem[id]
-		if (after == nil || r.key().olderThan(*after)) && keep(r) {
+		if !keep(r) {
+			continue
+		}
+		memMatches++
+		if after == nil || r.key().olderThan(*after) {
 			items = append(items, r)
 		}
 	}
@@ -435,6 +481,9 @@ func (s *SessionStore) Page(req SessionPageRequest, allow func(SessionSummary) b
 		items = kept
 	}
 	page := SessionPage{}
+	if after == nil {
+		page.Total, page.TotalKnown, page.TotalApprox = s.countMatches(req, want, keep, inMemory, memMatches)
+	}
 	switch {
 	case len(items) > limit:
 		items = items[:limit]
@@ -466,4 +515,48 @@ func (s *SessionStore) Page(req SessionPageRequest, allow func(SessionSummary) b
 		page.Items = append(page.Items, sum)
 	}
 	return page, nil
+}
+
+// countMatches is the number of sessions the request matches: the memory ones plus the archived ones. In SQL when
+// the caller sees everything and the filters are expressible there; otherwise by reading index rows up to
+// countScanCap, after which the number is a lower bound.
+func (s *SessionStore) countMatches(req SessionPageRequest, want sessionPageFilter, keep func(sessionIndexRow) bool, inMemory map[string]bool, memMatches int) (total int, known, approx bool) {
+	if s.store == nil {
+		return memMatches, true, false
+	}
+	if req.Unrestricted && want.sqlExact() {
+		skip := make([]string, 0, len(inMemory))
+		for id := range inMemory {
+			skip = append(skip, id)
+		}
+		n, err := s.store.countIndex(want, skip)
+		if err != nil {
+			logx.Warnf("session list: counting: %v", err)
+			return 0, false, false
+		}
+		return n + memMatches, true, false
+	}
+	n, scanned := 0, 0
+	var cursor *sessionKey
+	for {
+		rows, err := s.store.indexPage(want, cursor, pageScanChunk)
+		if err != nil {
+			logx.Warnf("session list: counting: %v", err)
+			return 0, false, false
+		}
+		for _, r := range rows {
+			k := r.key()
+			cursor = &k
+			scanned++
+			if !inMemory[r.ID] && keep(r) {
+				n++
+			}
+		}
+		if len(rows) < pageScanChunk {
+			return n + memMatches, true, false
+		}
+		if scanned >= countScanCap {
+			return n + memMatches, true, true
+		}
+	}
 }
