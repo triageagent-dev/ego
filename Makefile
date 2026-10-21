@@ -32,14 +32,14 @@ clean:
 
 # ── release: ko image + Helm (charts/ego) ─────────────────────────
 # Deployment values live in deploy/values.yaml (gitignored; copy
-# deploy/values.example.yaml). Tags are <BASE_VERSION>.<commit count>-<sha>,
-# so every image names the commit it was built from. This deployment's
-# registry and kube context go in deploy/local.mk (gitignored), e.g.
+# deploy/values.example.yaml). A dev image is versioned from the last release
+# tag, as git describe prints it: 0.1.40 on the tag itself, 0.1.40-2-gabc1234
+# two commits after it, so a version always reads against a release. This
+# deployment's registry and kube context go in deploy/local.mk (gitignored):
 #   KO_DOCKER_REPO = ghcr.io/your-org/ego
 #   KUBE_CONTEXT   = your-cluster-context
 -include deploy/local.mk
-BASE_VERSION  ?= 0.1
-VERSION       ?= $(BASE_VERSION).$(shell git rev-list --count HEAD)-$(shell git rev-parse --short HEAD)
+VERSION       ?= $(shell git describe --tags --always --match 'v*' | sed 's/^v//')
 KO_DOCKER_REPO ?= ghcr.io/your-org/ego
 # UI path prefix baked into the build ("/" = unprefixed, what the routes expect).
 UI_BASE_PATH  ?= /
