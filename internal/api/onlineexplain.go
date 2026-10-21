@@ -153,6 +153,7 @@ func (e *OnlineEngine) sessionEvidence(sessionID string) (ev *mcptools.SessionEv
 	ev = &mcptools.SessionEvidence{
 		SessionID: sessionID, Tenant: rec.Tenant, Kind: rec.Kind, Service: rec.Service,
 		ScoredAt: time.UnixMilli(rec.AtMs).UTC().Format(time.RFC3339),
+		RunID:    rec.RunID,
 		Metrics:  []mcptools.Evidence{},
 	}
 	for _, sc := range scores {

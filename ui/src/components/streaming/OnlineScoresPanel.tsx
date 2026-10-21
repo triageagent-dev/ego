@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { css } from '@emotion/react';
-import { getOnlineLabels, getOnlineSessionScores, postOnlineLabel } from '../../api/client';
+import { getOnlineLabels, getOnlineSessionEvidence, postOnlineLabel } from '../../api/client';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ScoreDetails } from './ScoreDetails';
 import type { OnlineLabel, OnlineSessionScore } from '../../lib/types';
 
 // A person's verdict on the judge's score of one metric of one session: thumbs and a note. The label is the
@@ -80,11 +82,16 @@ interface Props {
 export const OnlineScoresPanel: React.FC<Props> = ({ sessionId }) => {
   const [scores, setScores] = useState<OnlineSessionScore[] | null>(null);
   const [labels, setLabels] = useState<OnlineLabel[]>([]);
+  const [runId, setRunId] = useState<string | undefined>();
+  // The metrics whose details are shown: the ones that failed start open, as that is what a person checks first.
+  const [shown, setShown] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     try {
-      const s = await getOnlineSessionScores(sessionId);
+      const ev = await getOnlineSessionEvidence(sessionId);
+      const s = ev?.metrics ?? null;
       setScores(s);
+      setRunId(ev?.run_id);
       setLabels(s && s.length > 0 ? await getOnlineLabels(sessionId) : []);
     } catch {
       setScores(null);
@@ -105,10 +112,19 @@ export const OnlineScoresPanel: React.FC<Props> = ({ sessionId }) => {
 
   return (
     <div css={panelStyle}>
-      <div css={headStyle}>online scores</div>
-      {scored.map(s => (
-        <div key={s.metric} css={rowStyle}>
-          <span css={metricStyle}>{s.metric}</span>
+      <div css={headStyle}>
+        online scores
+        {runId && <a css={runLinkStyle} href={`#runs?run=${encodeURIComponent(runId)}`} title="The hourly run this session was scored in">run details ›</a>}
+      </div>
+      {scored.map(s => {
+        const open = shown[s.metric] ?? s.status === 'failed';
+        return (
+        <React.Fragment key={s.metric}>
+        <div css={rowStyle}>
+          <button css={metricButtonStyle} onClick={() => setShown(p => ({ ...p, [s.metric]: !open }))} aria-expanded={open} title="The judge's reasons for this score">
+            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <span css={metricStyle}>{s.metric}</span>
+          </button>
           <span css={scoreStyle}>
             {s.human_score !== undefined && s.human_score !== s.score
               ? <><s css={dimStyle}>{s.score!.toFixed(2)}</s> {s.human_score.toFixed(2)}</>
@@ -116,7 +132,10 @@ export const OnlineScoresPanel: React.FC<Props> = ({ sessionId }) => {
           </span>
           <LabelButtons sessionId={sessionId} metric={s.metric} latest={latest(s.metric)} onLabeled={reloadLabels} />
         </div>
-      ))}
+        {open && <ScoreDetails s={s} />}
+        </React.Fragment>
+        );
+      })}
     </div>
   );
 };
@@ -160,6 +179,33 @@ const pickStyle = css`
   gap: 4px;
   align-items: center;
   margin-left: 6px;
+`;
+
+const metricButtonStyle = css`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+
+  &:hover span {
+    color: var(--text-primary);
+  }
+`;
+
+const runLinkStyle = css`
+  margin-left: 12px;
+  font-weight: 400;
+  text-transform: none;
+  color: var(--accent-primary);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
 `;
 
 const headStyle = css`

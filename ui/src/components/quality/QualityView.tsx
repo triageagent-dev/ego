@@ -15,7 +15,7 @@ import { useLiveData } from '../../lib/connection';
 import { getOnlineAlerts, getOnlineCorrections, getOnlineFindings, getOnlineSeries, getOnlineStatus, StorageUnavailableError } from '../../api/client';
 import { onlineRunsLink } from '../../lib/runLinks';
 import { sessionLink } from '../shell/routes';
-import { useSelectedTenant } from '../../lib/tenant';
+import { tenantName, useSelectedTenant, useTenantNames } from '../../lib/tenant';
 import type { OnlineAlert, OnlineCorrection, OnlineFinding, OnlineFindingState, OnlineSeriesPoint, OnlineStatus } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
 
@@ -37,8 +37,9 @@ const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300',
 
 const FINDING_STATES: OnlineFindingState[] = ['open', 'corrected', 'resolved', 'stale'];
 
+// A scope reads by the tenant's display name, not its key ("<sender>/<id>").
 function scopeOf(p: { tenant: string; kind: string }): string {
-  return p.tenant ? `${p.tenant} · ${p.kind}` : p.kind;
+  return p.tenant ? `${tenantName(p.tenant)} · ${p.kind}` : p.kind;
 }
 
 function formatTokens(n: number): string {
@@ -65,6 +66,7 @@ export const QualityView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
   const tenant = useSelectedTenant();
+  useTenantNames();
 
   const load = useCallback(async (current: () => boolean) => {
     try {
@@ -124,6 +126,8 @@ export const QualityView: React.FC = () => {
   const sampled = counts.filter(([k]) => k.startsWith('sampled_')).reduce((s, [, v]) => s + v, 0);
   const openAlerts = alerts.filter(a => a.status === 'open');
   const shownFindings = findings.filter(f => f.state === findingState);
+  // The finding whose details are open: the one picked, else the first listed.
+  const chosenFinding = shownFindings.find(f => f.finding_id === openFinding) ?? shownFindings[0];
   const agreement = status?.labels ? Object.entries(status.labels.perMetric).sort((a, b) => a[0].localeCompare(b[0])) : [];
 
   return (
@@ -205,57 +209,51 @@ export const QualityView: React.FC = () => {
             {shownFindings.length === 0 ? (
               <p css={emptyStyle}>No {findingState} findings.</p>
             ) : (
-              <div css={tableWrapStyle}>
-                <table css={tableStyle}>
-                  <thead>
-                    <tr>
-                      <th>Kind</th><th>Metric</th><th>Failure mode</th><th>Confidence</th><th>Created</th><th css={numStyle}>Sessions</th><th css={numStyle} title="evidence sessions a person checked">Checked</th><th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shownFindings.map(f => (
-                      <React.Fragment key={f.finding_id}>
-                        <tr css={clickRowStyle} onClick={() => setOpenFinding(openFinding === f.finding_id ? null : f.finding_id)}>
-                          <td>{scopeOf(f)}</td>
-                          <td css={monoStyle}>{f.metric}</td>
-                          <td css={wrapCellStyle}>{f.diagnosis.failure_mode}</td>
-                          <td>{f.diagnosis.confidence}</td>
-                          <td>{new Date(f.created_at).toLocaleString()}</td>
-                          <td css={numStyle}>{f.sessions.length}</td>
-                          <td css={numStyle}>{f.confirmed ?? 0}</td>
-                          <td onClick={(e) => e.stopPropagation()}>
-                            <a css={runsLinkStyle} href={onlineRunsLink(f.tenant, f.kind)} title="The hourly runs of this scope, and how each one ran">runs ›</a>
-                          </td>
-                        </tr>
-                        {openFinding === f.finding_id && (
-                          <tr>
-                            <td colSpan={8} css={detailStyle}>
-                              <p>{f.diagnosis.summary}</p>
-                              {f.diagnosis.suggested_correction && (
-                                <p><b>Suggested correction.</b> {f.diagnosis.suggested_correction}</p>
-                              )}
-                              <p css={dimStyle}>
-                                window mean {f.window.mean.toFixed(2)} over {f.window.n} sessions
-                                {f.model ? ` · diagnosed by ${f.model}` : ' · written from the evidence alone'}
-                              </p>
-                              <div>
-                                <b>Evidence sessions.</b>{' '}
-                                {f.sessions.map(id => (
-                                  <a key={id} css={sessionLinkStyle} href={sessionLink(id)} title={f.diagnosis.evidence.find(e => e.session_id === id)?.why}>{id}</a>
-                                ))}
-                              </div>
-                              {f.history.length > 0 && (
-                                <div css={dimStyle}>
-                                  Tried: {f.history.map(h => `${h.what} (${h.state})`).join('; ')}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </tbody>
-                </table>
+              <div css={splitStyle}>
+                <div css={findingListStyle}>
+                  {shownFindings.map(f => (
+                    <button key={f.finding_id} css={[findingCardStyle, chosenFinding?.finding_id === f.finding_id && findingCardOnStyle]}
+                      onClick={() => setOpenFinding(f.finding_id)}>
+                      <span css={findingHeadStyle}>
+                        <span>{scopeOf(f)}</span>
+                        <span css={monoStyle}>{f.metric}</span>
+                      </span>
+                      <span css={findingModeStyle}>{f.diagnosis.failure_mode}</span>
+                      <span css={dimStyle}>{f.diagnosis.confidence} confidence · {f.sessions.length} sessions · {new Date(f.created_at).toLocaleDateString()}</span>
+                    </button>
+                  ))}
+                </div>
+                {chosenFinding && (
+                  <aside css={findingDetailStyle}>
+                    <div css={findingHeadStyle}>
+                      <span>{scopeOf(chosenFinding)}</span>
+                      <span css={monoStyle}>{chosenFinding.metric}</span>
+                      <a css={runsLinkStyle} href={onlineRunsLink(chosenFinding.tenant, chosenFinding.kind)} title="The hourly runs of this scope, and how each one ran">runs ›</a>
+                    </div>
+                    <p>{chosenFinding.diagnosis.summary}</p>
+                    {chosenFinding.diagnosis.suggested_correction && (
+                      <p><b>Suggested correction.</b> {chosenFinding.diagnosis.suggested_correction}</p>
+                    )}
+                    <p css={dimStyle}>
+                      window mean {chosenFinding.window.mean.toFixed(2)} over {chosenFinding.window.n} sessions
+                      {chosenFinding.model ? ` · diagnosed by ${chosenFinding.model}` : ' · written from the evidence alone'}
+                      {' · '}{chosenFinding.confirmed ?? 0} checked by a person
+                    </p>
+                    <div>
+                      <b>Evidence sessions.</b>
+                      <div css={evidenceListStyle}>
+                        {chosenFinding.sessions.map(id => (
+                          <a key={id} css={sessionLinkStyle} href={sessionLink(id)} title={chosenFinding.diagnosis.evidence.find(e => e.session_id === id)?.why}>{id}</a>
+                        ))}
+                      </div>
+                    </div>
+                    {chosenFinding.history.length > 0 && (
+                      <div css={dimStyle}>
+                        Tried: {chosenFinding.history.map(h => `${h.what} (${h.state})`).join('; ')}
+                      </div>
+                    )}
+                  </aside>
+                )}
               </div>
             )}
           </section>
@@ -490,20 +488,10 @@ const findingFilterStyle = css`
   margin-bottom: 6px;
 `;
 
-const clickRowStyle = css`
-  cursor: pointer;
-`;
-
 const wrapCellStyle = css`
   white-space: normal !important;
   min-width: 220px;
   max-width: 480px;
-`;
-
-const detailStyle = css`
-  white-space: normal !important;
-  background: var(--bg-elevated);
-  p { margin: 0 0 6px; }
 `;
 
 const sessionLinkStyle = css`
@@ -527,4 +515,87 @@ const runsLinkStyle = css`
   &:hover {
     text-decoration: underline;
   }
+`;
+
+// Findings are a list and the details of the open one, as on the sessions page: a long diagnosis does not push
+// the list off the screen.
+const splitStyle = css`
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+`;
+
+const findingListStyle = css`
+  flex: 0 0 420px;
+  min-width: 0;
+  max-height: 520px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+`;
+
+const findingCardStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bg-elevated);
+  }
+`;
+
+const findingCardOnStyle = css`
+  background: var(--bg-elevated);
+  border-color: var(--accent-primary);
+`;
+
+const findingHeadStyle = css`
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--text-primary);
+`;
+
+const findingModeStyle = css`
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--text-secondary);
+  line-height: 1.4;
+`;
+
+const findingDetailStyle = css`
+  flex: 1;
+  min-width: 360px;
+  max-height: 520px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  font-size: 13px;
+  line-height: 1.5;
+
+  p {
+    margin: 0 0 10px;
+  }
+`;
+
+const evidenceListStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
 `;

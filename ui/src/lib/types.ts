@@ -889,6 +889,17 @@ export interface OnlineSessionScore {
   metric: string;
   score: number | null;
   status: string;
+  error?: string;
+  // The judge's reason for the first failing item, and how many of the items failed. Which list is filled depends
+  // on the metric: sentences (hallucinations_v1), rubrics, comparisons (tool_trajectory), decisions (jev_*).
+  rationale?: string;
+  failing?: number;
+  total?: number;
+  truncated?: number;
+  sentences?: { invocation_id?: string; sentence: string; label: string; rationale?: string; supporting_excerpt?: string; contradicting_excerpt?: string }[];
+  rubrics?: { invocation_id?: string; id?: string; rubric: string; verdict: string; rationale?: string }[];
+  comparisons?: { invocation_id?: string; matched: boolean; expected: { tool: string; args?: Record<string, unknown> }[]; actual: { tool: string; args?: Record<string, unknown> }[] }[];
+  decisions?: { invocation_id?: string; question?: string; user_input?: string; final_response?: string; score: number | null; answer?: string }[];
   // The newest label's verdict and the score the person gave with it; that score is the score of record.
   human_verdict?: 'agree' | 'disagree';
   human_score?: number;

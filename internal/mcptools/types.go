@@ -338,14 +338,16 @@ type RegressionExplanation struct {
 
 // SessionEvidence is everything stored about why one session scored as it did.
 type SessionEvidence struct {
-	SessionID string     `json:"session_id"`
-	Tenant    string     `json:"tenant"`
-	Kind      string     `json:"kind"`
-	Service   string     `json:"service,omitempty"`
-	Version   string     `json:"version,omitempty"`
-	Model     string     `json:"model,omitempty"`
-	ScoredAt  string     `json:"scored_at"`
-	Metrics   []Evidence `json:"metrics"`
+	SessionID string `json:"session_id"`
+	Tenant    string `json:"tenant"`
+	Kind      string `json:"kind"`
+	Service   string `json:"service,omitempty"`
+	Version   string `json:"version,omitempty"`
+	Model     string `json:"model,omitempty"`
+	ScoredAt  string `json:"scored_at"`
+	// RunID is the hourly run the session was scored in, for a link to how that run went.
+	RunID   string     `json:"run_id,omitempty"`
+	Metrics []Evidence `json:"metrics"`
 }
 
 // Evidence is the compact judge evidence of one metric on one session. Which of the detail lists is filled depends

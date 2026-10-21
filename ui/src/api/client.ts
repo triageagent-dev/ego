@@ -476,10 +476,15 @@ export async function postOnlineLabel(input: OnlineLabelInput): Promise<OnlineLa
 // The online scores of one session, or null when it was never scored (or online evaluation is off, or the
 // caller may not see it): the session card then has nothing to label.
 export async function getOnlineSessionScores(sessionId: string): Promise<OnlineSessionScore[] | null> {
+  return (await getOnlineSessionEvidence(sessionId))?.metrics ?? null;
+}
+
+/** The scores of one session with the judge's evidence behind each, and the hourly run it was scored in. */
+export async function getOnlineSessionEvidence(sessionId: string): Promise<{ run_id?: string; metrics: OnlineSessionScore[] } | null> {
   const response = await fetch(`${config.api.endpoints.online}/sessions/${encodeURIComponent(sessionId)}/explain`);
   if (!response.ok) return null;
-  const ev = await unwrap<{ metrics: OnlineSessionScore[] }>(response);
-  return ev.metrics ?? [];
+  const ev = await unwrap<{ run_id?: string; metrics: OnlineSessionScore[] }>(response);
+  return { run_id: ev.run_id, metrics: ev.metrics ?? [] };
 }
 
 // One row of GET /api/streaming/session-spans - a span
