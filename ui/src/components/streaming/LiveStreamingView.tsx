@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTraceContext } from '../../context/TraceContext';
 import { SessionCard } from './SessionCard';
 import { config } from '../../config';
-import { onServerDown, onServerUp, setFeed } from '../../lib/connection';
+import { onFeedMessage, onFeedOpen } from '../../lib/connection';
 import { parseHash } from '../shell/routes';
 import { CursorPager } from '../ui/Pager';
 import { useSelectedTenant } from '../../lib/tenant';
@@ -177,12 +177,6 @@ export function LiveStreamingView() {
     setComparisonSessionIds(new Set());
   }, [selectedGoldenId]);
 
-  // The live feed is a WebSocket rather than SSE: gateways buffer
-  // long-lived SSE responses. See config.ts's uiUpdatesWs and
-  // internal/api/wsupdates.go.
-  const wsRef = useRef<WebSocket | null>(null);
-  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryDelayRef = useRef(1000);
   const mountedRef = useRef(true);
   // What the user cleared or removed from the view. A re-fetch of the
   // session list (on connect, or on a resync after dropped events) must not
@@ -327,330 +321,259 @@ export function LiveStreamingView() {
       }, 1000);
     };
 
-    const connectWS = () => {
+    // The socket itself is the app's (lib/connection.ts); this view takes the events while it is on screen.
+    const handleMessage = (data: any) => {
       if (!mountedRef.current) return;
-
       if (import.meta.env.DEV) {
-        console.log('[Streaming] Setting up WebSocket connection');
+        console.log('[Streaming] Received event:', data.type, data);
       }
-      setFeed('connecting');
-      const ws = new WebSocket(config.websocket.uiUpdatesWs);
-      wsRef.current = ws;
 
-      ws.onopen = () => {
-        if (import.meta.env.DEV) {
-          console.log('[Streaming] WebSocket connected');
-        }
-        retryDelayRef.current = 1000;
-        setFeed('open');
-        fetchPage(cursorsRef.current[cursorsRef.current.length - 1]);
-      };
+      switch (data.type) {
+        case 'session_started':
+          if (import.meta.env.DEV) {
+            console.log('[Streaming] New session started:', data.session.sessionId);
+          }
+          setActiveSessions(prev => {
+            const newMap = new Map(prev);
+            newMap.set(data.session.sessionId, {
+              sessionId: data.session.sessionId,
+              traceId: data.session.traceId,
+              evalSetId: data.session.evalSetId,
+              spans: [],
+              status: 'active',
+              metadata: data.session.metadata || {},
+              liveElements: [],
+              liveStats: {
+                totalInputTokens: 0,
+                totalOutputTokens: 0,
+              },
+              startedAt: data.session.startedAt,
+              rootSpanName: data.session.rootSpanName,
+              agents: data.session.agents,
+              tenants: data.session.tenants,
+              models: data.session.models,
+              llmCalls: data.session.llmCalls,
+              durationMs: data.session.durationMs,
+            });
+            return newMap;
+          });
+          requestResync();
+          break;
 
-      // onclose fires for every disconnection (clean or not, including
-      // right after a failed connection's onerror), so reconnect lives
-      // here only, not duplicated in onerror.
-      ws.onclose = () => {
-        if (!mountedRef.current) return;
-        setFeed('closed');
-        if (import.meta.env.DEV) {
-          console.log(`[Streaming] WebSocket closed, reconnecting in ${retryDelayRef.current}ms`);
-        }
-        scheduleReconnect();
-      };
+        case 'resync':
+          // The server dropped events for this connection.
+          requestResync();
+          break;
 
-      ws.onerror = () => {
-        if (import.meta.env.DEV) {
-          console.log('[Streaming] WebSocket error');
-        }
-      };
-
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (import.meta.env.DEV) {
-          console.log('[Streaming] Received event:', data.type, data);
-        }
-
-        switch (data.type) {
-          case 'session_started':
-            if (import.meta.env.DEV) {
-              console.log('[Streaming] New session started:', data.session.sessionId);
+        case 'user_input':
+          setActiveSessions(prev => {
+            const session = prev.get(data.sessionId);
+            if (!session) {
+              requestResync();
+              return prev;
             }
-            setActiveSessions(prev => {
-              const newMap = new Map(prev);
-              newMap.set(data.session.sessionId, {
-                sessionId: data.session.sessionId,
-                traceId: data.session.traceId,
-                evalSetId: data.session.evalSetId,
+
+            const newMap = new Map(prev);
+            newMap.set(data.sessionId, {
+              ...session,
+              liveElements: [
+                ...session.liveElements,
+                {
+                  type: 'user_input',
+                  timestamp: data.timestamp,
+                  invocationId: data.invocationId,
+                  data: { text: data.text },
+                },
+              ],
+            });
+            return newMap;
+          });
+          break;
+
+        case 'tool_call':
+          setActiveSessions(prev => {
+            const session = prev.get(data.sessionId);
+            if (!session) {
+              requestResync();
+              return prev;
+            }
+
+            const newMap = new Map(prev);
+            newMap.set(data.sessionId, {
+              ...session,
+              liveElements: [
+                ...session.liveElements,
+                {
+                  type: 'tool_call',
+                  timestamp: data.timestamp,
+                  invocationId: data.invocationId,
+                  data: { toolCall: data.toolCall },
+                },
+              ],
+            });
+            return newMap;
+          });
+          break;
+
+        case 'tool_result':
+          setActiveSessions(prev => {
+            const session = prev.get(data.sessionId);
+            if (!session) {
+              requestResync();
+              return prev;
+            }
+
+            const newMap = new Map(prev);
+            newMap.set(data.sessionId, {
+              ...session,
+              liveElements: [
+                ...session.liveElements,
+                {
+                  type: 'tool_result',
+                  timestamp: data.timestamp,
+                  invocationId: data.invocationId,
+                  data: { response: data.response, isError: data.isError },
+                },
+              ],
+            });
+            return newMap;
+          });
+          break;
+
+        case 'agent_response':
+          setActiveSessions(prev => {
+            const session = prev.get(data.sessionId);
+            if (!session) {
+              requestResync();
+              return prev;
+            }
+
+            const newMap = new Map(prev);
+            newMap.set(data.sessionId, {
+              ...session,
+              liveElements: [
+                ...session.liveElements,
+                {
+                  type: 'agent_response',
+                  timestamp: data.timestamp,
+                  invocationId: data.invocationId,
+                  data: { text: data.text },
+                },
+              ],
+            });
+            return newMap;
+          });
+          break;
+
+        case 'token_update':
+          if (import.meta.env.DEV) {
+            console.log('[Streaming] Token update:', data);
+          }
+          setActiveSessions(prev => {
+            const session = prev.get(data.sessionId);
+            // The list holds one page; a session that is not on it (older, another tenant, outside the range) is not an error.
+            if (!session) return prev;
+
+            const newStats = {
+              ...session.liveStats,
+              totalInputTokens: session.liveStats.totalInputTokens + (data.inputTokens || 0),
+              totalOutputTokens: session.liveStats.totalOutputTokens + (data.outputTokens || 0),
+              ...(data.model && data.model !== 'unknown' ? { model: data.model } : {}),
+            };
+
+            if (import.meta.env.DEV) {
+              console.log('[Streaming] New stats:', newStats);
+            }
+
+            const newMap = new Map(prev);
+            newMap.set(data.sessionId, {
+              ...session,
+              liveStats: newStats,
+            });
+            return newMap;
+          });
+          break;
+
+        case 'session_removed':
+          if (import.meta.env.DEV) {
+            console.log('[Streaming] Session removed:', data.sessionId, 'absorbed by:', data.absorbedBy);
+          }
+          setActiveSessions(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(data.sessionId);
+            return newMap;
+          });
+          break;
+
+        case 'session_complete':
+          if (import.meta.env.DEV) {
+            console.log('[Streaming] Session complete with invocations:', data.invocations?.length);
+          }
+          setActiveSessions(prev => {
+            const session = prev.get(data.sessionId);
+
+            const newMap = new Map(prev);
+
+            if (!session) {
+              if (import.meta.env.DEV) {
+                console.warn('[Streaming] Session not found, creating it now:', data.sessionId);
+              }
+              newMap.set(data.sessionId, {
+                sessionId: data.sessionId,
+                traceId: 'unknown',
+                evalSetId: null,
                 spans: [],
-                status: 'active',
-                metadata: data.session.metadata || {},
-                liveElements: [],
+                status: 'complete',
+                metadata: {},
+                invocations: data.invocations,
+                liveElements: data.invocations?.length
+                  ? invocationsToElements(data.invocations)
+                  : [],
                 liveStats: {
                   totalInputTokens: 0,
                   totalOutputTokens: 0,
                 },
-                startedAt: data.session.startedAt,
-                rootSpanName: data.session.rootSpanName,
-                agents: data.session.agents,
-                tenants: data.session.tenants,
-                models: data.session.models,
-                llmCalls: data.session.llmCalls,
-                durationMs: data.session.durationMs,
+                startedAt: new Date().toISOString(),
+                completedAt: data.completedAt,
+                rootSpanName: data.rootSpanName,
+                llmCalls: data.llmCalls,
+                errors: data.errors,
+                durationMs: data.durationMs,
               });
-              return newMap;
-            });
-            requestResync();
-            break;
-
-          case 'resync':
-            // The server dropped events for this connection.
-            requestResync();
-            break;
-
-          case 'user_input':
-            setActiveSessions(prev => {
-              const session = prev.get(data.sessionId);
-              if (!session) {
-                requestResync();
-                return prev;
-              }
-
-              const newMap = new Map(prev);
+            } else {
               newMap.set(data.sessionId, {
                 ...session,
-                liveElements: [
-                  ...session.liveElements,
-                  {
-                    type: 'user_input',
-                    timestamp: data.timestamp,
-                    invocationId: data.invocationId,
-                    data: { text: data.text },
-                  },
-                ],
+                status: 'complete',
+                invocations: data.invocations,
+                liveElements: data.invocations?.length
+                  ? invocationsToElements(data.invocations)
+                  : session.liveElements,
+                completedAt: data.completedAt,
+                rootSpanName: data.rootSpanName,
+                llmCalls: data.llmCalls,
+                errors: data.errors,
+                durationMs: data.durationMs,
               });
-              return newMap;
-            });
-            break;
-
-          case 'tool_call':
-            setActiveSessions(prev => {
-              const session = prev.get(data.sessionId);
-              if (!session) {
-                requestResync();
-                return prev;
-              }
-
-              const newMap = new Map(prev);
-              newMap.set(data.sessionId, {
-                ...session,
-                liveElements: [
-                  ...session.liveElements,
-                  {
-                    type: 'tool_call',
-                    timestamp: data.timestamp,
-                    invocationId: data.invocationId,
-                    data: { toolCall: data.toolCall },
-                  },
-                ],
-              });
-              return newMap;
-            });
-            break;
-
-          case 'tool_result':
-            setActiveSessions(prev => {
-              const session = prev.get(data.sessionId);
-              if (!session) {
-                requestResync();
-                return prev;
-              }
-
-              const newMap = new Map(prev);
-              newMap.set(data.sessionId, {
-                ...session,
-                liveElements: [
-                  ...session.liveElements,
-                  {
-                    type: 'tool_result',
-                    timestamp: data.timestamp,
-                    invocationId: data.invocationId,
-                    data: { response: data.response, isError: data.isError },
-                  },
-                ],
-              });
-              return newMap;
-            });
-            break;
-
-          case 'agent_response':
-            setActiveSessions(prev => {
-              const session = prev.get(data.sessionId);
-              if (!session) {
-                requestResync();
-                return prev;
-              }
-
-              const newMap = new Map(prev);
-              newMap.set(data.sessionId, {
-                ...session,
-                liveElements: [
-                  ...session.liveElements,
-                  {
-                    type: 'agent_response',
-                    timestamp: data.timestamp,
-                    invocationId: data.invocationId,
-                    data: { text: data.text },
-                  },
-                ],
-              });
-              return newMap;
-            });
-            break;
-
-          case 'token_update':
-            if (import.meta.env.DEV) {
-              console.log('[Streaming] Token update:', data);
             }
-            setActiveSessions(prev => {
-              const session = prev.get(data.sessionId);
-              // The list holds one page; a session that is not on it (older, another tenant, outside the range) is not an error.
-              if (!session) return prev;
 
-              const newStats = {
-                ...session.liveStats,
-                totalInputTokens: session.liveStats.totalInputTokens + (data.inputTokens || 0),
-                totalOutputTokens: session.liveStats.totalOutputTokens + (data.outputTokens || 0),
-                ...(data.model && data.model !== 'unknown' ? { model: data.model } : {}),
-              };
+            return newMap;
+          });
+          // The agent, model and tenant badges come from the spans seen so far; the last spans of a session
+          // (a voice session's model turns) arrive after it started, so take the final set from the server.
+          requestResync();
+          break;
 
-              if (import.meta.env.DEV) {
-                console.log('[Streaming] New stats:', newStats);
-              }
-
-              const newMap = new Map(prev);
-              newMap.set(data.sessionId, {
-                ...session,
-                liveStats: newStats,
-              });
-              return newMap;
-            });
-            break;
-
-          case 'session_removed':
-            if (import.meta.env.DEV) {
-              console.log('[Streaming] Session removed:', data.sessionId, 'absorbed by:', data.absorbedBy);
-            }
-            setActiveSessions(prev => {
-              const newMap = new Map(prev);
-              newMap.delete(data.sessionId);
-              return newMap;
-            });
-            break;
-
-          case 'session_complete':
-            if (import.meta.env.DEV) {
-              console.log('[Streaming] Session complete with invocations:', data.invocations?.length);
-            }
-            setActiveSessions(prev => {
-              const session = prev.get(data.sessionId);
-
-              const newMap = new Map(prev);
-
-              if (!session) {
-                if (import.meta.env.DEV) {
-                  console.warn('[Streaming] Session not found, creating it now:', data.sessionId);
-                }
-                newMap.set(data.sessionId, {
-                  sessionId: data.sessionId,
-                  traceId: 'unknown',
-                  evalSetId: null,
-                  spans: [],
-                  status: 'complete',
-                  metadata: {},
-                  invocations: data.invocations,
-                  liveElements: data.invocations?.length
-                    ? invocationsToElements(data.invocations)
-                    : [],
-                  liveStats: {
-                    totalInputTokens: 0,
-                    totalOutputTokens: 0,
-                  },
-                  startedAt: new Date().toISOString(),
-                  completedAt: data.completedAt,
-                  rootSpanName: data.rootSpanName,
-                  llmCalls: data.llmCalls,
-                  errors: data.errors,
-                  durationMs: data.durationMs,
-                });
-              } else {
-                newMap.set(data.sessionId, {
-                  ...session,
-                  status: 'complete',
-                  invocations: data.invocations,
-                  liveElements: data.invocations?.length
-                    ? invocationsToElements(data.invocations)
-                    : session.liveElements,
-                  completedAt: data.completedAt,
-                  rootSpanName: data.rootSpanName,
-                  llmCalls: data.llmCalls,
-                  errors: data.errors,
-                  durationMs: data.durationMs,
-                });
-              }
-
-              return newMap;
-            });
-            // The agent, model and tenant badges come from the spans seen so far; the last spans of a session
-            // (a voice session's model turns) arrive after it started, so take the final set from the server.
-            requestResync();
-            break;
-
-        }
-      };
-    };
-
-    const scheduleReconnect = () => {
-      if (!mountedRef.current) return;
-      wsRef.current?.close();
-      wsRef.current = null;
-
-      retryTimeoutRef.current = setTimeout(() => {
-        retryTimeoutRef.current = null;
-        retryDelayRef.current = Math.min(retryDelayRef.current * 2, 30000);
-        connectWS();
-      }, retryDelayRef.current);
-    };
-
-    connectWS();
-
-    // The health poll notices a dead link before a half-open socket does: drop the socket so it reconnects,
-    // and when the server answers again reconnect at once instead of waiting out the backoff.
-    const offDown = onServerDown(() => wsRef.current?.close());
-    const offUp = onServerUp(() => {
-      const state = wsRef.current?.readyState;
-      if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) return;
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-        retryTimeoutRef.current = null;
       }
-      retryDelayRef.current = 1000;
-      connectWS();
-    });
+    };
+
+    const offMessage = onFeedMessage(handleMessage);
+    // After the feed reconnects, events may have been missed: read the page again.
+    const offOpen = onFeedOpen(() => fetchPage(cursorsRef.current[cursorsRef.current.length - 1]));
 
     return () => {
-      offDown();
-      offUp();
-      setFeed('idle');
+      offMessage();
+      offOpen();
       mountedRef.current = false;
-      if (import.meta.env.DEV) {
-        console.log('[Streaming] Closing WebSocket connection');
-      }
-      wsRef.current?.close();
-      wsRef.current = null;
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-        retryTimeoutRef.current = null;
-      }
       if (resyncTimer) clearTimeout(resyncTimer);
     };
   }, []);
@@ -770,150 +693,132 @@ export function LiveStreamingView() {
               pick a golden session, then evaluate the rest
             </p>
           </div>
+        </div>
+
+        <div style={{
+          display: 'flex',
+          gap: '10px',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}>
+          <button
+            onClick={toggleShowNoLLM}
+            aria-pressed={showNoLLM}
+            title="Sessions whose trace made no LLM call, such as a server's per-event traces"
+            style={{
+              padding: '3px 9px',
+              borderRadius: 'var(--radius)',
+              border: `1px solid ${showNoLLM ? 'var(--accent-primary)' : 'var(--border-default)'}`,
+              background: 'transparent',
+              color: showNoLLM ? 'var(--text-primary)' : 'var(--text-tertiary)',
+              fontSize: '12px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {showNoLLM ? 'hide non-LLM' : 'show non-LLM'}
+          </button>
+          <button
+            onClick={toggleScoredOnly}
+            aria-pressed={scoredOnly}
+            title="Only sessions online evaluation scored: their judge scores can be read and labelled"
+            style={{
+              padding: '3px 9px',
+              borderRadius: 'var(--radius)',
+              border: `1px solid ${scoredOnly ? 'var(--accent-primary)' : 'var(--border-default)'}`,
+              background: 'transparent',
+              color: scoredOnly ? 'var(--text-primary)' : 'var(--text-tertiary)',
+              fontSize: '12px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            scored only
+          </button>
+
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search sessions…"
+            aria-label="Search sessions"
+            style={{
+              padding: '3px 9px',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--border-default)',
+              background: 'transparent',
+              color: 'var(--text-primary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '12px',
+              width: '170px',
+              outline: 'none',
+            }}
+          />
 
           <div style={{
             display: 'flex',
-            gap: '10px',
-            alignItems: 'center',
+            gap: '2px',
+            padding: '1px',
+            borderRadius: 'var(--radius)',
+            border: '1px solid var(--border-default)',
           }}>
-            <button
-              onClick={toggleShowNoLLM}
-              aria-pressed={showNoLLM}
-              title="Sessions whose trace made no LLM call, such as a server's per-event traces"
-              style={{
-                padding: '3px 9px',
-                borderRadius: 'var(--radius)',
-                border: `1px solid ${showNoLLM ? 'var(--accent-primary)' : 'var(--border-default)'}`,
-                background: 'transparent',
-                color: showNoLLM ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                fontSize: '12px',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {showNoLLM ? 'hide non-LLM' : 'show non-LLM'}
-            </button>
-            <button
-              onClick={toggleScoredOnly}
-              aria-pressed={scoredOnly}
-              title="Only sessions online evaluation scored: their judge scores can be read and labelled"
-              style={{
-                padding: '3px 9px',
-                borderRadius: 'var(--radius)',
-                border: `1px solid ${scoredOnly ? 'var(--accent-primary)' : 'var(--border-default)'}`,
-                background: 'transparent',
-                color: scoredOnly ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                fontSize: '12px',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              scored only
-            </button>
+            {TIME_RANGES.map(range => (
+              <button
+                key={range.key}
+                onClick={() => setTimeRange(range.key)}
+                style={{
+                  padding: '2px 9px',
+                  borderRadius: 'var(--radius)',
+                  border: 'none',
+                  background: timeRange === range.key ? 'var(--bg-selected)' : 'transparent',
+                  color: timeRange === range.key ? 'var(--accent-magenta)' : 'var(--text-tertiary)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
 
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search sessions…"
-              aria-label="Search sessions"
+          {completedSessions.length > 0 && (
+            <button
+              onClick={() => {
+                setClearedBefore(Date.now());
+                actions.clearAllSessions();
+                if (selectedGoldenId && completedSessions.some(s => s.sessionId === selectedGoldenId)) {
+                  setSelectedGoldenId(null);
+                }
+              }}
+              title="Hide the finished sessions on this page until they are loaded again"
               style={{
                 padding: '3px 9px',
                 borderRadius: 'var(--radius)',
                 border: '1px solid var(--border-default)',
                 background: 'transparent',
-                color: 'var(--text-primary)',
-                fontFamily: 'var(--font-mono)',
+                color: 'var(--text-tertiary)',
                 fontSize: '12px',
-                width: '170px',
-                outline: 'none',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
               }}
-            />
-
-            <div style={{
-              display: 'flex',
-              gap: '2px',
-              padding: '1px',
-              borderRadius: 'var(--radius)',
-              border: '1px solid var(--border-default)',
-            }}>
-              {TIME_RANGES.map(range => (
-                <button
-                  key={range.key}
-                  onClick={() => setTimeRange(range.key)}
-                  style={{
-                    padding: '2px 9px',
-                    borderRadius: 'var(--radius)',
-                    border: 'none',
-                    background: timeRange === range.key ? 'var(--bg-selected)' : 'transparent',
-                    color: timeRange === range.key ? 'var(--accent-magenta)' : 'var(--text-tertiary)',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {range.label}
-                </button>
-              ))}
-            </div>
-
-          </div>
-        </div>
-
-        {allSessions.length > 0 && (
-          <div style={{
-            padding: '5px 10px',
-            borderRadius: 'var(--radius)',
-            border: '1px solid var(--border)',
-            display: 'flex',
-            gap: '16px',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}>
-            <span style={{
-              fontSize: '12px',
-              color: 'var(--text-tertiary)',
-            }}>
-              {activeLiveSessions.length} live · {completedSessions.length} done
-              {focusId && (
-                <>
-                  {' · '}showing {focusId}{' '}
-                  <button
-                    onClick={() => { location.hash = '#sessions'; }}
-                    style={{ padding: 0, border: 'none', background: 'none', color: 'var(--accent-primary)', font: 'inherit', cursor: 'pointer' }}
-                  >
-                    show all
-                  </button>
-                </>
-              )}
-            </span>
-            {completedSessions.length > 0 && (
+            >
+              hide done
+            </button>
+          )}
+          {focusId && (
+            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+              showing one session{' '}
               <button
-                onClick={() => {
-                  setClearedBefore(Date.now());
-                  actions.clearAllSessions();
-                  if (selectedGoldenId && completedSessions.some(s => s.sessionId === selectedGoldenId)) {
-                    setSelectedGoldenId(null);
-                  }
-                }}
-                style={{
-                  padding: '1px 9px',
-                  borderRadius: 'var(--radius)',
-                  background: 'transparent',
-                  border: '1px solid var(--border-default)',
-                  color: 'var(--text-tertiary)',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
+                onClick={() => { location.hash = '#sessions'; }}
+                style={{ padding: 0, border: 'none', background: 'none', color: 'var(--accent-primary)', font: 'inherit', cursor: 'pointer' }}
               >
-                clear done
+                show all
               </button>
-            )}
-          </div>
-        )}
+            </span>
+          )}
+        </div>
       </div>
 
       {selectedGoldenId && (

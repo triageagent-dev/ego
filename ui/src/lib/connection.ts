@@ -1,12 +1,14 @@
 import { useSyncExternalStore } from 'react';
 import { config } from '../config';
 
-// What the UI knows about its link to the ego server, for the status dot.
-//  server: whether GET /api/health answers (polled, so a dead link is noticed even when the browser's
-//          websocket has not noticed yet);
-//  feed:   the live-feed websocket, only meaningful while the sessions view is open.
+// The UI's link to the ego server. One websocket (/ws/ui-updates) is open for as long as the app is: it carries
+// the live session events, and the server sends a heartbeat on it, so a link that went quiet is noticed from the
+// socket alone, with no polling. Only while the socket is down is the server asked (GET /api/health, once per
+// attempt) whether it answers at all, which tells a dead server from a feed that is merely reconnecting.
+//  server: whether the server answers;
+//  feed:   the websocket.
 export type ServerState = 'unknown' | 'up' | 'down';
-export type FeedState = 'idle' | 'connecting' | 'open' | 'closed';
+export type FeedState = 'connecting' | 'open' | 'closed';
 export type Level = 'ok' | 'warn' | 'down';
 
 interface Snapshot {
@@ -16,7 +18,7 @@ interface Snapshot {
   checkedAt: number;
 }
 
-let snap: Snapshot = { server: 'unknown', feed: 'idle', version: '', checkedAt: 0 };
+let snap: Snapshot = { server: 'unknown', feed: 'connecting', version: '', checkedAt: 0 };
 const listeners = new Set<() => void>();
 
 function set(next: Partial<Snapshot>) {
@@ -33,80 +35,150 @@ function set(next: Partial<Snapshot>) {
   listeners.forEach((l) => l());
 }
 
-export function setFeed(feed: FeedState): void {
-  set({ feed });
-}
-
 export function connectionLevel(s: Snapshot): Level {
   if (s.server === 'down') return 'down';
-  if (s.feed === 'connecting' || s.feed === 'closed') return 'warn';
-  return 'ok';
+  if (s.feed === 'open') return 'ok';
+  return 'warn';
 }
 
 export function describe(s: Snapshot): string {
   if (s.server === 'down') return 'server unreachable';
   if (s.feed === 'connecting') return 'connecting to the live feed';
   if (s.feed === 'closed') return 'live feed disconnected, reconnecting';
-  if (s.server === 'unknown') return 'checking the server';
   return s.version ? `connected to ego ${s.version}` : 'connected';
 }
 
-const POLL_MS = 10_000;
-const TIMEOUT_MS = 4_000;
-let timer: ReturnType<typeof setInterval> | null = null;
-const downListeners = new Set<() => void>();
-const upListeners = new Set<() => void>();
+// The server sends a heartbeat every 15 s; a socket that has said nothing for three of them is dropped and redone.
+const STALE_MS = 45_000;
+const WATCH_MS = 5_000;
+const PROBE_TIMEOUT_MS = 4_000;
+const MAX_BACKOFF_MS = 10_000;
 
-async function probe(): Promise<void> {
+let ws: WebSocket | null = null;
+let started = false;
+let backoff = 1_000;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let watchTimer: ReturnType<typeof setInterval> | null = null;
+let lastSeen = 0;
+
+const messageListeners = new Set<(data: any) => void>();
+const openListeners = new Set<() => void>();
+
+/** Every event the server sends on the feed, parsed; the heartbeat is not passed on. */
+export function onFeedMessage(fn: (data: any) => void): () => void {
+  messageListeners.add(fn);
+  return () => messageListeners.delete(fn);
+}
+
+/** The feed (re)connected: events may have been missed meanwhile, so read the current state again. */
+export function onFeedOpen(fn: () => void): () => void {
+  openListeners.add(fn);
+  return () => openListeners.delete(fn);
+}
+
+async function health(): Promise<{ version?: string } | null> {
   const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
-  const before = snap.server;
+  const t = setTimeout(() => ctl.abort(), PROBE_TIMEOUT_MS);
   try {
     const res = await fetch(config.api.endpoints.health, { signal: ctl.signal, cache: 'no-store' });
-    if (!res.ok) throw new Error(String(res.status));
-    const body = (await res.json()) as { data?: { version?: string } };
-    set({ server: 'up', version: body.data?.version ?? snap.version, checkedAt: Date.now() });
-    if (before === 'down') upListeners.forEach((l) => l());
+    if (!res.ok) return null;
+    return ((await res.json()) as { data?: { version?: string } }).data ?? {};
   } catch {
-    set({ server: 'down', checkedAt: Date.now() });
-    if (before !== 'down') downListeners.forEach((l) => l());
+    return null;
   } finally {
     clearTimeout(t);
   }
 }
 
-// Polls the server while the app is open, and re-checks as soon as the browser reports a network change or
-// the tab becomes visible again. Returns a stop function.
+function connect() {
+  if (!started || ws) return;
+  set({ feed: 'connecting' });
+  const socket = new WebSocket(config.websocket.uiUpdatesWs);
+  ws = socket;
+
+  // A handler of a socket that was replaced or stopped must not touch the current state.
+  socket.onopen = () => {
+    if (ws !== socket) return;
+    backoff = 1_000;
+    lastSeen = Date.now();
+    set({ server: 'up', feed: 'open', checkedAt: Date.now() });
+    openListeners.forEach((l) => l());
+    void health().then((h) => h?.version && set({ version: h.version }));
+  };
+
+  socket.onmessage = (event) => {
+    if (ws !== socket) return;
+    lastSeen = Date.now();
+    let data: any;
+    try {
+      data = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    if (data?.type === 'heartbeat') return;
+    messageListeners.forEach((l) => l(data));
+  };
+
+  // onclose follows every failure, including a connection that never opened, so reconnecting lives here only.
+  socket.onclose = () => {
+    if (ws !== socket) return;
+    ws = null;
+    if (!started) return;
+    set({ feed: 'closed', checkedAt: Date.now() });
+    void health().then((h) => started && set({ server: h ? 'up' : 'down', checkedAt: Date.now() }));
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      connect();
+    }, backoff);
+    backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
+  };
+}
+
+function reconnectNow() {
+  if (!started || ws) return;
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+  backoff = 1_000;
+  connect();
+}
+
+// Opens the feed and keeps it open until the returned function is called. Safe to call twice.
 export function startConnectionMonitor(): () => void {
-  if (timer) return () => {};
-  void probe();
-  timer = setInterval(() => void probe(), POLL_MS);
-  const recheck = () => void probe();
+  if (started) return () => {};
+  started = true;
+  connect();
+
+  watchTimer = setInterval(() => {
+    if (ws?.readyState === WebSocket.OPEN && Date.now() - lastSeen > STALE_MS) ws.close();
+  }, WATCH_MS);
+
   const onVisible = () => {
-    if (document.visibilityState === 'visible') recheck();
+    if (document.visibilityState !== 'visible') return;
+    if (ws?.readyState === WebSocket.OPEN && Date.now() - lastSeen > STALE_MS) ws.close();
+    else reconnectNow();
   };
-  window.addEventListener('online', recheck);
-  window.addEventListener('offline', recheck);
+  const onOnline = () => reconnectNow();
+  const onOffline = () => ws?.close();
+  window.addEventListener('online', onOnline);
+  window.addEventListener('offline', onOffline);
   document.addEventListener('visibilitychange', onVisible);
+
   return () => {
-    if (timer) clearInterval(timer);
-    timer = null;
-    window.removeEventListener('online', recheck);
-    window.removeEventListener('offline', recheck);
+    started = false;
+    if (watchTimer) clearInterval(watchTimer);
+    watchTimer = null;
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = null;
+    window.removeEventListener('online', onOnline);
+    window.removeEventListener('offline', onOffline);
     document.removeEventListener('visibilitychange', onVisible);
+    const socket = ws;
+    ws = null;
+    socket?.close();
+    snap = { server: 'unknown', feed: 'connecting', version: snap.version, checkedAt: 0 };
   };
-}
-
-// The server stopped answering / started answering again. The live feed uses these to drop a half-open
-// socket and to reconnect at once instead of waiting out its backoff.
-export function onServerDown(fn: () => void): () => void {
-  downListeners.add(fn);
-  return () => downListeners.delete(fn);
-}
-
-export function onServerUp(fn: () => void): () => void {
-  upListeners.add(fn);
-  return () => upListeners.delete(fn);
 }
 
 function subscribe(l: () => void) {

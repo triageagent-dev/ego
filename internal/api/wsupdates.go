@@ -15,11 +15,18 @@ var wsUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+// wsPingInterval is how often the server pings and sends the heartbeat; a variable so a test can shorten it.
+var wsPingInterval = 15 * time.Second
+
 const (
 	wsWriteTimeout = 10 * time.Second
-	wsPingInterval = 30 * time.Second
 	wsPongTimeout  = 60 * time.Second
 )
+
+// heartbeatEvent is sent every wsPingInterval, whatever else the feed carries.
+type heartbeatEvent struct {
+	Type string `json:"type"`
+}
 
 // wsUpdatesHandler implements GET /ws/ui-updates: a WebSocket alternative to /stream/ui-updates (SSE), added
 // because the cluster's gateway (agentgateway) w. Both endpoints draw from the same sseHub, so an event
@@ -77,6 +84,11 @@ func wsUpdatesHandler(hub *sseHub) http.HandlerFunc {
 			case <-ticker.C:
 				_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					return
+				}
+				// A ping frame is invisible to the browser's script. This message is what tells the UI the link is
+				// alive, so it can show the connection state from the socket alone instead of polling the server.
+				if err := conn.WriteJSON(heartbeatEvent{Type: "heartbeat"}); err != nil {
 					return
 				}
 				// A client that overflowed and then went quiet still learns

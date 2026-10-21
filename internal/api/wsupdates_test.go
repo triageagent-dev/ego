@@ -152,3 +152,30 @@ func TestWSUpdatesHandler_SharesHubWithSSE(t *testing.T) {
 		}
 	}
 }
+
+func TestWSUpdatesHandler_SendsHeartbeats(t *testing.T) {
+	old := wsPingInterval
+	wsPingInterval = 30 * time.Millisecond
+	defer func() { wsPingInterval = old }()
+
+	hub := newSSEHub()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws/ui-updates", wsUpdatesHandler(hub))
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws/ui-updates", nil)
+	if err != nil {
+		t.Fatalf("dialing WS: %v", err)
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+
+	var msg map[string]any
+	if err := conn.ReadJSON(&msg); err != nil {
+		t.Fatalf("no heartbeat on an idle feed: %v", err)
+	}
+	if msg["type"] != "heartbeat" {
+		t.Fatalf("first message on an idle feed = %v, want a heartbeat", msg)
+	}
+}

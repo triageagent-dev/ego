@@ -10,7 +10,7 @@ const WS_BASE_URL = import.meta.env.VITE_WS_URL ??
 // API_BASE_URL uses in production. Resolved separately from API_BASE_URL
 // because in DEV mode API_BASE_URL is a full origin ("http://localhost:8001"),
 // not a path, so reusing it directly would double up the host. Used by
-// uiUpdatesWs below and LiveStreamingView.tsx's connectWS.
+// uiUpdatesWs below (opened by lib/connection.ts).
 const BASE_PATH = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL ?? '');
 
 export const REPO_URL = 'https://github.com/triageagent-dev/ego';
