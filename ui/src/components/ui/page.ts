@@ -114,6 +114,17 @@ export const errorStyle = css`
   font-size: 12.5px;
 `;
 
+
+// A feature that is switched off is not a failure: same box as errorStyle, neutral colours.
+export const noteStyle = css`
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+`;
+
 // The stat strip: one bordered row, one cell per stat.
 export const tilesStyle = css`
   display: flex;

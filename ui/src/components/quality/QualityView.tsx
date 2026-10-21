@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
-import { pageStyle, headerStyle, titleStyle, subtitleStyle, refreshStyle, filterRowStyle, segmentStyle, segBtnStyle, segActiveStyle, errorStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle, tileSubStyle, cardStyle, cardTitleStyle } from '../ui/page';
+import { pageStyle, headerStyle, titleStyle, subtitleStyle, refreshStyle, filterRowStyle, segmentStyle, segBtnStyle, segActiveStyle, errorStyle, noteStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle, tileSubStyle, cardStyle, cardTitleStyle } from '../ui/page';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -55,6 +55,7 @@ export const QualityView: React.FC = () => {
   const [alerts, setAlerts] = useState<OnlineAlert[]>([]);
   const [scope, setScope] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notConfigured, setNotConfigured] = useState(false);
   const [loading, setLoading] = useState(false);
   const tenant = useSelectedTenant();
 
@@ -71,10 +72,11 @@ export const QualityView: React.FC = () => {
       setSeries(se);
       setAlerts(al);
       setError(null);
+      setNotConfigured(false);
     } catch (e) {
-      setError(e instanceof StorageUnavailableError
-        ? 'Online evaluation is not configured. Start the server with --session-db and --online-config <file>; a minimal file is in the README: https://github.com/triageagent-dev/ego#online-evaluation'
-        : (e as Error).message);
+      const off = e instanceof StorageUnavailableError;
+      setNotConfigured(off);
+      setError(off ? null : (e as Error).message);
     } finally {
       setLoading(false);
     }
@@ -129,6 +131,12 @@ export const QualityView: React.FC = () => {
       </header>
 
       {error && <div css={errorStyle}>{error}</div>}
+      {notConfigured && (
+        <div css={noteStyle}>
+          Online evaluation is off. Start the server with --session-db and --online-config &lt;file&gt; to turn it on;
+          a minimal file is in the <a href="https://github.com/triageagent-dev/ego#online-evaluation" target="_blank" rel="noreferrer">README</a>.
+        </div>
+      )}
 
       {status && (
         <>
