@@ -233,7 +233,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             )}
 
             {totalTokens > 0 && (
-              <span style={{
+              <span title={`${totalTokens.toLocaleString()} tokens`} style={{
                 fontSize: '12.5px',
                 fontWeight: 500,
                 color: '#10b981',
@@ -241,7 +241,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
                 padding: '1px 7px',
                 borderRadius: 'var(--radius)',
               }}>
-                {totalTokens.toLocaleString()} tokens
+                {totalTokens.toLocaleString()} t
               </span>
             )}
 
