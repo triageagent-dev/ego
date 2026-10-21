@@ -38,6 +38,20 @@ export class StorageUnavailableError extends Error {
 
 const API_BASE_URL = `${config.api.baseUrl}/api`;
 
+// A 503 from ego itself carries its JSON envelope and says a store or feature is not configured. A 503 from the
+// gateway in front of it (no healthy backend while the pod is replaced) is a plain-text outage, and reading it as
+// "not configured" told people online evaluation was off during every rollout.
+async function serverSaysUnavailable(response: Response): Promise<boolean> {
+  if (response.status !== 503) return false;
+  if (!(response.headers.get('content-type') ?? '').includes('application/json')) return false;
+  try {
+    const json = await response.clone().json();
+    return typeof json?.error === 'string';
+  } catch {
+    return false;
+  }
+}
+
 async function unwrap<T>(response: Response): Promise<T> {
   const json: StandardResponse<T> = await response.json();
   if (json.error) {
@@ -227,7 +241,7 @@ export async function listRuns(options?: {
 
   const response = await fetch(`${config.api.endpoints.runs}${query ? `?${query}` : ''}`);
 
-  if (response.status === 503) {
+  if (await serverSaysUnavailable(response)) {
     throw new StorageUnavailableError();
   }
   if (!response.ok) {
@@ -238,14 +252,14 @@ export async function listRuns(options?: {
 
 export async function getRun(runId: string): Promise<Run> {
   const response = await fetch(`${config.api.endpoints.runs}/${runId}`);
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to fetch run: ${response.statusText}`);
   return unwrap<Run>(response);
 }
 
 export async function getRunResults(runId: string): Promise<RunResultRow[]> {
   const response = await fetch(`${config.api.endpoints.runs}/${runId}/results`);
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to fetch run results: ${response.statusText}`);
   return unwrap<RunResultRow[]>(response);
 }
@@ -274,14 +288,14 @@ async function readErrorMessage(response: Response, fallbackPrefix: string): Pro
 
 export async function listEvalSets(): Promise<EvalSetSummary[]> {
   const response = await fetch(config.api.endpoints.evalSets);
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to list eval sets'));
   return unwrap<EvalSetSummary[]>(response);
 }
 
 export async function getEvalSet(evalSetId: string): Promise<EvalSet> {
   const response = await fetch(`${config.api.endpoints.evalSets}/${evalSetId}`);
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to fetch eval set'));
   const raw = await unwrap<any>(response);
   return evalSetFromWireFormat(raw);
@@ -293,7 +307,7 @@ export async function saveEvalSet(evalSet: EvalSet): Promise<EvalSetSummary> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(evalSetToWireFormat(evalSet)),
   });
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to save eval set'));
   return unwrap<EvalSetSummary>(response);
 }
@@ -359,56 +373,56 @@ export async function healthCheck(): Promise<{ status: string; version: string }
 
 export async function getUsage(hours: number): Promise<UsageSeries> {
   const response = await fetch(withTenant(`${config.api.endpoints.usage}?hours=${hours}`));
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load usage: ${httpStatusLabel(response)}`);
   return unwrap<UsageSeries>(response);
 }
 
 export async function getUsageSessions(hours: number, limit = 25): Promise<UsageSession[]> {
   const response = await fetch(withTenant(`${config.api.endpoints.usage}/calls?hours=${hours}&limit=${limit}&group=session`));
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load top sessions: ${httpStatusLabel(response)}`);
   return unwrap<UsageSession[]>(response);
 }
 
 export async function getUsageCalls(hours: number, limit = 25): Promise<UsageCall[]> {
   const response = await fetch(withTenant(`${config.api.endpoints.usage}/calls?hours=${hours}&limit=${limit}`));
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load top calls: ${httpStatusLabel(response)}`);
   return unwrap<UsageCall[]>(response);
 }
 
 export async function getOnlineStatus(): Promise<OnlineStatus> {
   const response = await fetch(`${config.api.endpoints.online}/status`);
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load online evaluation status: ${httpStatusLabel(response)}`);
   return unwrap<OnlineStatus>(response);
 }
 
 export async function getOnlineSeries(hours: number): Promise<OnlineSeriesPoint[]> {
   const response = await fetch(withTenant(`${config.api.endpoints.online}/series?hours=${hours}`));
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load quality series: ${httpStatusLabel(response)}`);
   return unwrap<OnlineSeriesPoint[]>(response);
 }
 
 export async function getOnlineAlerts(state: 'open' | 'all' = 'open'): Promise<OnlineAlert[]> {
   const response = await fetch(withTenant(`${config.api.endpoints.online}/alerts?state=${state}`));
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load quality alerts: ${httpStatusLabel(response)}`);
   return unwrap<OnlineAlert[]>(response);
 }
 
 export async function getOnlineFindings(): Promise<OnlineFinding[]> {
   const response = await fetch(withTenant(`${config.api.endpoints.onlineFindings}?state=all`));
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to load findings'));
   return unwrap<OnlineFinding[]>(response);
 }
 
 export async function getOnlineCorrections(): Promise<OnlineCorrection[]> {
   const response = await fetch(withTenant(`${config.api.endpoints.onlineCorrections}?state=all`));
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to load corrections'));
   return unwrap<OnlineCorrection[]>(response);
 }
@@ -416,7 +430,7 @@ export async function getOnlineCorrections(): Promise<OnlineCorrection[]> {
 // The labels of one session, newest first.
 export async function getOnlineLabels(sessionId: string): Promise<OnlineLabel[]> {
   const response = await fetch(`${config.api.endpoints.onlineLabels}?session=${encodeURIComponent(sessionId)}`);
-  if (response.status === 503) throw new StorageUnavailableError();
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to load labels'));
   return unwrap<OnlineLabel[]>(response);
 }
