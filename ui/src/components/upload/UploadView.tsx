@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Select, Slider } from 'antd';
+import { Button, Segmented, Select, Slider } from 'antd';
 import { css } from '@emotion/react';
 import { Play, Pencil, Settings } from 'lucide-react';
 import { FileDropZone } from './FileDropZone';
 import { MetricGroup, useMetricGroups } from './MetricSelector';
 import { SessionPicker } from './SessionPicker';
+import { formatStarted } from '../../lib/trace-helpers';
 import { ago, blurbFor, groupStats } from './metricInsights';
-import { listRuns } from '../../api/client';
-import type { Run } from '../../lib/types';
-import { SessionTraceFile } from '../../lib/sessionFiles';
+import { getEvalSet, listEvalSets, listRuns } from '../../api/client';
+import { evalSetToWireFormat } from '../../lib/evalset-builder';
+import type { EvalSetSummary, Run } from '../../lib/types';
+import { SessionEvalSetFile, SessionTraceFile } from '../../lib/sessionFiles';
 import { EvalSetEditorDrawer } from './EvalSetEditorDrawer';
 import { TraceEditorDrawer } from './TraceEditorDrawer';
 import { useTraceContext } from '../../context/TraceContext';
@@ -171,6 +173,53 @@ const sideStatsStyle = css`
   font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--text-tertiary);
+`;
+
+const goldenNoteStyle = css`
+  padding: 6px 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+`;
+
+const goldenListStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+`;
+
+const goldenRowStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--bg-elevated);
+    border-color: var(--accent-primary);
+  }
+`;
+
+const goldenNameStyle = css`
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const goldenMetaStyle = css`
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
 `;
 
 const settingsButtonStyle = css`
@@ -351,10 +400,40 @@ export const UploadView: React.FC = () => {
   const section = picked || SOURCES;
   // The settings are not a step of the list: they open from the icon in the header, over the details.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Where the golden set comes from: one the server keeps, a session of its own, or a file.
+  const [goldenFrom, setGoldenFrom] = useState<'sets' | 'session' | 'file'>('sets');
+  const [evalSets, setEvalSets] = useState<EvalSetSummary[] | null>(null);
+  const [goldenBusy, setGoldenBusy] = useState<string | null>(null);
+  const [goldenError, setGoldenError] = useState('');
+  useEffect(() => {
+    let active = true;
+    listEvalSets()
+      .then((sets) => {
+        if (!active) return;
+        setEvalSets(sets);
+        // Nothing saved: start on the sessions, the next best source.
+        if (sets.length === 0) setGoldenFrom('session');
+      })
+      .catch(() => active && setEvalSets([]));
+    return () => {
+      active = false;
+    };
+  }, []);
+  const chooseEvalSet = async (id: string) => {
+    setGoldenBusy(id);
+    setGoldenError('');
+    try {
+      const set = await getEvalSet(id);
+      actions.setEvalSet(new File([JSON.stringify(evalSetToWireFormat(set), null, 2)], `${id}.json`, { type: 'application/json' }));
+    } catch (e) {
+      setGoldenError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGoldenBusy(null);
+    }
+  };
   const [evalSetDrawerOpen, setEvalSetDrawerOpen] = useState(false);
   const [traceEditorIndex, setTraceEditorIndex] = useState<number | null>(null);
 
-  const fromSessions = state.evaluationOrigin === 'streaming';
   // How many metrics would start to work with a golden set.
   const goldenMetrics = groups.reduce((n, [, ms]) => n + ms.filter((m) => m.requiresEvalSet).length, 0);
   const canRunEvaluation =
@@ -430,24 +509,64 @@ export const UploadView: React.FC = () => {
     <section css={boxStyle}>
           <h2 css={detailsTitleStyle}>golden set · optional</h2>
           <p css={detailsHintStyle}>A reference conversation the traces are compared with.</p>
-          {!fromSessions && (
-            <FileDropZone
-              title="Drop eval set file here"
-              description="Upload golden eval set JSON for comparison"
-              onChange={(files) => actions.setEvalSet(files[0] || null)}
-            />
+          {!state.evalSetFile && (
+            <>
+              <Segmented
+                size="small"
+                value={goldenFrom}
+                onChange={(v) => setGoldenFrom(v as 'sets' | 'session' | 'file')}
+                options={[
+                  { value: 'sets', label: `Saved eval sets${evalSets ? ` (${evalSets.length})` : ''}` },
+                  { value: 'session', label: 'A session' },
+                  { value: 'file', label: 'A file' },
+                ]}
+              />
+              <div style={{ marginTop: 10 }}>
+                {goldenFrom === 'sets' && (
+                  evalSets === null ? <div css={goldenNoteStyle}>Loading eval sets…</div>
+                  : evalSets.length === 0 ? <div css={goldenNoteStyle}>No saved eval sets yet. Build one under sets, or use a session.</div>
+                  : (
+                    <div css={goldenListStyle}>
+                      {evalSets.map((es) => (
+                        <button key={es.evalSetId} css={goldenRowStyle} disabled={goldenBusy !== null} onClick={() => chooseEvalSet(es.evalSetId)} title={es.description || es.evalSetId}>
+                          <span css={goldenNameStyle}>{es.name || es.evalSetId}</span>
+                          <span css={goldenMetaStyle}>{es.numCases} case{es.numCases === 1 ? '' : 's'} · {goldenBusy === es.evalSetId ? 'loading…' : formatStarted(es.updatedAt)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                )}
+                {goldenFrom === 'session' && (
+                  <SessionPicker
+                    single
+                    title="use one session as the golden reference"
+                    useLabel="Use as golden"
+                    onUse={(ids) => actions.setEvalSet(new SessionEvalSetFile(ids[0]))}
+                  />
+                )}
+                {goldenFrom === 'file' && (
+                  <FileDropZone
+                    title="Drop an eval set file"
+                    description=".json"
+                    onChange={(files) => actions.setEvalSet(files[0] || null)}
+                  />
+                )}
+                {goldenError && <div css={goldenNoteStyle} style={{ color: 'var(--status-failure)' }}>{goldenError}</div>}
+              </div>
+            </>
           )}
           {state.evalSetFile ? (
             <div css={fileBoxStyle}>
-              <div style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Eval set file:</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+                <span>Golden set:</span>
+                <Button size="small" onClick={() => actions.setEvalSet(null)}>Choose another</Button>
+              </div>
               <div css={fileRowStyle} onClick={() => setEvalSetDrawerOpen(true)}>
                 {state.evalSetFile.name}
                 <Pencil size={10} style={{ opacity: 0.4, flexShrink: 0 }} />
               </div>
             </div>
-          ) : (
-            fromSessions && <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>No golden eval set loaded.</div>
-          )}
+          ) : null}
         </section>
   );
 
@@ -572,10 +691,10 @@ export const UploadView: React.FC = () => {
             null,
             <>
               {traceCount === 0
-                ? <span css={[chipStyle, chipMutedStyle]}>no traces yet</span>
+                ? <span css={[chipStyle, chipMutedStyle]}>no sessions yet</span>
                 : (
                   <>
-                    <span css={chipStyle}>{traceCount} trace file{traceCount === 1 ? '' : 's'}</span>
+                    <span css={chipStyle}>{traceCount} session{traceCount === 1 ? '' : 's'}</span>
                     {state.isLoadingMetadata
                       ? <span css={[chipStyle, chipMutedStyle]}>reading…</span>
                       : state.traceMetadata.size > 0 && <span css={[chipStyle, chipGoodStyle]}>{state.traceMetadata.size} ready</span>}

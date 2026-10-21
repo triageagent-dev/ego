@@ -19,7 +19,13 @@ const PAGE = 10;
 
 // The recent finished sessions the server holds, to score without leaving the page: the list the sessions page shows,
 // ten to a page, searchable, with a tick on each. A tick stays when the page changes.
-export const SessionPicker: React.FC<{ onUse: (sessionIds: string[]) => void }> = ({ onUse }) => {
+export const SessionPicker: React.FC<{
+  onUse: (sessionIds: string[]) => void;
+  // One session instead of many: a tick replaces the last one.
+  single?: boolean;
+  title?: string;
+  useLabel?: string;
+}> = ({ onUse, single = false, title = 'pick the sessions to score', useLabel }) => {
   const [sessions, setSessions] = useState<PickableSession[] | null>(null);
   const [query, setQuery] = useState('');
   const [ticked, setTicked] = useState<Set<string>>(new Set());
@@ -56,6 +62,7 @@ export const SessionPicker: React.FC<{ onUse: (sessionIds: string[]) => void }> 
 
   const toggle = (id: string) =>
     setTicked((prev) => {
+      if (single) return prev.has(id) ? new Set() : new Set([id]);
       const next = new Set(prev);
       if (!next.delete(id)) next.add(id);
       return next;
@@ -64,7 +71,7 @@ export const SessionPicker: React.FC<{ onUse: (sessionIds: string[]) => void }> 
   return (
     <div css={wrapStyle}>
       <div css={headStyle}>
-        <span css={titleStyle}>pick the sessions to score</span>
+        <span css={titleStyle}>{title}</span>
         <input
           css={searchStyle}
           value={query}
@@ -110,9 +117,9 @@ export const SessionPicker: React.FC<{ onUse: (sessionIds: string[]) => void }> 
           disabled={ticked.size === 0}
           onClick={() => onUse(Array.from(ticked))}
         >
-          Use {ticked.size || ''} session{ticked.size === 1 ? '' : 's'}
+          {useLabel ?? `Use ${ticked.size || ''} session${ticked.size === 1 ? '' : 's'}`}
         </Button>
-        {sessions !== null && sessions.length > 0 && (
+        {!single && sessions !== null && sessions.length > 0 && (
           <Button size="small" onClick={() => setTicked(ticked.size ? new Set() : new Set(sessions.map((s) => s.sessionId)))}>
             {ticked.size ? 'Clear' : 'Select page'}
           </Button>
