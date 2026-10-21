@@ -73,6 +73,9 @@ function useShellNavigation() {
   }, [setCurrentView, mode, setMode]);
 }
 
+// How much larger the classic layout is drawn than its pixel sizes say.
+const CLASSIC_ZOOM = 1.15;
+
 function AppContent() {
   const { state } = useTraceContext();
   const [mode] = useUiMode();
@@ -80,7 +83,11 @@ function AppContent() {
   useEffect(() => startConnectionMonitor(), []);
 
   return (
-    <div style={{ display: 'flex', flexDirection: mode === 'tui' ? 'column' : 'row', height: '100vh', overflow: 'hidden' }}>
+    <div style={mode === 'tui'
+      ? { display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }
+      // The classic layout is drawn in small pixel sizes; zoom scales text, spacing and icons together, so
+      // nothing ends up out of proportion. The height is divided by the zoom to still fill the window.
+      : { display: 'flex', flexDirection: 'row', height: `${100 / CLASSIC_ZOOM}vh`, zoom: CLASSIC_ZOOM, overflow: 'hidden' }}>
       <SessionExpiredBanner />
       {mode === 'tui' ? <TabBar /> : <Sidebar />}
       <main style={{ flex: 1, overflow: 'auto', minHeight: 0, minWidth: 0 }}>
