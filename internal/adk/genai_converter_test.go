@@ -238,3 +238,50 @@ func TestExtractTokenUsageFromAttrs_OpenInference(t *testing.T) {
 		t.Errorf("got (%d, %d, %q), want (1200, 80, gemini-2.5-flash)", in, out, model)
 	}
 }
+
+// The core verifies a reflection's answer with a second model call in the same conversation (agent "verify").
+// The invocation's answer is the reflection's, not the verifier's verdict.
+func TestConvertTrace_VerifierCallIsNotTheAnswer(t *testing.T) {
+	root := &tracepkg.Span{
+		TraceID: "trace-v", SpanID: "agent", OperationName: "agent.reflection",
+		StartTime: 0, Duration: 3_000_000, Tags: map[string]any{"gen_ai.agent.name": "reflection"},
+	}
+	answer := &tracepkg.Span{
+		TraceID: "trace-v", SpanID: "llm1", ParentSpanID: "agent", OperationName: "chat gemini",
+		StartTime: 10, Duration: 1_000_000,
+		Tags: map[string]any{
+			"gen_ai.request.model": "gemini",
+			"gen_ai.agent.name":    "reflection",
+			"input.value":          "Situation: frontend ready 1/1",
+			"output.value":         `{"summary": "frontend is ready"}`,
+		},
+	}
+	verdict := &tracepkg.Span{
+		TraceID: "trace-v", SpanID: "llm2", ParentSpanID: "agent", OperationName: "chat decision",
+		StartTime: 2_000_000, Duration: 500_000,
+		Tags: map[string]any{
+			"gen_ai.request.model": "decision",
+			"gen_ai.agent.name":    "verify",
+			"input.value":          "Is the answer supported?",
+			"output.value":         `{"supported":{"type":"noul","noul":0.9}}`,
+		},
+	}
+	root.Children = []*tracepkg.Span{answer, verdict}
+	tr := &tracepkg.Trace{TraceID: "trace-v", RootSpans: []*tracepkg.Span{root}, AllSpans: []*tracepkg.Span{root, answer, verdict}}
+
+	result := adk.ConvertTrace(tr)
+	if len(result.Invocations) != 1 {
+		t.Fatalf("expected 1 invocation, got %d (warnings %v)", len(result.Invocations), result.Warnings)
+	}
+	if got := result.Invocations[0].FinalResponse.Text(); got != `{"summary": "frontend is ready"}` {
+		t.Errorf("FinalResponse = %q, want the reflection's answer, not the verifier's verdict", got)
+	}
+
+	// Without agent names the last call is still the answer.
+	delete(answer.Tags, "gen_ai.agent.name")
+	delete(verdict.Tags, "gen_ai.agent.name")
+	result = adk.ConvertTrace(tr)
+	if got := result.Invocations[0].FinalResponse.Text(); got != `{"supported":{"type":"noul","noul":0.9}}` {
+		t.Errorf("FinalResponse without agent names = %q, want the last call's output", got)
+	}
+}

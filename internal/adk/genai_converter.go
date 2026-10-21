@@ -72,6 +72,22 @@ func findGenAILLMSpansIn(root *tracepkg.Span) []*tracepkg.Span {
 	return acc
 }
 
+// lastAnswerSpan picks the LLM span whose output is the invocation's answer: the last call made by the agent
+// that opened the invocation. An agent may call a second model on its own answer before returning (a verifier
+// judging whether the answer is supported, a guard), in the same conversation; that call's output is a verdict
+// about the answer, not the answer, and judging it would score the verifier. Spans without an agent name are
+// taken as the lead agent's, so a trace that never names agents keeps its last call.
+func lastAnswerSpan(llmSpans []*tracepkg.Span) *tracepkg.Span {
+	lead := llmSpans[0].TagString(GenAIAgentName)
+	last := llmSpans[0]
+	for _, s := range llmSpans[1:] {
+		if name := s.TagString(GenAIAgentName); name == "" || name == lead {
+			last = s
+		}
+	}
+	return last
+}
+
 // findGenAIToolSpansIn returns root and every descendant that is a tool span, sorted by start time.
 func findGenAIToolSpansIn(root *tracepkg.Span) []*tracepkg.Span {
 	var acc []*tracepkg.Span
@@ -295,8 +311,9 @@ func extractSingleTurn(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span) (conve
 			"LLM span %s: no user message found (checked gen_ai.input.messages, ADK llm_request and input.value)",
 			llmSpans[0].SpanID)
 	}
-	assistantText := ExtractAgentResponseFromAttrs(llmSpans[len(llmSpans)-1].Tags)
-	if assistantText == "" && invSpan != llmSpans[len(llmSpans)-1] {
+	answer := lastAnswerSpan(llmSpans)
+	assistantText := ExtractAgentResponseFromAttrs(answer.Tags)
+	if assistantText == "" && invSpan != answer {
 		assistantText = ExtractAgentResponseFromAttrs(invSpan.Tags)
 	}
 	toolCalls, toolResponses := extractGenAIToolCalls(toolSpans, llmSpans)
@@ -395,7 +412,7 @@ func extractMultiturnTurns(llmSpans []*tracepkg.Span) []conversationTurn {
 
 	if !inputOK || !outputOK {
 		userText := ExtractUserTextFromAttrs(llmSpans[0].Tags)
-		assistantText := ExtractAgentResponseFromAttrs(llmSpans[len(llmSpans)-1].Tags)
+		assistantText := ExtractAgentResponseFromAttrs(lastAnswerSpan(llmSpans).Tags)
 		return []conversationTurn{{
 			InvocationID:   "genai-" + llmSpans[0].SpanID,
 			UserText:       userText,
