@@ -101,10 +101,10 @@ function AppContent() {
 
   return (
     <div style={mode === 'tui'
-      ? { display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }
+      ? { display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', ['--view-h' as string]: '100vh' }
       // The classic layout is drawn in small pixel sizes; zoom scales text, spacing and icons together, so
       // nothing ends up out of proportion. The height is divided by the zoom to still fill the window.
-      : { display: 'flex', flexDirection: 'row', height: `${100 / CLASSIC_ZOOM}vh`, zoom: CLASSIC_ZOOM, overflow: 'hidden' }}>
+      : { display: 'flex', flexDirection: 'row', height: `${100 / CLASSIC_ZOOM}vh`, zoom: CLASSIC_ZOOM, overflow: 'hidden', ['--view-h' as string]: `${100 / CLASSIC_ZOOM}vh` }}>
       <SessionExpiredBanner />
       {mode === 'tui' ? <TabBar /> : <Sidebar />}
       {mode === 'tui' ? views : (

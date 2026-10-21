@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTraceContext } from '../../context/TraceContext';
 import { SessionCard } from './SessionCard';
+import { SessionDetails } from './SessionDetails';
 import { config } from '../../config';
 import { onFeedMessage, onFeedOpen } from '../../lib/connection';
 import { parseHash } from '../shell/routes';
@@ -82,6 +83,22 @@ export function LiveStreamingView() {
   useEffect(() => store('ego.search', searchQuery), [searchQuery]);
   // A session linked to by id (#sessions?session=...): shown alone and opened.
   const [focusId, setFocusId] = useState<string | null>(() => parseHash(location.hash).params.get('session'));
+  // The session whose details are open in the side panel (a double click on its row).
+  const [openId, setOpenId] = useState<string | null>(null);
+  const toggleOpen = (id: string) => setOpenId((cur) => (cur === id ? null : id));
+  useEffect(() => {
+    if (!openId) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (e.key === 'Escape' && !(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'))) setOpenId(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [openId]);
+  // A session linked to by id opens at once.
+  useEffect(() => {
+    if (focusId) setOpenId(focusId);
+  }, [focusId]);
   const loadSessionRef = useRef<(id: string) => void>(() => {});
   const fetchPageRef = useRef<(cursor: string) => void>(() => {});
   // The list is paged by the server: the ids of the page on show, and the cursor of the next one.
@@ -639,6 +656,7 @@ export function LiveStreamingView() {
     .filter(s => !(s.status === 'complete' && Date.parse(s.startedAt) < clearedBefore));
   // A linked session is shown alone, whatever the time range, search and non-LLM filter say.
   const focused = focusId ? Array.from(activeSessions.values()).filter(s => s.sessionId === focusId) : null;
+  const openSession = openId ? activeSessions.get(openId) : undefined;
   const sessions = focused ?? pageSessions;
   const activeLiveSessions = sessions
     .filter(s => s.status === 'active')
@@ -663,6 +681,113 @@ export function LiveStreamingView() {
   // In the filters row at the top, and again below the list, where the next page is wanted.
   const pagerInRow = renderPager(true);
   const pager = renderPager(false);
+
+  const listBody = allSessions.length === 0 ? (
+    <>
+    <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
+      {debouncedQuery || pickedTenant
+        ? 'no sessions match'
+        : timeRange === 'all'
+          ? 'no sessions'
+          : 'no sessions in this range'}
+      {timeRange !== 'all' && (
+        <button
+          onClick={() => setTimeRange('all')}
+          style={{
+            marginLeft: '10px',
+            padding: 0,
+            border: 'none',
+            background: 'none',
+            color: 'var(--accent-primary)',
+            font: 'inherit',
+            cursor: 'pointer',
+          }}
+        >
+          show all
+        </button>
+      )}
+    </p>
+    </>
+  ) : (
+    <div>
+      {activeLiveSessions.length > 0 && (
+        <div>
+          <h2 style={{
+            fontSize: '12.5px',
+            fontWeight: 400,
+            color: 'var(--accent-cyan)',
+            marginBottom: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}>
+            live ({activeLiveSessions.length})
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px', marginBottom: '14px' }}>
+            {activeLiveSessions.map(session => (
+              <SessionCard
+                key={session.sessionId}
+                isOpen={openId === session.sessionId}
+                onOpen={() => toggleOpen(session.sessionId)}
+                session={session}
+                isSelected={selectedGoldenId === session.sessionId}
+                onSelect={() => setSelectedGoldenId(
+                  selectedGoldenId === session.sessionId ? null : session.sessionId
+                )}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {completedSessions.length > 0 && (
+        <div>
+          <h2 style={{
+            fontSize: '12.5px',
+            fontWeight: 400,
+            color: 'var(--accent-cyan)',
+            marginBottom: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}>
+            done
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px' }}>
+            {completedSessions.map(session => (
+              <SessionCard
+                key={session.sessionId}
+                isOpen={openId === session.sessionId}
+                onOpen={() => toggleOpen(session.sessionId)}
+                session={session}
+                isSelected={selectedGoldenId === session.sessionId}
+                onSelect={() => setSelectedGoldenId(
+                  selectedGoldenId === session.sessionId ? null : session.sessionId
+                )}
+                onRemove={() => {
+                  setRemovedIds(prev => new Set(prev).add(session.sessionId));
+                  actions.removeSession(session.sessionId);
+                  if (selectedGoldenId === session.sessionId) setSelectedGoldenId(null);
+                  setComparisonSessionIds(prev => {
+                    if (!prev.has(session.sessionId)) return prev;
+                    const next = new Set(prev);
+                    next.delete(session.sessionId);
+                    return next;
+                  });
+                }}
+                compareOption={
+                  selectedGoldenId && selectedGoldenId !== session.sessionId
+                    ? { checked: comparisonSessionIds.has(session.sessionId), onToggle: () => toggleComparisonSession(session.sessionId) }
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {pager}
+    </div>
+  );
 
   return (
     <div style={{
@@ -851,110 +976,50 @@ export function LiveStreamingView() {
       )}
 
 
-      {allSessions.length === 0 ? (
-        <>
-        <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
-          {debouncedQuery || pickedTenant
-            ? 'no sessions match'
-            : timeRange === 'all'
-              ? 'no sessions'
-              : 'no sessions in this range'}
-          {timeRange !== 'all' && (
-            <button
-              onClick={() => setTimeRange('all')}
-              style={{
-                marginLeft: '10px',
-                padding: 0,
-                border: 'none',
-                background: 'none',
-                color: 'var(--accent-primary)',
-                font: 'inherit',
-                cursor: 'pointer',
-              }}
-            >
-              show all
-            </button>
-          )}
-        </p>
-        </>
-      ) : (
-        <div>
-          {activeLiveSessions.length > 0 && (
-            <div>
-              <h2 style={{
-                fontSize: '12.5px',
-                fontWeight: 400,
-                color: 'var(--accent-cyan)',
-                marginBottom: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}>
-                live ({activeLiveSessions.length})
-              </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px', marginBottom: '14px' }}>
-                {activeLiveSessions.map(session => (
-                  <SessionCard
-                    key={session.sessionId}
-                    defaultExpanded={focusId === session.sessionId}
-                    session={session}
-                    isSelected={selectedGoldenId === session.sessionId}
-                    onSelect={() => setSelectedGoldenId(
-                      selectedGoldenId === session.sessionId ? null : session.sessionId
-                    )}
-                  />
-                ))}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>{listBody}</div>
+        {openSession && (
+          <aside style={{
+            width: '46%',
+            minWidth: '420px',
+            flexShrink: 0,
+            position: 'sticky',
+            top: 0,
+            maxHeight: 'calc(var(--view-h, 100vh) - 70px)',
+            overflowY: 'auto',
+            padding: '12px 14px',
+            background: 'var(--card-bg)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '12px' }}>
+              <div style={{ flex: 1, minWidth: 0, fontSize: '13px', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
+                <span style={{ color: 'var(--text-tertiary)' }}>session </span>
+                <span style={{ fontFamily: 'monospace', userSelect: 'all' }}>{openSession.sessionId}</span>
               </div>
+              <button
+                onClick={() => setOpenId(null)}
+                title="Close (Esc)"
+                aria-label="Close details"
+                style={{
+                  flexShrink: 0,
+                  padding: '0 8px',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--radius)',
+                  background: 'transparent',
+                  color: 'var(--text-tertiary)',
+                  fontSize: '15px',
+                  lineHeight: '22px',
+                  cursor: 'pointer',
+                }}
+              >
+                ×
+              </button>
             </div>
-          )}
-
-          {completedSessions.length > 0 && (
-            <div>
-              <h2 style={{
-                fontSize: '12.5px',
-                fontWeight: 400,
-                color: 'var(--accent-cyan)',
-                marginBottom: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}>
-                done
-              </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px' }}>
-                {completedSessions.map(session => (
-                  <SessionCard
-                    key={session.sessionId}
-                    defaultExpanded={focusId === session.sessionId}
-                    session={session}
-                    isSelected={selectedGoldenId === session.sessionId}
-                    onSelect={() => setSelectedGoldenId(
-                      selectedGoldenId === session.sessionId ? null : session.sessionId
-                    )}
-                    onRemove={() => {
-                      setRemovedIds(prev => new Set(prev).add(session.sessionId));
-                      actions.removeSession(session.sessionId);
-                      if (selectedGoldenId === session.sessionId) setSelectedGoldenId(null);
-                      setComparisonSessionIds(prev => {
-                        if (!prev.has(session.sessionId)) return prev;
-                        const next = new Set(prev);
-                        next.delete(session.sessionId);
-                        return next;
-                      });
-                    }}
-                    compareOption={
-                      selectedGoldenId && selectedGoldenId !== session.sessionId
-                        ? { checked: comparisonSessionIds.has(session.sessionId), onToggle: () => toggleComparisonSession(session.sessionId) }
-                        : undefined
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          {pager}
-        </div>
-      )}
+            <SessionDetails key={openSession.sessionId} session={openSession} />
+          </aside>
+        )}
+      </div>
     </div>
   );
 }
