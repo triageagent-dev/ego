@@ -742,17 +742,20 @@ export function LiveStreamingView() {
 
       {completedSessions.length > 0 && (
         <div>
-          <h2 style={{
-            fontSize: '12.5px',
-            fontWeight: 400,
-            color: 'var(--accent-cyan)',
-            marginBottom: '6px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}>
-            done
-          </h2>
+          {/* The heading only tells finished sessions from live ones; alone, the list starts level with the side panel. */}
+          {activeLiveSessions.length > 0 && (
+            <h2 style={{
+              fontSize: '12.5px',
+              fontWeight: 400,
+              color: 'var(--accent-cyan)',
+              marginBottom: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}>
+              done
+            </h2>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px' }}>
             {completedSessions.map(session => (
               <SessionCard
