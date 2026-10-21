@@ -51,7 +51,7 @@ func (b *mcpBackend) Sessions(ctx context.Context, filter mcptools.SessionFilter
 		out = append(out, mcptools.SessionListItem{
 			SessionID: s.SessionID, IsComplete: s.IsComplete, SpanCount: s.SpanCount, StartedAt: s.StartedAt,
 			Agent: strings.Join(s.Agents, ", "), Tenant: strings.Join(s.Tenants, ", "), Service: s.Service,
-			ErrorSpans: s.Errors, TotalTokens: s.TotalTokens,
+			ErrorSpans: s.Errors, TotalTokens: s.TotalTokens, Scored: s.Scored,
 		})
 	}
 	return out, nil

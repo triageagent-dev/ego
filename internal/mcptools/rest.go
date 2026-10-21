@@ -136,6 +136,7 @@ func (b *REST) Sessions(ctx context.Context, filter SessionFilter) ([]SessionLis
 		Service     string   `json:"service"`
 		Errors      int      `json:"errors"`
 		TotalTokens int64    `json:"totalTokens"`
+		Scored      bool     `json:"scored"`
 	}
 	// The server filters, after the caller's role limits, so the filter cannot widen what the caller sees.
 	path := "/api/streaming/sessions"
@@ -150,7 +151,7 @@ func (b *REST) Sessions(ctx context.Context, filter SessionFilter) ([]SessionLis
 		out[i] = SessionListItem{
 			SessionID: s.SessionID, IsComplete: s.IsComplete, SpanCount: s.SpanCount, StartedAt: s.StartedAt,
 			Agent: strings.Join(s.Agents, ", "), Tenant: strings.Join(s.Tenants, ", "), Service: s.Service,
-			ErrorSpans: s.Errors, TotalTokens: s.TotalTokens,
+			ErrorSpans: s.Errors, TotalTokens: s.TotalTokens, Scored: s.Scored,
 		}
 	}
 	return out, nil

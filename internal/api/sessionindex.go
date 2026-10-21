@@ -42,6 +42,8 @@ type sessionIndexRow struct {
 	Tenants   []string
 	Agents    []string
 	Search    string
+	// Scored is true when online evaluation scored the session (read from online_scores, never stored here).
+	Scored bool
 }
 
 // sessionKey is a position in the list: sessions are ordered by start time, newest first, and by id within one
@@ -222,6 +224,7 @@ type sessionPageFilter struct {
 	query    string // lower case
 	complete *bool
 	llmOnly  bool
+	scored   *bool
 }
 
 // tenantLike narrows the tenants column for a tenant pick; ok is false for patterns SQL cannot express, which the
@@ -242,7 +245,9 @@ func tenantLike(want string) (string, bool) {
 
 // indexPage returns up to limit index rows, newest first, older than after, matching f.
 func (s *SQLiteStore) indexPage(f sessionPageFilter, after *sessionKey, limit int) ([]sessionIndexRow, error) {
-	q := `SELECT session_id, started_ms, complete, llm_calls, tenants, agents, search FROM session_index WHERE 1 = 1`
+	// scored is decided by the scores table, not stored in the index: a session is scored after it was indexed.
+	const scoredExpr = `EXISTS (SELECT 1 FROM online_scores o WHERE o.session_id = session_index.session_id AND o.score IS NOT NULL)`
+	q := `SELECT session_id, started_ms, complete, llm_calls, tenants, agents, search, ` + scoredExpr + ` FROM session_index WHERE 1 = 1`
 	var args []any
 	if !f.since.IsZero() {
 		q += " AND started_ms >= ?"
@@ -276,6 +281,13 @@ func (s *SQLiteStore) indexPage(f sessionPageFilter, after *sessionKey, limit in
 		// A session still running may not have shown its LLM spans yet, so only finished ones are held to it.
 		q += " AND (llm_calls > 0 OR complete = 0)"
 	}
+	if f.scored != nil {
+		if *f.scored {
+			q += " AND " + scoredExpr
+		} else {
+			q += " AND NOT " + scoredExpr
+		}
+	}
 	q += " ORDER BY started_ms DESC, session_id DESC LIMIT ?"
 	args = append(args, limit)
 	rows, err := s.db.Query(q, args...)
@@ -286,12 +298,12 @@ func (s *SQLiteStore) indexPage(f sessionPageFilter, after *sessionKey, limit in
 	var out []sessionIndexRow
 	for rows.Next() {
 		var r sessionIndexRow
-		var done int
+		var done, scored int
 		var tenants, agents string
-		if err := rows.Scan(&r.ID, &r.StartedMs, &done, &r.LLMCalls, &tenants, &agents, &r.Search); err != nil {
+		if err := rows.Scan(&r.ID, &r.StartedMs, &done, &r.LLMCalls, &tenants, &agents, &r.Search, &scored); err != nil {
 			return nil, err
 		}
-		r.Complete = done == 1
+		r.Complete, r.Scored = done == 1, scored == 1
 		r.Tenants, r.Agents = splitIndexList(tenants), splitIndexList(agents)
 		out = append(out, r)
 	}
@@ -326,7 +338,7 @@ func (s *SessionStore) Page(req SessionPageRequest, allow func(SessionSummary) b
 		return SessionPage{}, err
 	}
 	f := req.Filter
-	want := sessionPageFilter{since: f.Since, tenant: f.Tenant, agent: f.Agent, query: strings.ToLower(f.Query), complete: f.Complete, llmOnly: req.LLMOnly}
+	want := sessionPageFilter{since: f.Since, tenant: f.Tenant, agent: f.Agent, query: strings.ToLower(f.Query), complete: f.Complete, llmOnly: req.LLMOnly, scored: f.Scored}
 
 	keep := func(r sessionIndexRow) bool {
 		if !allow(SessionSummary{Agents: r.Agents, Tenants: r.Tenants}) {
@@ -347,16 +359,32 @@ func (s *SessionStore) Page(req SessionPageRequest, allow func(SessionSummary) b
 		if want.llmOnly && r.Complete && r.LLMCalls == 0 {
 			return false
 		}
+		if want.scored != nil && r.Scored != *want.scored {
+			return false
+		}
 		return want.query == "" || strings.Contains(r.Search, want.query)
 	}
 
-	// Memory is authoritative for the sessions it holds.
+	// Memory is authoritative for the sessions it holds. Which of them are scored is one lookup in the scores
+	// table, taken before the walk so the lock is not held across a query.
+	s.mu.Lock()
+	memIDs := append([]string(nil), s.order...)
+	s.mu.Unlock()
+	var scoredMem map[string]bool
+	if s.store != nil {
+		scoredMem = s.store.OnlineScoredAmong(memIDs)
+	}
 	inMemory := map[string]bool{}
 	var items []sessionIndexRow
 	s.mu.Lock()
 	for _, id := range s.order {
 		inMemory[id] = true
-		r := indexRowOf(s.sessions[id])
+		sess, ok := s.sessions[id]
+		if !ok {
+			continue
+		}
+		r := indexRowOf(sess)
+		r.Scored = scoredMem[id]
 		if (after == nil || r.key().olderThan(*after)) && keep(r) {
 			items = append(items, r)
 		}
@@ -434,6 +462,7 @@ func (s *SessionStore) Page(req SessionPageRequest, allow func(SessionSummary) b
 			}
 			sum = summarize(restoreSession(snap, s.usageTenantAttr))
 		}
+		sum.Scored = r.Scored
 		page.Items = append(page.Items, sum)
 	}
 	return page, nil

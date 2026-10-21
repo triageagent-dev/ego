@@ -116,6 +116,9 @@ func Tools(b Backend, o Options) []server.ServerTool {
 				mcp.Description("Case-insensitive text to find in the session id, agent names, service or first user message.")),
 			mcp.WithBoolean("complete",
 				mcp.Description("true for finished sessions only, false for sessions still open. Omit for both.")),
+			mcp.WithBoolean("scored",
+				mcp.Description("true for sessions online evaluation has scored (their judge scores can be read with "+
+					"explain_session and labelled), false for the others. Omit for both.")),
 		), Handler: listSessionsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("summarize_session",
@@ -328,6 +331,10 @@ func listSessionsHandler(b Backend) server.ToolHandlerFunc {
 		if _, given := req.GetArguments()["complete"]; given {
 			c := req.GetBool("complete", false)
 			filter.Complete = &c
+		}
+		if _, given := req.GetArguments()["scored"]; given {
+			c := req.GetBool("scored", false)
+			filter.Scored = &c
 		}
 		out, err := b.Sessions(ctx, filter)
 		if err != nil {

@@ -86,6 +86,8 @@ type SessionListItem struct {
 	// reported.
 	ErrorSpans  int   `json:"error_spans"`
 	TotalTokens int64 `json:"total_tokens"`
+	// Scored is true when online evaluation scored the session, so its judge scores can be read and labelled.
+	Scored bool `json:"scored"`
 }
 
 // SessionFilter narrows list_sessions. The server applies it after the caller's role limits, so a filter can only
@@ -102,6 +104,8 @@ type SessionFilter struct {
 	Query string
 	// Complete, when set, keeps only completed (true) or still open (false) sessions.
 	Complete *bool
+	// Scored, when set, keeps only sessions online evaluation has scored (true) or has not (false).
+	Scored *bool
 }
 
 // Values is the filter as the query string of GET /api/streaming/sessions.
@@ -121,6 +125,9 @@ func (f SessionFilter) Values() url.Values {
 	}
 	if f.Complete != nil {
 		q.Set("complete", strconv.FormatBool(*f.Complete))
+	}
+	if f.Scored != nil {
+		q.Set("scored", strconv.FormatBool(*f.Scored))
 	}
 	return q
 }
@@ -150,6 +157,13 @@ func ParseSessionFilter(q url.Values, now time.Time) (SessionFilter, error) {
 			return SessionFilter{}, fmt.Errorf("complete must be true or false")
 		}
 		f.Complete = &b
+	}
+	if v := q.Get("scored"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return SessionFilter{}, fmt.Errorf("scored must be true or false")
+		}
+		f.Scored = &b
 	}
 	return f, nil
 }

@@ -16,18 +16,25 @@ const (
 	archiveSearchHits = 200
 )
 
-// Find lists the sessions f matches, newest first: the ones in memory and, when f has a query, the archived ones
-// that mention it. allow is the caller's role; it is checked on every summary before the filter, so a filter can
-// only narrow what the role may see. Without a query only memory is read, as the list has always been.
+// Find lists the sessions f matches, newest first: the ones in memory, the archived ones that mention a query,
+// and, for scored: true, the ones online evaluation scored in the window, wherever they live. allow is the
+// caller's role; it is checked on every summary before the filter, so a filter can only narrow what the role may
+// see. Without a query or scored: true only memory is read, as the list has always been.
 func (s *SessionStore) Find(f mcptools.SessionFilter, allow func(SessionSummary) bool) []SessionSummary {
-	out := make([]SessionSummary, 0)
+	var cand []SessionSummary
 	seen := map[string]bool{}
-	for _, sum := range s.List() {
-		seen[sum.SessionID] = true
-		if allow(sum) && sessionMatches(sum, f) {
-			out = append(out, sum)
+	add := func(sum SessionSummary) {
+		if !seen[sum.SessionID] {
+			seen[sum.SessionID] = true
+			cand = append(cand, sum)
 		}
 	}
+	for _, sum := range s.List() {
+		add(sum)
+	}
+	// The flag is decided last, so the archive passes are matched without it.
+	unflagged := f
+	unflagged.Scored = nil
 	if f.Query != "" && s.store != nil {
 		hits := 0
 		err := s.store.SearchSnapshots(f.Query, f.Since, archiveSearchRows, func(snap sessionSnapshot) bool {
@@ -35,8 +42,8 @@ func (s *SessionStore) Find(f mcptools.SessionFilter, allow func(SessionSummary)
 				return true
 			}
 			sum := summarize(restoreSession(snap, s.usageTenantAttr))
-			if allow(sum) && sessionMatches(sum, f) {
-				out = append(out, sum)
+			if allow(sum) && sessionMatches(sum, unflagged) {
+				add(sum)
 				hits++
 			}
 			return hits < archiveSearchHits
@@ -45,12 +52,48 @@ func (s *SessionStore) Find(f mcptools.SessionFilter, allow func(SessionSummary)
 			logx.Warnf("session archive: search %q: %v", f.Query, err)
 		}
 	}
+	if f.Scored != nil && *f.Scored && s.store != nil {
+		var sinceMs int64
+		if !f.Since.IsZero() {
+			sinceMs = f.Since.UnixMilli()
+		}
+		for _, id := range s.store.OnlineScoredSince(sinceMs, archiveSearchHits) {
+			if seen[id] {
+				continue
+			}
+			if sum, ok := s.Summary(id); ok {
+				add(sum)
+			}
+		}
+	}
+	s.markScored(cand)
+	out := make([]SessionSummary, 0, len(cand))
+	for _, sum := range cand {
+		if allow(sum) && sessionMatches(sum, f) {
+			out = append(out, sum)
+		}
+	}
 	started := func(sum SessionSummary) time.Time {
 		t, _ := time.Parse(time.RFC3339, sum.StartedAt)
 		return t
 	}
 	sort.SliceStable(out, func(i, j int) bool { return started(out[i]).After(started(out[j])) })
 	return out
+}
+
+// markScored sets Scored on the summaries online evaluation has scored.
+func (s *SessionStore) markScored(sums []SessionSummary) {
+	if s.store == nil || len(sums) == 0 {
+		return
+	}
+	ids := make([]string, len(sums))
+	for i := range sums {
+		ids[i] = sums[i].SessionID
+	}
+	scored := s.store.OnlineScoredAmong(ids)
+	for i := range sums {
+		sums[i].Scored = scored[sums[i].SessionID]
+	}
 }
 
 // allowedBy is the role check Find takes: everything for an unscoped role, otherwise the session's agents and
@@ -79,6 +122,9 @@ func filterSessions(list []SessionSummary, f mcptools.SessionFilter) []SessionSu
 
 func sessionMatches(s SessionSummary, f mcptools.SessionFilter) bool {
 	if f.Complete != nil && s.IsComplete != *f.Complete {
+		return false
+	}
+	if f.Scored != nil && s.Scored != *f.Scored {
 		return false
 	}
 	if f.Agent != "" && !containsString(s.Agents, f.Agent) {

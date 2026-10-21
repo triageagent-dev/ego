@@ -3,10 +3,60 @@ import { css } from '@emotion/react';
 import { getOnlineLabels, getOnlineSessionScores, postOnlineLabel } from '../../api/client';
 import type { OnlineLabel, OnlineSessionScore } from '../../lib/types';
 
-// The online scores of one session, each with agree / disagree: a person's verdict on the judge's score. The
-// labels measure how far each metric's judge can be trusted (docs/rsi.md, section 4). Renders nothing for a
-// session that online evaluation never scored.
+// A person's verdict on the judge's score of one metric of one session: thumbs and a note. The labels measure
+// how far each metric's judge can be trusted (docs/rsi.md, section 4). `latest` is the label that counts for
+// the metric (the server lists them newest first); onLabeled reloads them. Clicks stay inside the control, so it
+// can sit on a row that toggles on click.
+interface LabelButtonsProps {
+  sessionId: string;
+  metric: string;
+  latest?: OnlineLabel;
+  onLabeled: () => void | Promise<void>;
+}
 
+export const LabelButtons: React.FC<LabelButtonsProps> = ({ sessionId, metric, latest, onLabeled }) => {
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const label = async (verdict: 'agree' | 'disagree') => {
+    setBusy(true);
+    setError(null);
+    try {
+      await postOnlineLabel({ sessionId, metric, verdict, note: note.trim() || undefined });
+      setNote('');
+      await onLabeled();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span css={groupStyle} onClick={e => e.stopPropagation()}>
+      <button css={[btnStyle, latest?.verdict === 'agree' && onStyle]} disabled={busy}
+        onClick={() => label('agree')} title="Agree: the judge's score is right" aria-label="agree">
+        <ThumbIcon up />
+      </button>
+      <button css={[btnStyle, latest?.verdict === 'disagree' && onStyle]} disabled={busy}
+        onClick={() => label('disagree')} title="Disagree: the judge's score is wrong" aria-label="disagree">
+        <ThumbIcon />
+      </button>
+      <input css={noteStyle} placeholder="note (optional)" maxLength={1000} value={note}
+        onChange={e => setNote(e.target.value)} onKeyDown={e => e.stopPropagation()} />
+      {latest && (
+        <span css={dimStyle}>
+          {latest.by ? `${latest.by} ` : ''}{latest.verdict}d{latest.note ? `: ${latest.note}` : ''}
+        </span>
+      )}
+      {error && <span css={errStyle}>{error}</span>}
+    </span>
+  );
+};
+
+// The online scores of one session, each with the thumbs. Renders nothing for a session that online evaluation
+// never scored.
 interface Props {
   sessionId: string;
 }
@@ -14,9 +64,6 @@ interface Props {
 export const OnlineScoresPanel: React.FC<Props> = ({ sessionId }) => {
   const [scores, setScores] = useState<OnlineSessionScore[] | null>(null);
   const [labels, setLabels] = useState<OnlineLabel[]>([]);
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -32,19 +79,7 @@ export const OnlineScoresPanel: React.FC<Props> = ({ sessionId }) => {
     load();
   }, [load]);
 
-  const label = async (metric: string, verdict: 'agree' | 'disagree') => {
-    setBusy(metric);
-    setError(null);
-    try {
-      await postOnlineLabel({ sessionId, metric, verdict, note: notes[metric]?.trim() || undefined });
-      setNotes(n => ({ ...n, [metric]: '' }));
-      setLabels(await getOnlineLabels(sessionId));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  };
+  const reloadLabels = useCallback(async () => setLabels(await getOnlineLabels(sessionId)), [sessionId]);
 
   const scored = (scores ?? []).filter(s => s.score !== null);
   if (scored.length === 0) return null;
@@ -55,31 +90,13 @@ export const OnlineScoresPanel: React.FC<Props> = ({ sessionId }) => {
   return (
     <div css={panelStyle}>
       <div css={headStyle}>online scores</div>
-      {scored.map(s => {
-        const existing = latest(s.metric);
-        return (
-          <div key={s.metric} css={rowStyle}>
-            <span css={metricStyle}>{s.metric}</span>
-            <span css={scoreStyle}>{s.score!.toFixed(2)}</span>
-            <button css={[btnStyle, existing?.verdict === 'agree' && onStyle]} disabled={busy === s.metric}
-              onClick={() => label(s.metric, 'agree')} title="Agree: the judge's score is right" aria-label="agree">
-              <ThumbIcon up />
-            </button>
-            <button css={[btnStyle, existing?.verdict === 'disagree' && onStyle]} disabled={busy === s.metric}
-              onClick={() => label(s.metric, 'disagree')} title="Disagree: the judge's score is wrong" aria-label="disagree">
-              <ThumbIcon />
-            </button>
-            <input css={noteStyle} placeholder="note (optional)" maxLength={1000} value={notes[s.metric] ?? ''}
-              onChange={e => setNotes(n => ({ ...n, [s.metric]: e.target.value }))} />
-            {existing && (
-              <span css={dimStyle}>
-                {existing.by ? `${existing.by} ` : ''}{existing.verdict}d{existing.note ? `: ${existing.note}` : ''}
-              </span>
-            )}
-          </div>
-        );
-      })}
-      {error && <div css={errStyle}>{error}</div>}
+      {scored.map(s => (
+        <div key={s.metric} css={rowStyle}>
+          <span css={metricStyle}>{s.metric}</span>
+          <span css={scoreStyle}>{s.score!.toFixed(2)}</span>
+          <LabelButtons sessionId={sessionId} metric={s.metric} latest={latest(s.metric)} onLabeled={reloadLabels} />
+        </div>
+      ))}
     </div>
   );
 };
@@ -93,6 +110,13 @@ const ThumbIcon = ({ up = false }: { up?: boolean }) => (
     <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
   </svg>
 );
+
+const groupStyle = css`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+`;
 
 const panelStyle = css`
   padding: 8px 0;

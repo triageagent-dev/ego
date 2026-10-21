@@ -598,6 +598,8 @@ export interface LiveSession {
   models?: string[];
   // Span window (earliest span start to latest span end), not ingest time.
   durationMs?: number;
+  // Online evaluation scored it: the card shows judge scores a person can label.
+  scored?: boolean;
 }
 
 // Inspector-specific types

@@ -82,6 +82,9 @@ type SessionSummary struct {
 	Models  []string `json:"models,omitempty"`
 	// Service is the first service.name seen on the session's spans.
 	Service string `json:"service,omitempty"`
+	// Scored is true when online evaluation scored the session (set by Find and the ?id= lookup, not by
+	// summarize): the session card then shows judge scores a person can label.
+	Scored bool `json:"scored,omitempty"`
 	// TotalTokens sums the input and output tokens of the session's LLM spans: the same spans, and so the same
 	// total, as its rows in the usage ledger.
 	TotalTokens int64 `json:"totalTokens,omitempty"`

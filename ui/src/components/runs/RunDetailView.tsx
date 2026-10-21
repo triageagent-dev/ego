@@ -9,8 +9,9 @@ import {
   ChevronRight,
   ChevronDown,
 } from 'lucide-react';
-import type { Run, RunResultRow, ResultStatus2, ToolCallComparison, HallucinationSentence } from '../../lib/types';
-import { getRun, getRunResults, StorageUnavailableError } from '../../api/client';
+import type { Run, RunResultRow, ResultStatus2, ToolCallComparison, HallucinationSentence, OnlineLabel, OnlineSessionScore } from '../../lib/types';
+import { getOnlineLabels, getOnlineSessionScores, getRun, getRunResults, StorageUnavailableError } from '../../api/client';
+import { LabelButtons } from '../streaming/OnlineScoresPanel';
 import { STATUS_COLORS, formatDuration, formatTimestamp, passRate, runDurationMs } from './runHistory';
 import { isJevMetric, jevPassingAnswer, jevTurns, jevVerdict } from '../../lib/jev';
 
@@ -88,6 +89,31 @@ export const RunDetailView: React.FC<RunDetailViewProps> = ({ runId, onBack }) =
     }
     return [...byCase.entries()];
   }, [results]);
+
+  // An online run's case is a session. When online evaluation scored it, each of its metric rows takes the thumbs,
+  // so a person can judge the score while reading the rationale under it. Other runs' cases have no scores and
+  // show nothing extra.
+  const [online, setOnline] = useState<Record<string, { scores: OnlineSessionScore[]; labels: OnlineLabel[] }>>({});
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, { scores: OnlineSessionScore[]; labels: OnlineLabel[] }> = {};
+      for (const [caseName] of groupedResults.slice(0, 50)) {
+        const scores = (await getOnlineSessionScores(caseName).catch(() => null)) ?? [];
+        if (scores.some(sc => sc.score !== null)) {
+          next[caseName] = { scores, labels: await getOnlineLabels(caseName).catch(() => []) };
+        }
+      }
+      if (!cancelled) setOnline(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [groupedResults]);
+  const reloadLabels = async (caseName: string) => {
+    const labels = await getOnlineLabels(caseName);
+    setOnline(o => (o[caseName] ? { ...o, [caseName]: { ...o[caseName], labels } } : o));
+  };
 
   const toggle = (id: string) =>
     setExpanded(prev => {
@@ -241,6 +267,11 @@ export const RunDetailView: React.FC<RunDetailViewProps> = ({ runId, onBack }) =
                             </span>
                           )}
                           {row.latencyMs != null && <span css={subtleMonoStyle}>{row.latencyMs}ms</span>}
+                          {online[caseName]?.scores.some(sc => sc.metric === row.evaluatorName && sc.score !== null) && (
+                            <LabelButtons sessionId={caseName} metric={row.evaluatorName}
+                              latest={online[caseName].labels.find(l => l.metric === row.evaluatorName)}
+                              onLabeled={() => reloadLabels(caseName)} />
+                          )}
                         </div>
                         {row.errorText && <div css={resultErrorStyle}>{row.errorText}</div>}
                         {isOpen && comparisons.length > 0 && (

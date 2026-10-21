@@ -100,6 +100,25 @@ export function LiveStreamingView() {
       return !v;
     });
   };
+  // Only the sessions online evaluation scored: the ones with judge scores to read and label. Remembered per
+  // browser like the non-LLM choice.
+  const [scoredOnly, setScoredOnly] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('ego.scoredOnly') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleScoredOnly = () => {
+    setScoredOnly(v => {
+      try {
+        localStorage.setItem('ego.scoredOnly', v ? '0' : '1');
+      } catch {
+        // storage unavailable: the toggle still works for this page view
+      }
+      return !v;
+    });
+  };
   // What the server is asked for. A change of any of these starts again at the newest page.
   const listParams = (() => {
     const p = new URLSearchParams({ limit: String(SESSIONS_PAGE) });
@@ -108,6 +127,7 @@ export function LiveStreamingView() {
     if (pickedTenant) p.set('tenant', pickedTenant.endsWith('/*') ? pickedTenant.slice(0, -1) : pickedTenant);
     if (debouncedQuery) p.set('q', debouncedQuery);
     if (!showNoLLM) p.set('llm', 'true');
+    if (scoredOnly) p.set('scored', 'true');
     return p;
   })();
   const listKey = listParams.toString();
@@ -199,6 +219,7 @@ export function LiveStreamingView() {
       llmCalls?: number;
       errors?: number;
       durationMs?: number;
+      scored?: boolean;
     };
 
     // Folds server summaries into the shared session map: unknown ones are added, known ones take the server's
@@ -207,8 +228,12 @@ export function LiveStreamingView() {
       setActiveSessions(prev => {
         const newMap = new Map(prev);
         for (const s of sessions) {
-          const existing = newMap.get(s.sessionId);
+          let existing = newMap.get(s.sessionId);
           if (existing) {
+            if (s.scored && !existing.scored) {
+              existing = { ...existing, scored: true };
+              newMap.set(s.sessionId, existing);
+            }
             if (s.agents?.join() !== existing.agents?.join() || s.models?.join() !== existing.models?.join() || s.tenants?.join() !== existing.tenants?.join()) {
               newMap.set(s.sessionId, { ...existing, agents: s.agents, models: s.models, tenants: s.tenants });
             }
@@ -255,6 +280,7 @@ export function LiveStreamingView() {
             llmCalls: s.llmCalls,
             errors: s.errors,
             durationMs: s.durationMs,
+            scored: s.scored,
           });
         }
         return newMap;
@@ -849,6 +875,23 @@ export function LiveStreamingView() {
               }}
             >
               {showNoLLM ? 'hide non-LLM' : 'show non-LLM'}
+            </button>
+            <button
+              onClick={toggleScoredOnly}
+              aria-pressed={scoredOnly}
+              title="Only sessions online evaluation scored: their judge scores can be read and labelled"
+              style={{
+                padding: '3px 9px',
+                borderRadius: 'var(--radius)',
+                border: `1px solid ${scoredOnly ? 'var(--accent-primary)' : 'var(--border-default)'}`,
+                background: 'transparent',
+                color: scoredOnly ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                fontSize: '12px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              scored only
             </button>
 
             <input

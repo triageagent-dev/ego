@@ -387,6 +387,7 @@ func sessionsHandler(store *SessionStore) http.HandlerFunc {
 			one := []SessionSummary{}
 			if sum, ok := store.Summary(id); ok && info.AllowsSession(sum.Agents, sum.Tenants) {
 				one = append(one, sum)
+				store.markScored(one)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": one, "error": nil})
 			return

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/online"
@@ -201,6 +202,53 @@ func (s *SQLiteStore) OnlineSamples(sinceMs int64) ([]onlineSampleRow, error) {
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// OnlineScoredAmong reports which of the given sessions have at least one decided online score. A server without
+// online evaluation has no scores table; that reads as nothing scored.
+func (s *SQLiteStore) OnlineScoredAmong(ids []string) map[string]bool {
+	out := map[string]bool{}
+	const chunk = 400
+	for start := 0; start < len(ids); start += chunk {
+		end := min(start+chunk, len(ids))
+		args := make([]any, 0, end-start)
+		for _, id := range ids[start:end] {
+			args = append(args, id)
+		}
+		q := `SELECT DISTINCT session_id FROM online_scores WHERE score IS NOT NULL AND session_id IN (?` +
+			strings.Repeat(",?", len(args)-1) + `)`
+		rows, err := s.db.Query(q, args...)
+		if err != nil {
+			return out
+		}
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				out[id] = true
+			}
+		}
+		rows.Close()
+	}
+	return out
+}
+
+// OnlineScoredSince lists the sessions scored at or after sinceMs, newest first, up to limit.
+func (s *SQLiteStore) OnlineScoredSince(sinceMs int64, limit int) []string {
+	rows, err := s.db.Query(`SELECT session_id, MAX(at_ms) AS last FROM online_scores WHERE score IS NOT NULL AND at_ms >= ?
+		GROUP BY session_id ORDER BY last DESC LIMIT ?`, sinceMs, limit)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		var last int64
+		if rows.Scan(&id, &last) == nil {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // OnlineSamplesFor returns the decided scores of one (tenant, kind) in [sinceMs, untilMs), oldest first. An empty
