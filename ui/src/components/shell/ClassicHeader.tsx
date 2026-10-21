@@ -1,6 +1,7 @@
 import React from 'react';
 import { css } from '@emotion/react';
 import { AccountMenu } from './AccountMenu';
+import { ConnectionDot } from './ConnectionDot';
 import { setTitleSlot } from './PageTitle';
 import { VersionLink } from './VersionLink';
 
@@ -9,7 +10,10 @@ import { VersionLink } from './VersionLink';
 export const ClassicHeader: React.FC = () => (
   <header css={headerStyle}>
     <div ref={setTitleSlot} css={titleSlotStyle} />
-    <VersionLink />
+    <span css={statusStyle}>
+      <ConnectionDot />
+      <VersionLink />
+    </span>
     <AccountMenu />
   </header>
 );
@@ -39,4 +43,10 @@ const titleSlotStyle = css`
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+`;
+
+const statusStyle = css`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 `;

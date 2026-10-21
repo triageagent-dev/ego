@@ -2,9 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { css } from '@emotion/react';
 import { ChevronDown, LogIn, LogOut, User } from 'lucide-react';
 import { useMe } from '../../lib/me';
-import { describe, useConnection } from '../../lib/connection';
 import { setSelectedTenant, useSelectedTenant, useTenantOptions } from '../../lib/tenant';
-import { ConnectionDot } from './ConnectionDot';
 import { ModeSwitch } from './ModeSwitch';
 import { TenantPicker } from './TenantPicker';
 
@@ -12,7 +10,6 @@ import { TenantPicker } from './TenantPicker';
 // sign-in too (a local server has none), as the home of the style switch.
 export const AccountMenu: React.FC = () => {
   const me = useMe();
-  const conn = useConnection();
   const options = useTenantOptions();
   const picked = useSelectedTenant();
   const [open, setOpen] = useState(false);
@@ -49,8 +46,7 @@ export const AccountMenu: React.FC = () => {
 
   return (
     <div css={rootStyle} ref={rootRef}>
-      <button css={triggerStyle} onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} title={describe(conn)}>
-        <ConnectionDot />
+      <button css={triggerStyle} onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
         <User size={14} />
         {signedIn && <span css={nameStyle}>{me?.username}</span>}
         {pickedLabel && <span css={tenantBadgeStyle} title={`Showing tenant ${pickedLabel}`}>{pickedLabel}</span>}
