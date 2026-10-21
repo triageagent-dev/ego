@@ -281,6 +281,12 @@ func Tools(b Backend, o Options) []server.ServerTool {
 					mcp.Description("ID of an existing role binding to update in place (from list_role_bindings). Omit to create a new binding.")),
 			), Handler: setRoleBindingHandler(b)},
 
+			server.ServerTool{Tool: mcp.NewTool("run_findings",
+				mcp.WithDescription("Run the findings sweep now instead of waiting for findings.every: every series with "+
+					"enough low-scoring sessions in the window and no open finding gets a diagnosis. Spends judge budget like "+
+					"a scheduled sweep. Answers what the sweep did. Requires the caller to be an admin."),
+			), Handler: runFindingsHandler(b)},
+
 			server.ServerTool{Tool: mcp.NewTool("delete_role_binding",
 				mcp.WithDescription("Delete a role binding by ID (from list_role_bindings). Requires the caller to be an admin."),
 				mcp.WithString("id", mcp.Required(),
@@ -546,6 +552,16 @@ func listCorrectionsHandler(b Backend) server.ToolHandlerFunc {
 		}
 		if out == nil {
 			out = []online.Correction{}
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func runFindingsHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		out, err := b.RunFindings(ctx)
+		if err != nil {
+			return toolError(err)
 		}
 		return mcp.NewToolResultStructuredOnly(out), nil
 	}

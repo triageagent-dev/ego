@@ -52,4 +52,6 @@ type Backend interface {
 	// LabelSession answers label_session: it stores a verdict on a session's online score. The label's author is
 	// the caller's own identity, which the backend knows; the tool cannot name one.
 	LabelSession(ctx context.Context, in LabelInput) (*online.Label, error)
+	// RunFindings answers run_findings: one sweep of the findings pass now, whatever the cadence. Admin only.
+	RunFindings(ctx context.Context) (*SweepReport, error)
 }

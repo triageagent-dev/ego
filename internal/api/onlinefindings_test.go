@@ -900,3 +900,29 @@ func TestMCPFindingToolsOverTheEndpoint(t *testing.T) {
 		t.Error("register_correction without what was accepted")
 	}
 }
+
+// SweepNow runs regardless of the cadence and reports what it wrote; a member is refused.
+func TestSweepNow(t *testing.T) {
+	f := newFindingsFixture(t, findingsConfig)
+	f.seedBad("acme", 9)
+	f.e.findingsMaintain(context.Background(), f.now)
+	if n := len(f.findings(t, "")); n != 1 {
+		t.Fatalf("scheduled sweep wrote %d findings, want 1", n)
+	}
+	f.seedBad("globex", 9)
+	f.now = f.now.Add(time.Hour)
+	f.e.findingsMaintain(context.Background(), f.now)
+	if n := len(f.findings(t, "")); n != 1 {
+		t.Fatalf("a sweep inside the cadence wrote: %d findings", n)
+	}
+	if _, err := f.e.SweepNow(member("acme")); err == nil {
+		t.Error("member ran the sweep")
+	}
+	rep, err := f.e.SweepNow(RoleInfo{Role: RoleAdmin, IsAdmin: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Candidates != 1 || rep.Written != 1 || len(f.findings(t, "")) != 2 {
+		t.Errorf("report %+v, findings %d", rep, len(f.findings(t, "")))
+	}
+}

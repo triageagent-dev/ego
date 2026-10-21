@@ -42,6 +42,22 @@ func onlineFindingsHandler(e *OnlineEngine) http.HandlerFunc {
 	}
 }
 
+// onlineFindingsSweepHandler implements POST /api/online/findings/sweep: the REST twin of run_findings.
+func onlineFindingsSweepHandler(e *OnlineEngine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		out, err := e.SweepNow(roleInfoOrOpen(r.Context()))
+		if err != nil {
+			writeStatusError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": out, "error": nil})
+	}
+}
+
 // onlineFindingHandler implements GET /api/online/findings/{id}.
 func onlineFindingHandler(e *OnlineEngine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

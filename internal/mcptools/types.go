@@ -62,6 +62,16 @@ type MetricInfo struct {
 	Working         bool   `json:"working"`
 }
 
+// SweepReport is what run_findings answers: what one sweep of the findings pass did, as the difference it made
+// to the server's counters.
+type SweepReport struct {
+	Candidates          int `json:"candidates"`
+	Written             int `json:"written"`
+	SkippedBudget       int `json:"skipped_budget"`
+	SkippedNoEvidence   int `json:"skipped_no_evidence"`
+	SkippedUncalibrated int `json:"skipped_uncalibrated"`
+}
+
 // SessionListItem is one entry of list_sessions.
 type SessionListItem struct {
 	SessionID  string `json:"session_id"`

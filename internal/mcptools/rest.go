@@ -380,6 +380,14 @@ func (b *REST) RegisterCorrection(ctx context.Context, in CorrectionInput) (*onl
 	return &out, nil
 }
 
+func (b *REST) RunFindings(ctx context.Context) (*SweepReport, error) {
+	var out SweepReport
+	if err := b.post(ctx, "/api/online/findings/sweep", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (b *REST) Corrections(ctx context.Context, kind, state string) ([]online.Correction, error) {
 	q := url.Values{}
 	if kind != "" {

@@ -464,12 +464,47 @@ func (e *OnlineEngine) alertFindings(ctx context.Context, now time.Time) {
 // stale the open findings (no correction) whose series stayed healthy for the window. It runs every
 // findings.every, remembered across restarts.
 func (e *OnlineEngine) sweepFindings(ctx context.Context, now time.Time) {
-	cfg := e.cfg.Findings
 	if v, err := e.store.OnlineState(findingsSweepKey); err == nil && v != "" {
-		if ms, perr := strconv.ParseInt(v, 10, 64); perr == nil && now.Sub(time.UnixMilli(ms)) < cfg.Every.D() {
+		if ms, perr := strconv.ParseInt(v, 10, 64); perr == nil && now.Sub(time.UnixMilli(ms)) < e.cfg.Findings.Every.D() {
 			return
 		}
 	}
+	e.runSweep(ctx, now)
+}
+
+// SweepNow runs one sweep at once, whatever the cadence, and reports what it did. It lets an admin see the loop
+// act on today's sessions instead of waiting for findings.every; it spends judge budget like a scheduled sweep and
+// restarts the cadence from now.
+func (e *OnlineEngine) SweepNow(info RoleInfo) (*mcptools.SweepReport, error) {
+	if e == nil {
+		return nil, errOnlineUnavailable
+	}
+	if !info.IsAdmin {
+		return nil, &statusError{403, "admin role required"}
+	}
+	if !e.cfg.Findings.Enabled {
+		return nil, &statusError{409, "findings are disabled in the online config"}
+	}
+	rep := e.runSweep(context.Background(), e.now())
+	return &rep, nil
+}
+
+func (e *OnlineEngine) sweepCounters() [4]int64 {
+	return [4]int64{e.fWritten.Load(), e.fSkippedBudget.Load(), e.fSkippedEvidence.Load(), e.fSkippedUncalibrated.Load()}
+}
+
+// runSweep is one sweep: it remembers its time, marks stale the findings whose series recovered, and writes a
+// finding for every candidate series. The report is the difference it made to the counters.
+func (e *OnlineEngine) runSweep(ctx context.Context, now time.Time) (rep mcptools.SweepReport) {
+	cfg := e.cfg.Findings
+	before := e.sweepCounters()
+	defer func() {
+		after := e.sweepCounters()
+		rep.Written = int(after[0] - before[0])
+		rep.SkippedBudget = int(after[1] - before[1])
+		rep.SkippedNoEvidence = int(after[2] - before[2])
+		rep.SkippedUncalibrated = int(after[3] - before[3])
+	}()
 	if err := e.store.SetOnlineState(findingsSweepKey, strconv.FormatInt(now.UnixMilli(), 10)); err != nil {
 		logx.Warnf("online: saving findings sweep time: %v", err)
 	}
@@ -510,7 +545,9 @@ func (e *OnlineEngine) sweepFindings(ctx context.Context, now time.Time) {
 		}
 	}
 
-	for _, c := range online.SweepCandidates(series, cfg, func(k online.SeriesKey) bool { return has[k] }) {
+	candidates := online.SweepCandidates(series, cfg, func(k online.SeriesKey) bool { return has[k] })
+	rep.Candidates = len(candidates)
+	for _, c := range candidates {
 		alertID := ""
 		e.mu.Lock()
 		if a := e.alerts[c.Key]; a != nil {
@@ -519,6 +556,7 @@ func (e *OnlineEngine) sweepFindings(ctx context.Context, now time.Time) {
 		e.mu.Unlock()
 		e.writeFinding(ctx, now, c.Key, alertID, nil)
 	}
+	return rep
 }
 
 // RegisterCorrection records a change made in answer to a finding, marks the finding corrected, starts the change
