@@ -4,6 +4,8 @@ import { css } from '@emotion/react';
 import { Play, Pencil } from 'lucide-react';
 import { FileDropZone } from './FileDropZone';
 import { MetricGroup, useMetricGroups } from './MetricSelector';
+import { SessionPicker } from './SessionPicker';
+import { SessionTraceFile } from '../../lib/sessionFiles';
 import { EvalSetEditorDrawer } from './EvalSetEditorDrawer';
 import { TraceEditorDrawer } from './TraceEditorDrawer';
 import { useTraceContext } from '../../context/TraceContext';
@@ -332,10 +334,14 @@ export const UploadView: React.FC = () => {
               onChange={actions.setTraceFiles}
             />
           )}
+          {traceCount === 0 && (
+            <SessionPicker onUse={(ids) => actions.setTraceFiles(ids.map((id) => new SessionTraceFile(id)))} />
+          )}
           {traceCount > 0 && (
             <div css={fileBoxStyle}>
-              <div style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-                {traceCount} file(s){fromSessions ? ' loaded from live sessions' : ' selected'}:
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+                <span>{traceCount} file(s){fromSessions ? ' loaded from live sessions' : ' selected'}:</span>
+                <Button size="small" onClick={() => actions.setTraceFiles([])}>Choose others</Button>
               </div>
               {state.traceFiles.map((file, idx) => (
                 <div key={idx} css={fileRowStyle} onClick={() => setTraceEditorIndex(idx)}>

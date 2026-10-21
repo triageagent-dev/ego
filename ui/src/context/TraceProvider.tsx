@@ -49,6 +49,11 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
   const actions = useMemo(
     () => ({
       setTraceFiles: async (files: File[]) => {
+        // No files is the choice cleared, not a request to read nothing.
+        if (files.length === 0) {
+          setState((prev) => ({ ...prev, traceFiles: [], traceMetadata: new Map(), isLoadingMetadata: false, errors: [] }));
+          return;
+        }
         setState((prev) => ({ ...prev, traceFiles: files, isLoadingMetadata: true }));
 
         try {
