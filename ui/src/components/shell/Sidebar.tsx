@@ -70,7 +70,7 @@ export const Sidebar: React.FC = () => {
 };
 
 const sidebarStyle = css`
-  width: 220px;
+  width: 150px;
   flex-shrink: 0;
   height: 100%;
   background: var(--bg-surface);
