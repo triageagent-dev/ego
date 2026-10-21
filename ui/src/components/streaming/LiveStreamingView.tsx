@@ -1091,24 +1091,10 @@ export function LiveStreamingView() {
               fontWeight: 600,
               cursor: isPreparingEvaluation ? 'not-allowed' : 'pointer',
               opacity: isPreparingEvaluation ? 0.4 : 1,
-              transition: 'all 0.3s ease',
-              boxShadow: isPreparingEvaluation ? 'none' : '0 0 20px rgba(181, 171, 252, 0.3)',
               whiteSpace: 'nowrap',
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
-            }}
-            onMouseEnter={(e) => {
-              if (!isPreparingEvaluation) {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 0 30px rgba(181, 171, 252, 0.5)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isPreparingEvaluation) {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(181, 171, 252, 0.3)';
-              }
             }}
           >
             {isPreparingEvaluation ? 'Preparing...' : 'Continue to Evaluation →'}

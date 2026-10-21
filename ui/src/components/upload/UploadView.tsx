@@ -224,6 +224,12 @@ export const UploadView: React.FC = () => {
         </p>
       </div>
 
+      {state.errors.length > 0 && (
+        <div role="alert" style={{ margin: '0 0 12px', fontSize: '14px', color: 'var(--status-failure)' }}>
+          {state.errors.map((e, i) => <div key={i}>{e}</div>)}
+        </div>
+      )}
+
       <div className="upload-grid">
         {state.evaluationOrigin === 'streaming' ? (
           <>

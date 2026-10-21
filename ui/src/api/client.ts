@@ -70,7 +70,7 @@ export async function convertTraces(traceFiles: File[]): Promise<ConvertTracesRe
   });
 
   if (!response.ok) {
-    let errorMessage = `API error: ${response.statusText}`;
+    let errorMessage = `API error: ${response.status} ${response.statusText}`;
     try {
       const errorData = await response.json();
       if (errorData.detail) {
@@ -109,7 +109,7 @@ export async function evaluateTracesAPI(
     });
 
     if (!response.ok) {
-      let errorMessage = `API error: ${response.statusText}`;
+      let errorMessage = `API error: ${response.status} ${response.statusText}`;
       try {
         const errorData = await response.json();
         if (errorData.detail) {
