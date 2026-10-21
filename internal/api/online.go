@@ -73,10 +73,10 @@ type OnlineEngine struct {
 	// fSkippedUncalibrated counts findings not written because the metric's judge is gated by the label agreement.
 	fSkippedUncalibrated atomic.Int64
 	// sweeping is set while a findings sweep runs, scheduled or manual.
-	sweeping atomic.Bool
-	fTokensTotal         atomic.Int64
-	fSpendDay            string
-	fSpendToday          int64
+	sweeping     atomic.Bool
+	fTokensTotal atomic.Int64
+	fSpendDay    string
+	fSpendToday  int64
 	// newJudge builds a judge model; tests replace it.
 	newJudge func(ctx context.Context, model string, onUsage func(int64)) (judge.Model, error)
 	lastTick time.Time
