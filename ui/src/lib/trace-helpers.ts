@@ -115,15 +115,9 @@ export function modelsLabel(ids: string[]): string {
   return [names[0], ...parts.slice(1).map((p) => p.slice(shared).join('-'))].join(' / ');
 }
 
-// When a session started, as short as it can be read: `21 Oct, 18:55`, with the year only when it is not this one.
+// When a session started: `21/10/26 18:55`, day first and the 24-hour clock whatever the browser's locale.
 export function formatStarted(iso: string): string {
   const d = new Date(iso);
-  const thisYear = d.getFullYear() === new Date().getFullYear();
-  return d.toLocaleString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    ...(thisYear ? {} : { year: 'numeric' }),
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${two(d.getDate())}/${two(d.getMonth() + 1)}/${two(d.getFullYear() % 100)} ${two(d.getHours())}:${two(d.getMinutes())}`;
 }

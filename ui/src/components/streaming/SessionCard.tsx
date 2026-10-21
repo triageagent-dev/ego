@@ -73,6 +73,30 @@ interface SessionCardProps {
   compareOption?: { checked: boolean; onToggle: () => void };
 }
 
+// A count as a small round badge; what it counts is the tooltip.
+function RoundBadge({ n, title, color, background }: { n: number; title: string; color: string; background: string }) {
+  return (
+    <span title={title} style={{
+      minWidth: '19px',
+      height: '19px',
+      padding: '0 5px',
+      boxSizing: 'border-box',
+      borderRadius: '10px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background,
+      color,
+      fontSize: '11.5px',
+      fontWeight: 600,
+      fontVariantNumeric: 'tabular-nums',
+    }}>{n}</span>
+  );
+}
+
+const TURNS_TONE = { color: '#fb923c', background: 'rgba(251, 146, 60, 0.16)' };
+const CALLS_TONE = { color: '#fb7185', background: 'rgba(251, 113, 133, 0.16)' };
+
 export function SessionCard({ defaultExpanded, session, isSelected, onSelect, onRemove, evaluationResult, compareOption }: SessionCardProps) {
   const [expanded, setExpanded] = useState(!!defaultExpanded);
 
@@ -220,16 +244,11 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             )}
 
             {session.invocations && session.invocations.length > 0 && (
-              <span style={{
-                fontSize: '12.5px',
-                fontWeight: 500,
-                color: 'var(--text-primary)',
-                background: 'rgba(148, 163, 184, 0.18)',
-                padding: '1px 7px',
-                borderRadius: 'var(--radius)',
-              }}>
-                {session.invocations.length} turns
-              </span>
+              <RoundBadge
+                n={session.invocations.length}
+                title={`${session.invocations.length} turn${session.invocations.length === 1 ? '' : 's'}`}
+                {...TURNS_TONE}
+              />
             )}
 
             {totalTokens > 0 && (
@@ -280,21 +299,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
                   <Fragment key={d.key}>
                     {i > 0 && <span aria-hidden>·</span>}
                     {d.round ? (
-                      <span title={d.title} style={{
-                        minWidth: '19px',
-                        height: '19px',
-                        padding: '0 5px',
-                        boxSizing: 'border-box',
-                        borderRadius: '10px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'rgba(148, 163, 184, 0.18)',
-                        color: 'var(--text-primary)',
-                        fontSize: '11.5px',
-                        fontWeight: 500,
-                        fontVariantNumeric: 'tabular-nums',
-                      }}>{d.text}</span>
+                      <RoundBadge n={Number(d.text)} title={d.title ?? ''} {...CALLS_TONE} />
                     ) : (
                       <span style={d.error ? { color: '#ef4444', fontWeight: 600 } : { color: 'var(--text-secondary)' }}>{d.text}</span>
                     )}
