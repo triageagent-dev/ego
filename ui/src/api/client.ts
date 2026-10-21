@@ -391,15 +391,17 @@ export async function getUsageLimits(): Promise<LimitItem[]> {
 export interface FailedSession {
   sessionId: string;
   lastAt: number;
-  failed: number;
-  calls: number;
-  kinds: string;
-  tenants: string;
+  tenant: string;
+  kind: string;
+  // The metrics that failed, comma separated, and the lowest of their scores.
+  metrics: string;
+  lowest: number;
 }
 
-/** The sessions with failed LLM calls in the last 24 hours, the one that failed last first. */
+/** The sessions that failed an online evaluation (a score below its threshold) in the last 24 hours, the one scored
+ * last first. */
 export async function getFailedSessions(limit = 5): Promise<FailedSession[]> {
-  const response = await fetch(withTenant(`${config.api.endpoints.usage}/failed?hours=24&limit=${limit}`));
+  const response = await fetch(withTenant(`${config.api.endpoints.online}/failed?hours=24&limit=${limit}`));
   if (!response.ok) throw new Error(`Failed to load failed sessions: ${httpStatusLabel(response)}`);
   return unwrap<FailedSession[]>(response);
 }

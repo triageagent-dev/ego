@@ -170,25 +170,21 @@ export const tileSubStyle = css`
   color: var(--text-muted);
 `;
 
-// A box with its title on the top border.
+// A box with its title inside, above the content. (The title used to sit on the top border, over a patch of the
+// page colour, which showed as a dark block on a card of another colour.)
 export const cardStyle = css`
   position: relative;
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
   background: var(--card-surface);
-  padding: 16px 12px 10px;
-  margin: 16px 0 12px;
+  padding: 12px 14px 10px;
+  margin: 0 0 12px;
 `;
 
 export const cardTitleStyle = css`
-  position: absolute;
-  top: -9px;
-  left: 10px;
-  margin: 0;
-  padding: 0 6px;
-  background: var(--bg-primary);
-  font-size: 12.5px;
-  font-weight: 400;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--accent-cyan);
   text-transform: lowercase;
   line-height: 18px;

@@ -316,40 +316,6 @@ func (s *SQLiteStore) TopUsageSessions(from, to time.Time, limit int, tenants []
 	return out, rows.Err()
 }
 
-// usageFailedDTO is a session with failed LLM calls: how many, and when the last one was.
-type usageFailedDTO struct {
-	SessionID string `json:"sessionId"`
-	LastAt    int64  `json:"lastAt"`
-	Failed    int64  `json:"failed"`
-	Calls     int64  `json:"calls"`
-	Kinds     string `json:"kinds"`
-	Tenants   string `json:"tenants"`
-}
-
-// FailedUsageSessions returns the sessions with failed LLM calls in [from, to), the one that failed last first.
-func (s *SQLiteStore) FailedUsageSessions(from, to time.Time, limit int, tenants []string) ([]usageFailedDTO, error) {
-	tc, targs := tenantClause(tenants)
-	rows, err := s.db.Query(`SELECT session_id, MAX(CASE WHEN is_error THEN start_ms END), SUM(is_error), COUNT(*),
-			COALESCE(GROUP_CONCAT(DISTINCT NULLIF(kind, '')), ''), COALESCE(GROUP_CONCAT(DISTINCT NULLIF(tenant, '')), '')
-		FROM llm_calls WHERE start_ms >= ? AND start_ms < ?`+tc+`
-		GROUP BY session_id HAVING SUM(is_error) > 0
-		ORDER BY MAX(CASE WHEN is_error THEN start_ms END) DESC LIMIT ?`,
-		append(append([]any{from.UnixMilli(), to.UnixMilli()}, targs...), limit)...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []usageFailedDTO{}
-	for rows.Next() {
-		var r usageFailedDTO
-		if err := rows.Scan(&r.SessionID, &r.LastAt, &r.Failed, &r.Calls, &r.Kinds, &r.Tenants); err != nil {
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
-}
-
 // TopUsageCalls returns the calls in [from, to) with the most total tokens.
 func (s *SQLiteStore) TopUsageCalls(from, to time.Time, limit int, tenants []string) ([]usageCallDTO, error) {
 	tc, targs := tenantClause(tenants)

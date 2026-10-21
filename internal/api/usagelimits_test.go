@@ -65,37 +65,42 @@ func TestUsageLimitsHandler(t *testing.T) {
 	}
 }
 
-func TestFailedUsageSessions(t *testing.T) {
+func TestFailedOnlineSessions(t *testing.T) {
 	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "failed.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 	now := time.Now()
-	ms := func(ago time.Duration) int64 { return now.Add(-ago).UnixMilli() }
-	if err := store.InsertUsage([]usageRow{
-		{SpanID: "a1", SessionID: "old-fail", StartMs: ms(3 * time.Hour), Tenant: "acme", Kind: "chat", IsError: true},
-		{SpanID: "b1", SessionID: "recent-fail", StartMs: ms(10 * time.Minute), Tenant: "acme", Kind: "voice", IsError: true},
-		{SpanID: "b2", SessionID: "recent-fail", StartMs: ms(9 * time.Minute), Tenant: "acme", Kind: "voice"},
-		{SpanID: "c1", SessionID: "fine", StartMs: ms(5 * time.Minute), Tenant: "acme", Kind: "chat"},
-		{SpanID: "d1", SessionID: "other-tenant", StartMs: ms(time.Minute), Tenant: "other", Kind: "chat", IsError: true},
-	}); err != nil {
-		t.Fatal(err)
+	f := func(v float64) *float64 { return &v }
+	write := func(id, tenant string, ago time.Duration, scores ...onlineScoreRow) {
+		t.Helper()
+		if err := store.InsertOnlineEval(onlineEvalRow{SessionID: id, TraceID: id, AtMs: now.Add(-ago).UnixMilli(), Tenant: tenant, Kind: "chat"}, "v1", "m", scores); err != nil {
+			t.Fatal(err)
+		}
 	}
+	write("old", "acme", 3*time.Hour, onlineScoreRow{Metric: "safety_v1", Score: f(0.4), Status: "failed"})
+	write("recent", "acme", 10*time.Minute,
+		onlineScoreRow{Metric: "safety_v1", Score: f(0.6), Status: "failed"},
+		onlineScoreRow{Metric: "hallucinations_v1", Score: f(0.2), Status: "failed"},
+		onlineScoreRow{Metric: "jev_grounded", Score: f(0.9), Status: "passed"})
+	write("passes", "acme", 5*time.Minute, onlineScoreRow{Metric: "safety_v1", Score: f(0.95), Status: "passed"})
+	write("errored", "acme", 4*time.Minute, onlineScoreRow{Metric: "safety_v1", Status: "errored"})
+	write("elsewhere", "other", time.Minute, onlineScoreRow{Metric: "safety_v1", Score: f(0.1), Status: "failed"})
 
-	got, err := store.FailedUsageSessions(now.Add(-24*time.Hour), now.Add(time.Minute), 5, nil)
+	got, err := store.FailedOnlineSessions(now.Add(-24*time.Hour).UnixMilli(), now.Add(time.Minute).UnixMilli(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 || got[0].SessionID != "other-tenant" || got[1].SessionID != "recent-fail" || got[2].SessionID != "old-fail" {
-		t.Fatalf("failed sessions = %+v, want other-tenant, recent-fail, old-fail (last failure first, none for 'fine')", got)
+	if len(got) != 3 || got[0].SessionID != "elsewhere" || got[1].SessionID != "recent" || got[2].SessionID != "old" {
+		t.Fatalf("failed = %+v, want elsewhere, recent, old (last scored first; a pass and an error are not failures)", got)
 	}
-	if got[1].Failed != 1 || got[1].Calls != 2 {
-		t.Errorf("recent-fail counts = %d failed of %d calls, want 1 of 2", got[1].Failed, got[1].Calls)
+	if got[1].Lowest != 0.2 || !strings.Contains(got[1].Metrics, "hallucinations_v1") || !strings.Contains(got[1].Metrics, "safety_v1") {
+		t.Errorf("recent = %+v, want lowest 0.2 over its two failed metrics", got[1])
 	}
 
-	got, err = store.FailedUsageSessions(now.Add(-24*time.Hour), now.Add(time.Minute), 1, []string{"acme"})
-	if err != nil || len(got) != 1 || got[0].SessionID != "recent-fail" {
-		t.Errorf("limited to acme and 1 = %+v %v, want recent-fail only", got, err)
+	kept := filterByTenant(got, RoleInfo{Tenants: []string{"acme"}}, func(f failedOnlineSession) string { return f.Tenant })
+	if len(kept) != 2 {
+		t.Errorf("a role limited to acme keeps %d, want 2", len(kept))
 	}
 }

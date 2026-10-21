@@ -538,3 +538,35 @@ func (s *SQLiteStore) OnlineRunTenant(runID string) (tenant string, ok bool, err
 	}
 	return tenant, err == nil, err
 }
+
+// failedOnlineSession is a session with a score below its threshold: the metrics that failed, the lowest score, and
+// when the last of them was written.
+type failedOnlineSession struct {
+	SessionID string  `json:"sessionId"`
+	LastAt    int64   `json:"lastAt"`
+	Tenant    string  `json:"tenant"`
+	Kind      string  `json:"kind"`
+	Metrics   string  `json:"metrics"`
+	Lowest    float64 `json:"lowest"`
+}
+
+// FailedOnlineSessions returns the sessions with a failed online score in [fromMs, toMs), the one scored last first.
+// A metric that errored did not fail: only a score that came out below the threshold counts.
+func (s *SQLiteStore) FailedOnlineSessions(fromMs, toMs int64, limit int) ([]failedOnlineSession, error) {
+	rows, err := s.db.Query(`SELECT session_id, MAX(at_ms), tenant, kind, GROUP_CONCAT(metric, ','), COALESCE(MIN(score), 0)
+		FROM online_scores WHERE status = 'failed' AND at_ms >= ? AND at_ms < ?
+		GROUP BY session_id ORDER BY MAX(at_ms) DESC LIMIT ?`, fromMs, toMs, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []failedOnlineSession{}
+	for rows.Next() {
+		var f failedOnlineSession
+		if err := rows.Scan(&f.SessionID, &f.LastAt, &f.Tenant, &f.Kind, &f.Metrics, &f.Lowest); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}

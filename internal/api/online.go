@@ -820,3 +820,42 @@ func unscoredAsError(m metricResultDTO) metricResultDTO {
 	m.Error = &msg
 	return m
 }
+
+// onlineFailedHandler implements GET /api/online/failed?hours=24&limit=5: the sessions that failed an online
+// evaluation (a score below its threshold), the one scored last first, for the sidebar's flag. A tenant-limited role
+// gets the failures of its tenants only.
+func onlineFailedHandler(e *OnlineEngine, store *SQLiteStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if denyAgentScoped(w, r) {
+			return
+		}
+		if e == nil || store == nil {
+			writeOnlineUnavailable(w)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		hours, limit := 24, 5
+		if v, err := strconv.Atoi(r.URL.Query().Get("hours")); err == nil && v > 0 {
+			hours = min(v, 24*30)
+		}
+		if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 {
+			limit = min(v, 50)
+		}
+		now := e.now()
+		// The role is checked after the read, so the read takes more than the page: a role that sees few tenants
+		// would otherwise get a page of other people's failures cut down to nothing.
+		failed, err := store.FailedOnlineSessions(now.Add(-time.Duration(hours)*time.Hour).UnixMilli(), now.Add(time.Minute).UnixMilli(), 500)
+		if err != nil {
+			writeEvaluateError(w, http.StatusInternalServerError, "failed to read failed sessions: "+err.Error())
+			return
+		}
+		failed = filterByTenant(failed, narrowedInfo(r), func(f failedOnlineSession) string { return f.Tenant })
+		if len(failed) > limit {
+			failed = failed[:limit]
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": failed, "error": nil})
+	}
+}

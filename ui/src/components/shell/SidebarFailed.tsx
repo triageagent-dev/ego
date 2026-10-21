@@ -8,11 +8,18 @@ import { formatStarted } from '../../lib/trace-helpers';
 import { sessionLink } from './routes';
 import { popoverItemStyle, popoverNoteStyle, popoverRowStyle, SidebarPopover } from './SidebarPopover';
 
+// The failed metric, or the first of several: `safety_v1 +2`.
+function metricsLabel(metrics: string): string {
+  const names = [...new Set(metrics.split(',').filter(Boolean))];
+  return names.length > 1 ? `${names[0]} +${names.length - 1}` : (names[0] ?? '');
+}
+
 const RED = '#ef4444';
 const GREEN = '#4ade80';
 
-// A red flag with the five sessions whose LLM calls failed last (24 hours), or a green one when none did. It
-// follows the live feed: a failed call lands in the usage ledger, which tells the feed it changed.
+// A red flag with the five sessions that failed an online evaluation last (a score below its threshold, in the last 24
+// hours), or a green one when none did. It follows the live feed: scores land in the quality data, which tells the
+// feed it changed.
 export const SidebarFailed: React.FC<{ collapsed: boolean }> = ({ collapsed }) => {
   const [failed, setFailed] = useState<FailedSession[] | null>(null);
   useTenantNames();
@@ -20,11 +27,11 @@ export const SidebarFailed: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
     try {
       setFailed(await getFailedSessions(5));
     } catch {
-      // The server keeps no usage ledger, or this role has no usage: no flag.
+      // Online evaluation is not configured, or this role has none: no flag.
       setFailed(null);
     }
   }, []);
-  useLiveData('usage', load);
+  useLiveData('quality', load);
 
   if (failed === null) return null;
   const any = failed.length > 0;
@@ -35,7 +42,7 @@ export const SidebarFailed: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
       label={any ? 'failed' : 'no failures'}
       badge={any ? failed.length : null}
       badgeColor={RED}
-      title={any ? `${failed.length} session${failed.length === 1 ? '' : 's'} with failed LLM calls in the last 24 hours` : 'No failed LLM calls in the last 24 hours'}
+      title={any ? `${failed.length} session${failed.length === 1 ? '' : 's'} failed an evaluation in the last 24 hours` : 'No session failed an evaluation in the last 24 hours'}
     >
       {(close) =>
         any ? (
@@ -51,15 +58,15 @@ export const SidebarFailed: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
               >
                 <span css={lineStyle}>
                   <span css={whenStyle}>{formatStarted(new Date(f.lastAt).toISOString())}</span>
-                  {f.tenants && <span css={tenantStyle}>{f.tenants.split(',').map((t) => tenantName(t.trim())).join(' · ')}</span>}
-                  <span css={kindStyle}>{f.kinds.split(',').join(' · ')}</span>
-                  <span css={countStyle}>{f.failed}/{f.calls}</span>
+                  {f.tenant && <span css={tenantStyle}>{tenantName(f.tenant)}</span>}
+                  <span css={kindStyle} title={f.metrics.split(',').join('\n')}>{metricsLabel(f.metrics)}</span>
+                  <span css={countStyle} title="Lowest failing score">{f.lowest.toFixed(2)}</span>
                 </span>
               </button>
             </div>
           ))
         ) : (
-          <div css={popoverNoteStyle}>No failed LLM calls in the last 24 hours.</div>
+          <div css={popoverNoteStyle}>No session failed an evaluation in the last 24 hours.</div>
         )
       }
     </SidebarPopover>
