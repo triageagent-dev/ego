@@ -147,6 +147,18 @@ const cardTitleStyle = css`
   text-transform: lowercase;
 `;
 
+// What is behind the card, in words: the line under its chips.
+const descStyle = css`
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+`;
+
+const descOnStyle = css`
+  color: var(--status-success);
+`;
+
 const chipsStyle = css`
   display: flex;
   flex-wrap: wrap;
@@ -271,7 +283,7 @@ export const UploadView: React.FC = () => {
 
   const traceCount = state.traceFiles.length;
 
-  const card = (id: string, title: string, extra: React.ReactNode, chips: React.ReactNode) => (
+  const card = (id: string, title: string, extra: React.ReactNode, chips: React.ReactNode, desc?: React.ReactNode) => (
     <button
       key={id}
       css={[cardStyle, section === id && cardOpenStyle]}
@@ -280,6 +292,7 @@ export const UploadView: React.FC = () => {
     >
       <span css={cardTitleStyle}>{title}{extra}</span>
       <span css={chipsStyle}>{chips}</span>
+      {desc && <span css={descStyle}>{desc}</span>}
     </button>
   );
 
@@ -481,17 +494,23 @@ export const UploadView: React.FC = () => {
                 {state.evalSetFile ? `golden: ${state.evalSetFile.name}` : 'no golden set'}
               </span>
             </>,
+            'The traces to score, and a golden conversation to compare them with if you have one.',
           )}
           {groups.map(([name, metrics]) => {
-            const on = metrics.filter((m) => state.selectedEvaluatorNames.includes(m.name));
+            const picked = new Set(state.selectedEvaluatorNames);
+            const on = metrics.filter((m) => picked.has(m.name)).length;
             return card(
               name,
               name,
               null,
-              <>
-                <span css={[chipStyle, on.length > 0 && chipGoodStyle]}>{on.length} of {metrics.length}</span>
-                {on.length > 0 && <span css={[chipStyle, chipMutedStyle]}>{on.map((m) => m.name).join(' · ')}</span>}
-              </>,
+              <span css={[chipStyle, on > 0 && chipGoodStyle]}>{on} of {metrics.length}</span>,
+              // Every metric of the group, the ticked ones lit.
+              metrics.map((m, i) => (
+                <React.Fragment key={m.name}>
+                  {i > 0 && ' · '}
+                  <span css={picked.has(m.name) ? descOnStyle : undefined}>{m.name}</span>
+                </React.Fragment>
+              )),
             );
           })}
           {card(
@@ -502,6 +521,7 @@ export const UploadView: React.FC = () => {
               <span css={chipStyle}>{state.judgeModel}</span>
               <span css={chipStyle}>pass ≥ {state.threshold}</span>
             </>,
+            'The model that judges, and the score a trace needs to pass.',
           )}
 
           <div style={{ marginTop: 6 }}>
