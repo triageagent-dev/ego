@@ -113,7 +113,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
   const totalCacheRead = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheReadTokens || 0), 0) || 0;
 
   // The line under the badges: when, what ran, how many calls, and errors last.
-  const details: Array<{ key: string; text: string; error?: boolean }> = [];
+  const details: Array<{ key: string; text: string; error?: boolean; round?: boolean; title?: string }> = [];
   if (session.startedAt) {
     details.push({ key: 'when', text: formatStarted(session.startedAt) });
   }
@@ -121,7 +121,9 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
   if (session.status === 'complete' && session.llmCalls != null) {
     details.push({
       key: 'calls',
-      text: session.llmCalls === 0 ? 'no LLM call' : `${session.llmCalls} LLM call${session.llmCalls === 1 ? '' : 's'}`,
+      text: String(session.llmCalls),
+      round: true,
+      title: session.llmCalls === 0 ? 'no LLM call' : `${session.llmCalls} LLM call${session.llmCalls === 1 ? '' : 's'}`,
     });
   }
   if ((session.errors ?? 0) > 0) {
@@ -277,7 +279,25 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
                 {details.map((d, i) => (
                   <Fragment key={d.key}>
                     {i > 0 && <span aria-hidden>·</span>}
-                    <span style={d.error ? { color: '#ef4444', fontWeight: 600 } : { color: 'var(--text-secondary)' }}>{d.text}</span>
+                    {d.round ? (
+                      <span title={d.title} style={{
+                        minWidth: '19px',
+                        height: '19px',
+                        padding: '0 5px',
+                        boxSizing: 'border-box',
+                        borderRadius: '10px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'rgba(148, 163, 184, 0.18)',
+                        color: 'var(--text-primary)',
+                        fontSize: '11.5px',
+                        fontWeight: 500,
+                        fontVariantNumeric: 'tabular-nums',
+                      }}>{d.text}</span>
+                    ) : (
+                      <span style={d.error ? { color: '#ef4444', fontWeight: 600 } : { color: 'var(--text-secondary)' }}>{d.text}</span>
+                    )}
                   </Fragment>
                 ))}
               </span>
