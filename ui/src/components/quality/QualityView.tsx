@@ -13,6 +13,7 @@ import {
 } from 'chart.js';
 import { useLiveData } from '../../lib/connection';
 import { getOnlineAlerts, getOnlineCorrections, getOnlineFindings, getOnlineSeries, getOnlineStatus, StorageUnavailableError } from '../../api/client';
+import { onlineRunsLink } from '../../lib/runLinks';
 import { sessionLink } from '../shell/routes';
 import { useSelectedTenant } from '../../lib/tenant';
 import type { OnlineAlert, OnlineCorrection, OnlineFinding, OnlineFindingState, OnlineSeriesPoint, OnlineStatus } from '../../lib/types';
@@ -167,7 +168,7 @@ export const QualityView: React.FC = () => {
                   <thead>
                     <tr>
                       <th>Status</th><th>Scope</th><th>Metric</th><th css={numStyle}>Baseline</th><th css={numStyle}>Now</th>
-                      <th>Suspect</th><th>Lowest sessions</th><th>Opened</th>
+                      <th>Suspect</th><th>Lowest sessions</th><th>Opened</th><th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -181,6 +182,7 @@ export const QualityView: React.FC = () => {
                         <td>{a.last.suspect || '–'}</td>
                         <td css={monoStyle} title={(a.last.worst ?? []).join(', ')}>{(a.last.worst ?? []).join(', ') || '–'}</td>
                         <td>{new Date(a.openedAt).toLocaleString()}</td>
+                        <td><a css={runsLinkStyle} href={onlineRunsLink(a.key.tenant, a.key.kind)} title="The hourly runs of this scope, and how each one ran">runs ›</a></td>
                       </tr>
                     ))}
                   </tbody>
@@ -207,7 +209,7 @@ export const QualityView: React.FC = () => {
                 <table css={tableStyle}>
                   <thead>
                     <tr>
-                      <th>Kind</th><th>Metric</th><th>Failure mode</th><th>Confidence</th><th>Created</th><th css={numStyle}>Sessions</th><th css={numStyle} title="evidence sessions a person checked">Checked</th>
+                      <th>Kind</th><th>Metric</th><th>Failure mode</th><th>Confidence</th><th>Created</th><th css={numStyle}>Sessions</th><th css={numStyle} title="evidence sessions a person checked">Checked</th><th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -221,10 +223,13 @@ export const QualityView: React.FC = () => {
                           <td>{new Date(f.created_at).toLocaleString()}</td>
                           <td css={numStyle}>{f.sessions.length}</td>
                           <td css={numStyle}>{f.confirmed ?? 0}</td>
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <a css={runsLinkStyle} href={onlineRunsLink(f.tenant, f.kind)} title="The hourly runs of this scope, and how each one ran">runs ›</a>
+                          </td>
                         </tr>
                         {openFinding === f.finding_id && (
                           <tr>
-                            <td colSpan={7} css={detailStyle}>
+                            <td colSpan={8} css={detailStyle}>
                               <p>{f.diagnosis.summary}</p>
                               {f.diagnosis.suggested_correction && (
                                 <p><b>Suggested correction.</b> {f.diagnosis.suggested_correction}</p>
@@ -512,4 +517,14 @@ const sessionLinkStyle = css`
 const agreementTilesStyle = css`
   border: none;
   margin-bottom: 0;
+`;
+
+const runsLinkStyle = css`
+  color: var(--accent-primary);
+  white-space: nowrap;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
 `;

@@ -1,6 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { css } from '@emotion/react';
+import { Flag } from 'lucide-react';
+
+/** The flag every sidebar flag is drawn with: an outline in the flag's colour over a faint fill of it. */
+export const FlagIcon: React.FC<{ color: string }> = ({ color }) => (
+  <Flag size={18} strokeWidth={1.75} color={color} fill={color} fillOpacity={0.18} />
+);
 
 interface Props {
   collapsed: boolean;
@@ -57,7 +63,7 @@ export const SidebarPopover: React.FC<Props> = ({ collapsed, icon, label, badge,
       >
         <span css={iconWrapStyle}>
           {icon}
-          {badge !== null && <span css={badgeStyle} style={{ background: badgeColor }}>{badge}</span>}
+          {badge !== null && <span css={badgeStyle} style={{ background: badgeColor }}>{badge > 9 ? '9+' : badge}</span>}
         </span>
         {!collapsed && label}
       </button>
@@ -100,7 +106,7 @@ export const popoverNoteStyle = css`
 `;
 
 const boxStyle = css`
-  margin: 10px 8px 0;
+  margin: 0;
 `;
 
 // Looks like a view button of the sidebar, so it lines up with them.
@@ -143,15 +149,17 @@ const iconWrapStyle = css`
   display: inline-flex;
 `;
 
+// The ring in the sidebar's colour keeps the badge apart from the flag it sits on.
 const badgeStyle = css`
   position: absolute;
-  top: -6px;
-  right: -9px;
+  top: -7px;
+  right: -10px;
   min-width: 15px;
   height: 15px;
   padding: 0 4px;
   box-sizing: border-box;
   border-radius: 8px;
+  box-shadow: 0 0 0 2px var(--bg-surface);
   color: #1c1917;
   font-size: 10px;
   font-weight: 700;

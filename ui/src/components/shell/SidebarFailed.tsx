@@ -1,12 +1,11 @@
 import React, { useCallback, useState } from 'react';
 import { css } from '@emotion/react';
-import { Flag } from 'lucide-react';
 import { getFailedSessions, type FailedSession } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
 import { tenantName, useTenantNames } from '../../lib/tenant';
 import { formatStarted } from '../../lib/trace-helpers';
 import { sessionLink } from './routes';
-import { popoverItemStyle, popoverNoteStyle, popoverRowStyle, SidebarPopover } from './SidebarPopover';
+import { FlagIcon, popoverItemStyle, popoverNoteStyle, popoverRowStyle, SidebarPopover } from './SidebarPopover';
 
 // The failed metric, or the first of several: `safety_v1 +2`.
 function metricsLabel(metrics: string): string {
@@ -38,7 +37,7 @@ export const SidebarFailed: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
   return (
     <SidebarPopover
       collapsed={collapsed}
-      icon={<Flag size={18} fill={any ? RED : 'none'} css={css`color: ${any ? RED : GREEN};`} />}
+      icon={<FlagIcon color={any ? RED : GREEN} />}
       label={any ? 'failed' : 'no failures'}
       badge={any ? failed.length : null}
       badgeColor={RED}

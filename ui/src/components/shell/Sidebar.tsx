@@ -5,6 +5,7 @@ import { useTraceContext } from '../../context/TraceContext';
 import type { ViewType } from '../../lib/types';
 import { SidebarFailed } from './SidebarFailed';
 import { SidebarFlags } from './SidebarFlags';
+import { SidebarReview } from './SidebarReview';
 import { SidebarUsage } from './SidebarUsage';
 import { TABS, tabForView } from './routes';
 
@@ -67,8 +68,11 @@ export const Sidebar: React.FC = () => {
         ))}
       </div>
 
-      <SidebarFlags collapsed={collapsed} />
-      <SidebarFailed collapsed={collapsed} />
+      <div css={flagsStyle}>
+        <SidebarFlags collapsed={collapsed} />
+        <SidebarFailed collapsed={collapsed} />
+        <SidebarReview collapsed={collapsed} />
+      </div>
 
       <SidebarUsage collapsed={collapsed} />
 
@@ -150,6 +154,20 @@ const brandNameStyle = css`
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text-primary);
+`;
+
+// The flags, set apart from the views by a rule; it goes with them when there are none.
+const flagsStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 8px 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-default);
+
+  &:empty {
+    display: none;
+  }
 `;
 
 const navListStyle = css`

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
 import { pageStyle, headerStyle, titleStyle, subtitleStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle } from '../ui/page';
 import { Segmented, Select } from 'antd';
@@ -18,6 +18,7 @@ import { PerMetricTrendChart } from './PerMetricTrendChart';
 import { RunsHistoryTable } from './RunsHistoryTable';
 import { RunDetailView } from './RunDetailView';
 import { PageTitle } from '../shell/PageTitle';
+import { parseHash } from '../shell/routes';
 
 const ALL_GROUPS = '__all__';
 
@@ -29,6 +30,24 @@ export const RunsView: React.FC = () => {
   const [groupBy, setGroupBy] = useState<GroupBy>('evalSet');
   const [selectedGroup, setSelectedGroup] = useState<string>(ALL_GROUPS);
   const [detailRunId, setDetailRunId] = useState<string | null>(null);
+
+  // A link can name the group to show (#runs?group=...) or one run to open (#runs?run=...), as the quality page does.
+  useEffect(() => {
+    const apply = () => {
+      const { name, params } = parseHash(location.hash);
+      if (name !== 'runs') return;
+      const group = params.get('group');
+      if (group) {
+        setGroupBy('evalSet');
+        setSelectedGroup(group);
+      }
+      const run = params.get('run');
+      if (run) setDetailRunId(run);
+    };
+    apply();
+    window.addEventListener('hashchange', apply);
+    return () => window.removeEventListener('hashchange', apply);
+  }, []);
 
   // Group keys differ per dimension, so reset the picker to "all" when the
   // grouping dimension changes to avoid pointing at a now-nonexistent group.
@@ -57,6 +76,11 @@ export const RunsView: React.FC = () => {
   useLiveData('runs', load);
 
   const groups = useMemo(() => groupRuns(runs, groupBy), [runs, groupBy]);
+
+  // A linked group that has no runs (yet) falls back to all of them rather than an empty page.
+  useEffect(() => {
+    if (!loading && selectedGroup !== ALL_GROUPS && !groups.some(g => g.group.key === selectedGroup)) setSelectedGroup(ALL_GROUPS);
+  }, [loading, groups, selectedGroup]);
 
   const selectedRuns = useMemo(() => {
     if (selectedGroup === ALL_GROUPS) return runs;

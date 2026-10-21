@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
 import { css } from '@emotion/react';
-import { Flag, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { toggleFlag, useFlagged } from '../../lib/flagged';
 import { sessionLink } from './routes';
-import { popoverItemStyle, popoverRowStyle, SidebarPopover } from './SidebarPopover';
+import { FlagIcon, popoverItemStyle, popoverRowStyle, SidebarPopover } from './SidebarPopover';
 
 // The sessions flagged on the sessions page, behind one flag with their count; a click lists them, newest first, and
 // a click on one opens it.
@@ -15,7 +15,7 @@ export const SidebarFlags: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
   return (
     <SidebarPopover
       collapsed={collapsed}
-      icon={<Flag size={18} css={flagIconStyle} />}
+      icon={<FlagIcon color="#fbbf24" />}
       label="flagged"
       badge={flags.length}
       badgeColor="#fbbf24"
@@ -43,10 +43,6 @@ export const SidebarFlags: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
     </SidebarPopover>
   );
 };
-
-const flagIconStyle = css`
-  color: #fbbf24;
-`;
 
 const labelStyle = css`
   display: block;
