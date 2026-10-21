@@ -12,7 +12,9 @@ interface Row {
 }
 
 // Rows on screen at once. A longer list is not scrolled: the letter rail moves the window and typing narrows it.
+// A list that overflows by only a row or two is shown whole, a hint for one hidden row is worse than the row.
 const WINDOW = 8;
+const SLACK = 2;
 
 // Picks the tenant the views show: a search box over a fixed window of rows, the current pick checked, and a letter
 // rail that moves the window. '' is every tenant the role covers; "<sender>/*" is all of one sender's.
@@ -48,9 +50,10 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
     return /[A-Z]/.test(c) ? c : '#';
   };
   const letters = Array.from(new Set(tenantRows.map(letterOf)));
-  const maxStart = Math.max(0, shown.length - WINDOW);
+  const size = shown.length <= WINDOW + SLACK ? shown.length : WINDOW;
+  const maxStart = Math.max(0, shown.length - size);
   const from = Math.min(start, maxStart);
-  const visible = shown.slice(from, from + WINDOW);
+  const visible = shown.slice(from, from + size);
   const below = shown.length - (from + visible.length);
   const jump = (l: string) => {
     const i = shown.findIndex((r) => r.key !== '' && !r.key.endsWith('/*') && letterOf(r) === l);
