@@ -72,6 +72,8 @@ type OnlineEngine struct {
 	fSkippedEvidence atomic.Int64
 	// fSkippedUncalibrated counts findings not written because the metric's judge is gated by the label agreement.
 	fSkippedUncalibrated atomic.Int64
+	// sweeping is set while a findings sweep runs, scheduled or manual.
+	sweeping atomic.Bool
 	fTokensTotal         atomic.Int64
 	fSpendDay            string
 	fSpendToday          int64

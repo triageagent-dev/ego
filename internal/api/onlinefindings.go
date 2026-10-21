@@ -496,6 +496,12 @@ func (e *OnlineEngine) sweepCounters() [4]int64 {
 // runSweep is one sweep: it remembers its time, marks stale the findings whose series recovered, and writes a
 // finding for every candidate series. The report is the difference it made to the counters.
 func (e *OnlineEngine) runSweep(ctx context.Context, now time.Time) (rep mcptools.SweepReport) {
+	// One sweep at a time: a manual sweep that overlaps the ticker's would see the same candidates before either
+	// wrote a finding, and diagnose each series twice.
+	if !e.sweeping.CompareAndSwap(false, true) {
+		return rep
+	}
+	defer e.sweeping.Store(false)
 	cfg := e.cfg.Findings
 	before := e.sweepCounters()
 	defer func() {
