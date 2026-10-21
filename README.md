@@ -6,18 +6,12 @@
 
 <p align="center"><b>Reality testing for AI agents</b></p>
 
-In psychology, the ego is the part of the mind that tests reality: it tells what is imagined from what
-actually happened, and holds the self-image up against the world. An agent has the same split.
+ego scores AI agents from the OpenTelemetry traces they already emit, and closes the loop: when scores drop it
+diagnoses why, hands the diagnosis to the agent over MCP, records what the agent changed and checks that the
+scores recovered. It never re-runs the agent.
 
-| | In the mind | In an agent | In ego |
-|---|---|---|---|
-| **Self-image** | what I think I did | the final answer, its claims, "done" | the response and claims in the session |
-| **Reality** | what happened | tool calls, results, errors, retries, cost | the OpenTelemetry trace |
-| **Ideal self** | how I should have acted | the intended behavior | the golden eval set, rubrics, reference answers |
-
-ego reads the trace, compares reality with the self-image and the ideal, and scores the gap: did the agent call
-the right tools, are its claims backed by what the tools returned, did it resolve the request, did it get worse
-since last week. It never re-runs the agent; the traces it already emits are enough.
+The name: the ego is the part of the mind that tests reality. ego holds an agent's answer against what its tools
+actually returned.
 
 One static Go binary: REST API, web UI, OTLP receivers and an MCP server. No SDK to add, no extra runtime.
 
@@ -72,17 +66,39 @@ Container only: `docker run -p 8001:8001 -p 4318:4318 -e EGO_NO_AUTH=true -e EGO
 
 ## What it does
 
-- **Test reality** (`hallucinations_v1`, `jev_grounded`): are the agent's claims backed by what its tools returned?
-- **Evaluate** a trace file against a golden eval set, from the CLI, the UI, the API or an MCP client.
-- **Watch live**: point any OTel-instrumented agent at ego and its sessions, conversations and spans appear as
+- **Score** sessions: did the agent call the right tools, are its claims backed by what the tools returned, did it
+  resolve the request, does it meet your rubrics. From a trace file or from live traffic.
+- **Watch** live: point any OTel-instrumented agent at ego and its sessions, conversations and spans appear as
   they arrive.
-- **Track quality over time**: every run is kept; online evaluation samples live sessions, scores them and
+- **Track** quality: every run is kept; online evaluation samples live sessions, scores them per call kind and
   alerts on regressions.
-- **See what it costs**: a token usage ledger built from `gen_ai.usage.*` on LLM spans.
+- **Diagnose**: a low-scoring series gets a finding, a short diagnosis with the failure mode, the evidence
+  sessions and a suggested correction.
+- **Correct and verify**: the agent reads its findings over MCP, changes itself, registers the correction, and ego
+  reports whether the scores recovered.
+- **Count tokens**: a usage ledger built from `gen_ai.usage.*` on LLM spans.
 
-**Self-correction (RSI).** ego diagnoses low scores into findings, hands them to the agent over MCP at `/mcp` with
-the token it already sends traces with, records the corrections the agent makes and verifies that the scores
-recovered. See [docs/rsi.md](docs/rsi.md) and the agent-side skill in [skills/ego-rsi](skills/ego-rsi).
+## The loop
+
+```
+sample → score → detect → diagnose → correct → verify
+```
+
+| Step | What happens | Where to look |
+|---|---|---|
+| sample | completed sessions are sampled per tenant and call kind, errors and outliers first, within a daily judge budget | Quality view, `GET /api/online/status` |
+| score | each sampled session is scored by the evaluators of its kind's profile | Runs view, `explain_session` |
+| detect | a significant drop of a (tenant, kind, metric) series opens an alert, attributed to the version or model that changed | `get_quality`, `explain_regression` |
+| diagnose | an alert, or a series that stays below `findings.minScore`, gets a finding: failure mode, summary, suggested correction, evidence sessions | `get_findings`, Quality view |
+| correct | the agent (or a person) registers what changed and the `service.version` it ships as; the sampler scores the next sessions first | `register_correction` |
+| verify | the scores after the correction are compared with the ones before: verified resolves the finding, failed reopens it with the attempt in its history | `list_corrections` |
+
+People calibrate the judges: agree or disagree with a score on any session. A metric whose judge people mostly
+disagree with stops producing findings, and labelled sessions are re-scored daily to measure judge drift.
+
+The agent side is one skill, [skills/ego-rsi](skills/ego-rsi), also served as the MCP prompt `rsi_loop`:
+check the findings, read their evidence, make one change per finding, register it, come back for the verdict.
+The design and the as-built notes are in [docs/rsi.md](docs/rsi.md).
 
 > Work in progress. Interfaces can change between releases. [docs/STATUS.md](docs/STATUS.md) lists what is
 > supported, known simplifications and what is out of scope.
@@ -95,11 +111,11 @@ prints the installed version. `install.sh` verifies the download against `checks
 
 | View | What it does |
 |---|---|
-| **Live** | Streaming sessions: conversation, tool calls, spans with errors first, per-session metrics. Pick a golden session and evaluate the rest against it. |
+| **Live** | Streaming sessions: conversation, tool calls, spans with errors first, per-session metrics and online scores with agree/disagree. Pick a golden session and evaluate the rest against it. |
 | **Evaluate** | Upload traces and an eval set, choose metrics, run. |
 | **Runs** | Every evaluation run: pass-rate and per-metric trends, per-case results. |
 | **Usage** | Token spend by call kind, tenant, model and service, with per-session drill-down. |
-| **Quality** | Online evaluation: judge budget, what was sampled, open regressions, hourly scores. |
+| **Quality** | Online evaluation: judge budget, what was sampled, open regressions, hourly scores, findings, corrections and judge agreement. |
 | **Eval sets** | Build golden eval sets from traces and keep them. |
 
 ## Metrics
@@ -214,27 +230,41 @@ rates, regression detection and notification sinks are described in
 
 ## MCP server
 
-`ego mcp` is a [Model Context Protocol](https://modelcontextprotocol.io/) server on stdio, for Claude Code,
-Cursor, GitHub Copilot CLI and others.
-
-| Tool | Needs `serve`? | Description |
-|---|---|---|
-| `list_metrics` | yes | Available metrics and their requirements. |
-| `evaluate_traces` | no | Evaluate local trace file(s) against selected metrics. Reads only files under `--trace-dir` (default: the current directory). |
-| `list_sessions` | yes | Recent streaming sessions, newest first. |
-| `summarize_session` | yes | A session's invocations, tool calls and messages. |
-| `list_runs` | yes, `--session-db` | Past evaluation runs. |
-| `get_run_results` | yes, `--session-db` | One run's summary and per-case results. |
-| `list_role_bindings`, `set_role_binding`, `delete_role_binding` | yes, `--session-secret`, admin | Manage roles. Registered only with `--admin-tools`. |
+The server mounts a [Model Context Protocol](https://modelcontextprotocol.io/) endpoint at `POST /mcp`
+(streamable HTTP). Agents and editors talk to it directly; nothing runs on the client.
 
 ```bash
-EGO_SERVER_URL=https://ego.example.com ego mcp
+# Claude Code: the deployment's URL and a bearer token (below)
+claude mcp add --transport http ego https://ego.example.com/mcp --header "Authorization: Bearer $TOKEN"
 ```
 
-If that server has GitHub OAuth on, `ego mcp` authenticates with `--session-token`/`EGO_SESSION_TOKEN`, or
-with `gh auth token` when you are logged in as a member of the deployment's GitHub org (that token is sent only to an
-https server or to localhost; use `--session-token` for anything else, or `--no-gh-auth` to never use it). To mint a long-lived
-token for a client with no `gh`:
+An agent can use the OTLP sender token it already sends traces with: on `/mcp` it acts as a member limited to
+that sender's tenants, so one token covers sending traces and reading verdicts. A session token or a GitHub token
+of an org member works too. `ego mcp` is the same registry on stdio, for a client that cannot reach the server
+over HTTP; it adds `evaluate_traces`, which scores local files.
+
+| Tool | Description |
+|---|---|
+| `get_quality` | Open alerts, hourly scores per metric, sessions scored, today's judge budget. |
+| `explain_regression` | An alert, the version or model it is attributed to, and its worst sessions with the judge's evidence. |
+| `explain_session` | Every metric's score and evidence for one session: per-sentence verdicts, rubric verdicts, decisions. |
+| `get_findings` | Diagnoses of low scores: failure mode, summary, suggested correction, evidence, corrections tried. |
+| `register_correction` | What changed in answer to a finding and the version it ships as; starts verification. |
+| `list_corrections` | Corrections with their verification: before and after means, state. |
+| `label_session` | Agree or disagree with a judge's score, with a note. For people, not for the agent that produced the session. |
+| `get_usage` | Token spend in a window, by kind, tenant, model or service, and the largest sessions. |
+| `list_sessions`, `summarize_session` | Sessions with filters (agent, tenant, since, text, complete); one session's turns and tool calls. |
+| `list_metrics`, `list_runs`, `get_run_results` | Metrics; evaluation runs and their per-case results. |
+| `run_findings` | Run the findings sweep now. Admin. |
+| `list_role_bindings`, `set_role_binding`, `delete_role_binding` | Manage roles. Admin; on stdio only with `--admin-tools`. |
+
+Prompt `rsi_loop` returns the agent-side skill. Every tool is limited to the tenants the caller may see.
+
+```bash
+EGO_SERVER_URL=https://ego.example.com ego mcp     # stdio; authenticates with --session-token, else `gh auth token`
+```
+
+To mint a long-lived token for a client with no `gh`:
 
 ```bash
 ego auth mint-token --name ci --role member --secret "$EGO_SESSION_SECRET"
