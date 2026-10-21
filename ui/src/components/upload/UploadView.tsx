@@ -97,14 +97,23 @@ const uploadViewStyle = css`
     line-height: 18px;
   }
 
-  .metrics-section {
+  /* The metrics read left, the settings and the run button sit beside them and stay in view while the list scrolls. */
+  .work {
     grid-column: 1 / -1;
-    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 12px;
+    align-items: start;
+  }
+
+  .metrics-section {
     min-height: 0;
   }
 
   .settings-section {
-    grid-column: 1 / -1;
+    position: sticky;
+    top: 12px;
+    gap: 12px;
   }
 
   .setting-item {
@@ -127,20 +136,21 @@ const uploadViewStyle = css`
 
   .actions {
     display: flex;
-    justify-content: center;
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--border);
+    margin-top: 2px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-default);
   }
 
   .run-button {
-    height: 32px;
+    width: 100%;
+    height: 34px;
     font-size: 13px;
     font-weight: 600;
     padding: 0 22px;
     border-radius: var(--radius);
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 10px;
     background-color: var(--accent-primary) !important;
     border-color: var(--accent-primary) !important;
@@ -175,6 +185,17 @@ const uploadViewStyle = css`
   @keyframes spin {
     to {
       transform: rotate(360deg);
+    }
+  }
+
+  @media (max-width: 1100px) {
+    .work {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .settings-section {
+      position: relative;
+      top: 0;
     }
   }
 
@@ -464,6 +485,7 @@ export const UploadView: React.FC = () => {
           </>
         )}
 
+        <div className="work">
         <div className="section metrics-section">
           <div className="section-title">metrics</div>
           <MetricSelector
@@ -474,7 +496,7 @@ export const UploadView: React.FC = () => {
         </div>
 
         <div className="section settings-section">
-          <div className="section-title">Evaluation Settings</div>
+          <div className="section-title">settings</div>
 
           <div className="setting-item">
             <label className="setting-label">Judge Model</label>
@@ -517,7 +539,7 @@ export const UploadView: React.FC = () => {
             })()}
           </div>
 
-          <div className="setting-item" style={{ marginTop: 10 }}>
+          <div className="setting-item">
             <label className="setting-label">Pass Threshold: {state.threshold}</label>
             <Slider
               min={0}
@@ -532,7 +554,7 @@ export const UploadView: React.FC = () => {
           </div>
 
           {state.selectedEvaluatorNames.includes('tool_trajectory_avg_score') && (
-            <div className="setting-item" style={{ marginTop: 10 }}>
+            <div className="setting-item">
               <label className="setting-label">Trajectory Match Type</label>
               <Select
                 value={state.trajectoryMatchType}
@@ -550,25 +572,26 @@ export const UploadView: React.FC = () => {
               </span>
             </div>
           )}
-        </div>
-      </div>
 
-      <div className="actions">
-        <Button
-          type="primary"
-          size="large"
-          className="run-button"
-          onClick={actions.runEvaluation}
-          disabled={!canRunEvaluation}
-          loading={state.isEvaluating || state.isLoadingMetadata}
-        >
-          <Play size={20} />
-          {state.isEvaluating
-            ? (state.progressMessage || 'Running Evaluation...')
-            : state.isLoadingMetadata
-            ? 'Loading Traces...'
-            : 'Run Evaluation'}
-        </Button>
+          <div className="actions">
+            <Button
+              type="primary"
+              size="large"
+              className="run-button"
+              onClick={actions.runEvaluation}
+              disabled={!canRunEvaluation}
+              loading={state.isEvaluating || state.isLoadingMetadata}
+            >
+              <Play size={20} />
+              {state.isEvaluating
+                ? (state.progressMessage || 'Running Evaluation...')
+                : state.isLoadingMetadata
+                ? 'Loading Traces...'
+                : 'Run Evaluation'}
+            </Button>
+          </div>
+        </div>
+        </div>
       </div>
 
       {state.evalSetFile && (

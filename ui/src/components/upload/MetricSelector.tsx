@@ -17,9 +17,9 @@ const selectorStyle = css`
 
   .metric-categories {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
     gap: 10px;
-    align-items: start;
+    align-items: stretch;
   }
 
   .metric-category {
