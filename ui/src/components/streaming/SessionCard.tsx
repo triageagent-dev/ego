@@ -316,22 +316,24 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
             color: 'var(--text-tertiary)',
             fontFamily: 'monospace',
             margin: 0,
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '10px',
           }}>
-            {session.traceId.slice(0, 16)}...
             {session.rootSpanName && (
-              <span style={{ marginLeft: '10px', color: 'var(--text-secondary)' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>
                 {session.rootSpanName}
               </span>
             )}
             {session.status === 'complete' && session.llmCalls != null && (
-              <span style={{ marginLeft: '10px', color: 'var(--text-secondary)' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>
                 {session.llmCalls === 0
                   ? 'no LLM call'
                   : `${session.llmCalls} LLM call${session.llmCalls === 1 ? '' : 's'}`}
               </span>
             )}
             {(session.errors ?? 0) > 0 && (
-              <span style={{ marginLeft: '10px', color: '#ef4444', fontWeight: 600 }}>
+              <span style={{ color: '#ef4444', fontWeight: 600 }}>
                 {session.errors} error{session.errors === 1 ? '' : 's'}
               </span>
             )}
