@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Button, Segmented, Select, Slider } from 'antd';
 import { css } from '@emotion/react';
 import { Play, Pencil, Settings } from 'lucide-react';
-import { FileDropZone } from './FileDropZone';
+import { NewGoldenForm } from './NewGoldenForm';
 import { MetricGroup, useMetricGroups } from './MetricSelector';
 import { SessionPicker } from './SessionPicker';
 import { formatStarted } from '../../lib/trace-helpers';
@@ -400,8 +400,8 @@ export const UploadView: React.FC = () => {
   const section = picked || SOURCES;
   // The settings are not a step of the list: they open from the icon in the header, over the details.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // Where the golden set comes from: one the server keeps, a session of its own, or a file.
-  const [goldenFrom, setGoldenFrom] = useState<'sets' | 'session' | 'file'>('sets');
+  // Where the golden set comes from: one the server keeps, a session of its own, or one written here.
+  const [goldenFrom, setGoldenFrom] = useState<'sets' | 'session' | 'new'>('sets');
   const [evalSets, setEvalSets] = useState<EvalSetSummary[] | null>(null);
   const [goldenBusy, setGoldenBusy] = useState<string | null>(null);
   const [goldenError, setGoldenError] = useState('');
@@ -514,11 +514,11 @@ export const UploadView: React.FC = () => {
               <Segmented
                 size="small"
                 value={goldenFrom}
-                onChange={(v) => setGoldenFrom(v as 'sets' | 'session' | 'file')}
+                onChange={(v) => setGoldenFrom(v as 'sets' | 'session' | 'new')}
                 options={[
                   { value: 'sets', label: `Saved eval sets${evalSets ? ` (${evalSets.length})` : ''}` },
                   { value: 'session', label: 'A session' },
-                  { value: 'file', label: 'A file' },
+                  { value: 'new', label: '+ New' },
                 ]}
               />
               <div style={{ marginTop: 10 }}>
@@ -544,11 +544,13 @@ export const UploadView: React.FC = () => {
                     onUse={(ids) => actions.setEvalSet(new SessionEvalSetFile(ids[0]))}
                   />
                 )}
-                {goldenFrom === 'file' && (
-                  <FileDropZone
-                    title="Drop an eval set file"
-                    description=".json"
-                    onChange={(files) => actions.setEvalSet(files[0] || null)}
+                {goldenFrom === 'new' && (
+                  <NewGoldenForm
+                    onCreated={(id) => {
+                      // The new set is in the list from now on, and is the chosen one.
+                      listEvalSets().then(setEvalSets).catch(() => undefined);
+                      void chooseEvalSet(id);
+                    }}
                   />
                 )}
                 {goldenError && <div css={goldenNoteStyle} style={{ color: 'var(--status-failure)' }}>{goldenError}</div>}
