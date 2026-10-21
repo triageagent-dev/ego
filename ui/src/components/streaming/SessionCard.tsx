@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { Modal } from 'antd';
 import { SpansPanel } from './SpansPanel';
 import { LiveConversationPanel } from './LiveConversationPanel';
@@ -133,6 +133,22 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
   const totalCacheCreation = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheCreationTokens || 0), 0) || 0;
   const totalCacheRead = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheReadTokens || 0), 0) || 0;
 
+  // The line under the badges: when, what ran, how many calls, and errors last.
+  const details: Array<{ key: string; text: string; error?: boolean }> = [];
+  if (session.startedAt) {
+    details.push({ key: 'when', text: new Date(session.startedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) });
+  }
+  if (session.rootSpanName) details.push({ key: 'root', text: session.rootSpanName });
+  if (session.status === 'complete' && session.llmCalls != null) {
+    details.push({
+      key: 'calls',
+      text: session.llmCalls === 0 ? 'no LLM call' : `${session.llmCalls} LLM call${session.llmCalls === 1 ? '' : 's'}`,
+    });
+  }
+  if ((session.errors ?? 0) > 0) {
+    details.push({ key: 'errors', text: `${session.errors} error${session.errors === 1 ? '' : 's'}`, error: true });
+  }
+
   return (
     <div
       style={{
@@ -165,11 +181,12 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
               <span
                 title="tenant"
                 style={{
-                  fontSize: '12.5px',
+                  fontSize: '11.5px',
                   fontWeight: 500,
                   color: 'var(--accent-magenta)',
-                  background: 'rgba(255, 106, 198, 0.1)',
-                  padding: '1px 7px',
+                  background: 'rgba(255, 106, 198, 0.08)',
+                  padding: '0 6px',
+                  lineHeight: '19px',
                   borderRadius: 'var(--radius)',
                 }}
               >
@@ -292,36 +309,20 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
           </div>
 
           <p style={{
-            fontSize: '13px',
+            fontSize: '12px',
             color: 'var(--text-tertiary)',
-            fontFamily: 'monospace',
             margin: 0,
             display: 'flex',
             flexWrap: 'wrap',
-            gap: '10px',
+            alignItems: 'center',
+            columnGap: '6px',
           }}>
-            {session.startedAt && (
-              <span style={{ color: 'var(--text-secondary)', fontFamily: 'inherit' }}>
-                {new Date(session.startedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-              </span>
-            )}
-            {session.rootSpanName && (
-              <span style={{ color: 'var(--text-secondary)' }}>
-                {session.rootSpanName}
-              </span>
-            )}
-            {session.status === 'complete' && session.llmCalls != null && (
-              <span style={{ color: 'var(--text-secondary)' }}>
-                {session.llmCalls === 0
-                  ? 'no LLM call'
-                  : `${session.llmCalls} LLM call${session.llmCalls === 1 ? '' : 's'}`}
-              </span>
-            )}
-            {(session.errors ?? 0) > 0 && (
-              <span style={{ color: '#ef4444', fontWeight: 600 }}>
-                {session.errors} error{session.errors === 1 ? '' : 's'}
-              </span>
-            )}
+            {details.map((d, i) => (
+              <Fragment key={d.key}>
+                {i > 0 && <span aria-hidden>·</span>}
+                <span style={d.error ? { color: '#ef4444', fontWeight: 600 } : { color: 'var(--text-secondary)' }}>{d.text}</span>
+              </Fragment>
+            ))}
           </p>
         </div>
 
