@@ -8,11 +8,54 @@
 
 In psychology, the ego is the part of the mind that tests reality: it tells what is imagined from what actually happened, and holds the self-image up against the world. An agent has the same split.
 
-ego scores AI agents from the OpenTelemetry traces they already emit, and closes the loop: when scores drop it
-diagnoses why, hands the diagnosis to the agent over MCP, records what the agent changed and checks that the
-scores recovered. It never re-runs the agent.
+ego is recursive self-improvement (RSI) for AI agents, run on the OpenTelemetry traces they already emit: it
+scores the agent, and when scores drop it diagnoses why, hands the diagnosis to the agent over MCP, records what
+the agent changed and checks that the scores recovered. It never re-runs the agent.
 
 One static Go binary: REST API, web UI, OTLP receivers and an MCP server. No SDK to add, no extra runtime.
+
+## RSI: the loop
+
+```
+sample → score → detect → diagnose → correct → verify
+```
+
+| Step | What happens | Where to look |
+|---|---|---|
+| sample | completed sessions are sampled per tenant and call kind, errors and outliers first, within a daily judge budget | Quality view, `GET /api/online/status` |
+| score | each sampled session is scored by the evaluators of its kind's profile | Runs view, `explain_session` |
+| detect | a significant drop of a (tenant, kind, metric) series opens an alert, attributed to the version or model that changed | `get_quality`, `explain_regression` |
+| diagnose | an alert, or a series that stays below `findings.minScore`, gets a finding: failure mode, summary, suggested correction, evidence sessions | `get_findings`, Quality view |
+| correct | the agent (or a person) registers what changed and the `service.version` it ships as; the sampler scores the next sessions first | `register_correction` |
+| verify | the scores after the correction are compared with the ones before: verified resolves the finding, failed reopens it with the attempt in its history | `list_corrections` |
+
+People calibrate the judges: agree or disagree with a score on any session. A metric whose judge people mostly
+disagree with stops producing findings, and labelled sessions are re-scored daily to measure judge drift.
+
+The agent side is one skill, [skills/ego-rsi](skills/ego-rsi), also served as the MCP prompt `rsi_loop`:
+check the findings, read their evidence, make one change per finding, register it, come back for the verdict.
+The design and the as-built notes are in [docs/rsi.md](docs/rsi.md).
+
+> Work in progress. Interfaces can change between releases. [docs/STATUS.md](docs/STATUS.md) lists what is
+> supported, known simplifications and what is out of scope.
+
+Each tagged release (`v*.*.*`) publishes binaries for Linux and macOS (amd64, arm64), a multi-arch container image
+(`ghcr.io/triageagent-dev/ego`) and the Helm chart (`oci://ghcr.io/triageagent-dev/charts/ego`). `ego version`
+prints the installed version. `install.sh` verifies the download against `checksums.txt`.
+
+## What it does
+
+- **Score** sessions: did the agent call the right tools, are its claims backed by what the tools returned, did it
+  resolve the request, does it meet your rubrics. From a trace file or from live traffic.
+- **Watch** live: point any OTel-instrumented agent at ego and its sessions, conversations and spans appear as
+  they arrive.
+- **Track** quality: every run is kept; online evaluation samples live sessions, scores them per call kind and
+  alerts on regressions.
+- **Diagnose**: a low-scoring series gets a finding, a short diagnosis with the failure mode, the evidence
+  sessions and a suggested correction.
+- **Correct and verify**: the agent reads its findings over MCP, changes itself, registers the correction, and ego
+  reports whether the scores recovered.
+- **Count tokens**: a usage ledger built from `gen_ai.usage.*` on LLM spans.
 
 ## Quick start
 
@@ -62,49 +105,6 @@ service, as with `port-forward`. For GitHub sign-in, an ingress and per-team acc
 
 Container only: `docker run -p 8001:8001 -p 4318:4318 -e EGO_NO_AUTH=true -e EGO_OTLP_TOKEN=... -v ego:/data
 -e EGO_SESSION_DB_PATH=/data/ego.db ghcr.io/triageagent-dev/ego:latest`.
-
-## What it does
-
-- **Score** sessions: did the agent call the right tools, are its claims backed by what the tools returned, did it
-  resolve the request, does it meet your rubrics. From a trace file or from live traffic.
-- **Watch** live: point any OTel-instrumented agent at ego and its sessions, conversations and spans appear as
-  they arrive.
-- **Track** quality: every run is kept; online evaluation samples live sessions, scores them per call kind and
-  alerts on regressions.
-- **Diagnose**: a low-scoring series gets a finding, a short diagnosis with the failure mode, the evidence
-  sessions and a suggested correction.
-- **Correct and verify**: the agent reads its findings over MCP, changes itself, registers the correction, and ego
-  reports whether the scores recovered.
-- **Count tokens**: a usage ledger built from `gen_ai.usage.*` on LLM spans.
-
-## The loop
-
-```
-sample → score → detect → diagnose → correct → verify
-```
-
-| Step | What happens | Where to look |
-|---|---|---|
-| sample | completed sessions are sampled per tenant and call kind, errors and outliers first, within a daily judge budget | Quality view, `GET /api/online/status` |
-| score | each sampled session is scored by the evaluators of its kind's profile | Runs view, `explain_session` |
-| detect | a significant drop of a (tenant, kind, metric) series opens an alert, attributed to the version or model that changed | `get_quality`, `explain_regression` |
-| diagnose | an alert, or a series that stays below `findings.minScore`, gets a finding: failure mode, summary, suggested correction, evidence sessions | `get_findings`, Quality view |
-| correct | the agent (or a person) registers what changed and the `service.version` it ships as; the sampler scores the next sessions first | `register_correction` |
-| verify | the scores after the correction are compared with the ones before: verified resolves the finding, failed reopens it with the attempt in its history | `list_corrections` |
-
-People calibrate the judges: agree or disagree with a score on any session. A metric whose judge people mostly
-disagree with stops producing findings, and labelled sessions are re-scored daily to measure judge drift.
-
-The agent side is one skill, [skills/ego-rsi](skills/ego-rsi), also served as the MCP prompt `rsi_loop`:
-check the findings, read their evidence, make one change per finding, register it, come back for the verdict.
-The design and the as-built notes are in [docs/rsi.md](docs/rsi.md).
-
-> Work in progress. Interfaces can change between releases. [docs/STATUS.md](docs/STATUS.md) lists what is
-> supported, known simplifications and what is out of scope.
-
-Each tagged release (`v*.*.*`) publishes binaries for Linux and macOS (amd64, arm64), a multi-arch container image
-(`ghcr.io/triageagent-dev/ego`) and the Helm chart (`oci://ghcr.io/triageagent-dev/charts/ego`). `ego version`
-prints the installed version. `install.sh` verifies the download against `checksums.txt`.
 
 ## The UI
 
