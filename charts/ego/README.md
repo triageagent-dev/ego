@@ -13,12 +13,16 @@ The chart and the image are published to GitHub Container Registry on every rele
 Try it in a cluster without a login (reachable only inside the cluster, or through `kubectl port-forward`):
 
 ```bash
-helm install ego oci://ghcr.io/triageagent-dev/charts/ego --version 0.1.36 \
-  --set auth.enabled=false --set vertex.enabled=false
+kubectl create secret generic ego-otlp-token --from-literal=OTLP_TOKEN="$(openssl rand -hex 32)"
+
+helm install ego oci://ghcr.io/triageagent-dev/charts/ego \
+  --set auth.enabled=false --set vertex.enabled=false \
+  --set otlpAuth.enabled=true --set otlpAuth.secret=ego-otlp-token
 kubectl port-forward svc/ego 8001:8001      # UI and API
 ```
 
-Point your OpenTelemetry exporter at `ego:4318` (OTLP/HTTP) or `ego:4317` (OTLP/gRPC).
+Point your OpenTelemetry exporter at `ego:4318` (OTLP/HTTP) or `ego:4317` (OTLP/gRPC) with the header
+`Authorization=Bearer <the OTLP_TOKEN value>`; the receivers refuse pushes without a token.
 
 `auth.enabled=false` serves every caller as admin, so only use it where the network limits who can reach the service.
 

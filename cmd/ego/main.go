@@ -445,7 +445,7 @@ func serveCmd(args []string) error {
 	noAuth := fs.Bool("no-auth", envBool("NO_AUTH"),
 		"serve on non-loopback addresses without a login. Without --session-secret, serve refuses to listen on anything but loopback unless this is set, because everyone who can reach it would be an admin; falls back to EGO_NO_AUTH=true")
 	otlpToken := fs.String("otlp-token", env("OTLP_TOKEN"),
-		"bearer token the OTLP/HTTP and OTLP/gRPC receivers require from senders (Authorization: Bearer ...); empty leaves them open; at least 32 bytes; falls back to EGO_OTLP_TOKEN")
+		"bearer token the OTLP/HTTP and OTLP/gRPC receivers require from senders (Authorization: Bearer ...); without it (and without a sender token) every push is refused; at least 32 bytes; falls back to EGO_OTLP_TOKEN")
 	logLevel := fs.String("log-level", env("LOG_LEVEL"),
 		"log threshold: debug, info, warn or error (default info); falls back to EGO_LOG_LEVEL")
 	auditLog := fs.Bool("audit-log", envBool("AUDIT_LOG"),

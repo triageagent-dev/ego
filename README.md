@@ -21,6 +21,55 @@ since last week. It never re-runs the agent; the traces it already emits are eno
 
 One static Go binary: REST API, web UI, OTLP receivers and an MCP server. No SDK to add, no extra runtime.
 
+## Quick start
+
+### Run it on your machine
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/triageagent-dev/ego/main/install.sh | sh   # installs `ego`
+
+export EGO_OTLP_TOKEN=$(openssl rand -hex 32)   # the password your agent sends its traces with
+ego serve --session-db ego.db
+```
+
+Open <http://localhost:8001>. `ego.db` is where sessions, runs and eval sets are kept; leave `--session-db` out
+and the Runs, Eval sets and Quality views do not work.
+
+Now send traces. Any OpenTelemetry-instrumented agent works, with no SDK to add:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318      # gRPC exporters use :4317
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer $EGO_OTLP_TOKEN"
+./your_agent
+```
+
+Its sessions appear under **Live** as they arrive. The server listens on `127.0.0.1` only and has no login, so
+anyone on your machine is an admin. On macOS, if the download is blocked: `xattr -d com.apple.quarantine $(which ego)`.
+
+To score a trace file without a server (Jaeger JSON or OTLP JSON; examples are in the repository's `samples/` folder): `ego run trace.json --eval-set eval_set.json -m tool_trajectory_avg_score`.
+
+### Run it in Kubernetes
+
+```bash
+kubectl create secret generic ego-otlp-token --from-literal=OTLP_TOKEN="$(openssl rand -hex 32)"
+
+helm install ego oci://ghcr.io/triageagent-dev/charts/ego \
+  --set auth.enabled=false --set vertex.enabled=false \
+  --set otlpAuth.enabled=true --set otlpAuth.secret=ego-otlp-token
+
+kubectl port-forward svc/ego 8001:8001      # then open http://localhost:8001
+```
+
+Point your agent's OpenTelemetry exporter at `ego:4318` (OTLP/HTTP) or `ego:4317` (gRPC) with the header
+`Authorization=Bearer <the OTLP_TOKEN value>`. Sessions are kept on a 1Gi volume.
+
+`auth.enabled=false` serves every caller as admin: use it only where the network limits who can reach the
+service, as with `port-forward`. For GitHub sign-in, an ingress and per-team access see
+[charts/ego/README.md](charts/ego/README.md).
+
+Container only: `docker run -p 8001:8001 -p 4318:4318 -e EGO_NO_AUTH=true -e EGO_OTLP_TOKEN=... -v ego:/data
+-e EGO_SESSION_DB_PATH=/data/ego.db ghcr.io/triageagent-dev/ego:latest`.
+
 ## What it does
 
 - **Test reality** (`hallucinations_v1`, `jev_grounded`): are the agent's claims backed by what its tools returned?
@@ -34,77 +83,9 @@ One static Go binary: REST API, web UI, OTLP receivers and an MCP server. No SDK
 > Work in progress. Interfaces can change between releases. [docs/STATUS.md](docs/STATUS.md) lists what is
 > supported, known simplifications and what is out of scope.
 
-## Install
-
-ego is meant to run in Kubernetes. Each tagged release (`v*.*.*`) publishes a multi-arch container image
-(`ghcr.io/triageagent-dev/ego`, linux/amd64 and linux/arm64) and the Helm chart
-(`oci://ghcr.io/triageagent-dev/charts/ego`), plus command-line binaries for Linux and macOS (amd64 and arm64).
-
-```bash
-# Kubernetes: try it without a login, then see charts/ego/README.md for production values
-helm install ego oci://ghcr.io/triageagent-dev/charts/ego --version 0.1.36 \
-  --set auth.enabled=false --set vertex.enabled=false
-kubectl port-forward svc/ego 8001:8001
-
-# container
-docker run -p 8001:8001 -p 4318:4318 -e EGO_NO_AUTH=true ghcr.io/triageagent-dev/ego:latest
-```
-
-The chart README covers GitHub sign-in, the OTLP token, the NetworkPolicy and the Gateway API route.
-
-**Binary** (`ego run` scores trace files offline; `ego serve` runs the server; `ego mcp` is the MCP server):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/triageagent-dev/ego/main/install.sh | sh
-```
-
-The binaries are not code-signed or notarized with an Apple certificate, so a macOS download from a browser is
-quarantined by Gatekeeper. Clear it once with `xattr -d com.apple.quarantine ego` (or right-click, Open).
-Downloading with `curl` or `gh release download` does not set the flag. Verify a download against `checksums.txt`
-(`install.sh` does this); the checksums file carries a cosign signature.
-
-`ego version` prints the installed version.
-
-**Releasing:** push a tag, `git tag v0.1.36 && git push origin v0.1.36`. Running the *Release* workflow by hand builds
-the binaries without publishing anything. The publishing jobs run in the `release` environment: add required reviewers
-(and a tag rule) to it under Settings > Environments so a tag alone cannot publish. The checksums file and the image are
-signed keyless with cosign (the Sigstore identity is the workflow): `cosign verify-blob --bundle checksums.txt.bundle
---certificate-identity-regexp "https://github.com/triageagent-dev/ego/" --certificate-oidc-issuer
-https://token.actions.githubusercontent.com checksums.txt`, and `cosign verify` on the image. The chart is not signed.
-New GHCR packages are private until their visibility is changed under the package settings, which has to be done once
-for the image and once for the chart before the repository is opened up.
-
-## Quick start
-
-```bash
-make build-ui build           # the UI is embedded in the binary, so build it first
-
-./bin/ego run samples/helm.json --eval-set samples/eval_set_helm.json -m tool_trajectory_avg_score
-```
-
-```
-Trace: 3e289017fe03ffd7c4145316d2eb3d0d
-[PASS]  tool_trajectory_avg_score      score=1.00 status=PASSED
-```
-
-Swap in `samples/k8s.json` and the same eval set mismatches (score 0, FAILED).
-
-Run the server:
-
-```bash
-make serve    # UI + REST API :8001, OTLP/HTTP :4318, OTLP/gRPC :4317, health :9090
-```
-
-Then point an agent at it:
-
-```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318   # gRPC exporters use :4317
-./your_agent
-
-curl http://localhost:8001/api/streaming/sessions
-```
-
-Open <http://localhost:8001>.
+Each tagged release (`v*.*.*`) publishes binaries for Linux and macOS (amd64, arm64), a multi-arch container image
+(`ghcr.io/triageagent-dev/ego`) and the Helm chart (`oci://ghcr.io/triageagent-dev/charts/ego`). `ego version`
+prints the installed version. `install.sh` verifies the download against `checksums.txt`.
 
 ## The UI
 
@@ -134,8 +115,8 @@ or Vertex AI through Application Default Credentials with `GOOGLE_GENAI_USE_VERT
 and `GOOGLE_CLOUD_LOCATION` (no key at all).
 
 ```bash
-./bin/ego run samples/helm.json --eval-set samples/eval_set_helm.json -m final_response_match_v2
-./bin/ego run samples/helm.json -m rubric_based_final_response_quality_v1 \
+ego run trace.json --eval-set eval_set.json -m final_response_match_v2
+ego run trace.json -m rubric_based_final_response_quality_v1 \
   --rubric "The response directly answers the user's question"
 ```
 
@@ -170,7 +151,7 @@ Custom questions come from a JSON file; each becomes a `jev:<key>` metric. `expe
 
 ```bash
 export JEV_API_KEY=...      # JEV_MODEL picks the model (default jev-1.13)
-./bin/ego run samples/helm.json -m jev_task_resolved -m jev_grounded --jev-questions questions.json
+ego run trace.json -m jev_task_resolved -m jev_grounded --jev-questions questions.json
 ```
 
 ## Ingesting traces
@@ -191,7 +172,7 @@ By default everything is in memory. Point `serve` at a SQLite file and sessions,
 bindings survive restarts:
 
 ```bash
-./bin/ego serve --session-db ./ego.db
+ego serve --session-db ego.db
 ```
 
 Only the newest `--session-memory` completed sessions (default 200) stay in memory; older ones load on demand.
@@ -199,9 +180,33 @@ Only the newest `--session-memory` completed sessions (default 200) stay in memo
 
 ## Online evaluation
 
-`serve --online-config online.json` turns on a continuous loop: **sample** completed sessions, **score** them
-per call kind with the evaluators you choose, **detect** regressions, **notify** (Discord, webhook or an event
-sink). A daily judge budget caps spend. See [docs/online-evaluation.md](docs/online-evaluation.md).
+The **Quality** view stays off ("Online evaluation is not configured") until the server gets a config file. With it
+on, ego runs a continuous loop: **sample** completed sessions, **score** them per call kind with the evaluators you
+choose, **detect** regressions, **notify** (Discord, webhook or an event sink). A daily judge budget caps spend.
+
+Minimal `online.json`: score every session of one agent with the hallucination judge, at most 500k judge tokens a day:
+
+```json
+{
+  "budget": {"judgeTokensPerDay": 500000},
+  "profiles": [
+    {"kind": "my-agent", "maxInvocations": 3, "evaluators": [{"name": "hallucinations_v1"}]}
+  ]
+}
+```
+
+`kind` is the span attribute `gen_ai.agent.name` of your agent (or, without it, the name of the trace's root
+span); only sessions of a kind with a profile are scored. Start the server with the file and a judge key
+(`--session-db` is required too):
+
+```bash
+export GEMINI_API_KEY=...
+ego serve --session-db ego.db --online-config online.json
+```
+
+Scoring needs a judge model. `jev_*` evaluators use `JEV_API_KEY` and a `jevCallsPerDay` budget instead. Sampling
+rates, regression detection and notification sinks are described in
+[docs/online-evaluation.md](docs/online-evaluation.md).
 
 ## MCP server
 
@@ -219,7 +224,7 @@ Cursor, GitHub Copilot CLI and others.
 | `list_role_bindings`, `set_role_binding`, `delete_role_binding` | yes, `--session-secret`, admin | Manage roles. Registered only with `--admin-tools`. |
 
 ```bash
-EGO_SERVER_URL=https://ego.example.com ./bin/ego mcp
+EGO_SERVER_URL=https://ego.example.com ego mcp
 ```
 
 If that server has GitHub OAuth on, `ego mcp` authenticates with `--session-token`/`EGO_SESSION_TOKEN`, or
@@ -228,7 +233,7 @@ https server or to localhost; use `--session-token` for anything else, or `--no-
 token for a client with no `gh`:
 
 ```bash
-./bin/ego auth mint-token --name ci --role member --secret "$EGO_SESSION_SECRET"
+ego auth mint-token --name ci --role member --secret "$EGO_SESSION_SECRET"
 ```
 
 The token acts with the role given at minting (`viewer`, `member` default, `admin`); the label is only a name, so it does
@@ -266,7 +271,7 @@ When a user's GitHub teams cannot be determined, the request is refused (browser
 falling back to the default role.
 
 ```bash
-./bin/ego serve --session-secret "$EGO_SESSION_SECRET" --session-db ./ego.db \
+ego serve --session-secret "$EGO_SESSION_SECRET" --session-db ego.db \
   --admin-github-users octocat --default-role member
 ```
 
@@ -334,23 +339,9 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`:
 | `EGO_ONLINE_CONFIG` | `--online-config` | Online evaluation config file |
 | `EGO_SERVER_URL`, `EGO_SESSION_TOKEN` | `--server-url`, `--session-token` | For `ego mcp` |
 
-## Deploying
-
-A Helm chart lives in `charts/ego` (Deployment, Service, PVC, optional HTTPRoutes). Copy
-`deploy/values.example.yaml` to `deploy/values.yaml` (gitignored), set the registry, hostname and service
-account, then:
-
-```bash
-make image          # builds the UI, pushes the image with ko (needs a clean tree)
-make deploy-diff    # what would change
-make deploy
-```
-
-Registry and cluster go in `deploy/local.mk` (gitignored): `KO_DOCKER_REPO`, `KUBE_CONTEXT`. `nameOverride`
-keeps the names of an existing release. The image is a single static binary on a distroless base. A new
-root-level `/api/...` endpoint needs an entry in `httpRoute.rootPaths`, or the gateway answers 404.
-
 ## Development
+
+Build from source (the UI is embedded in the binary, so build it first):
 
 ```bash
 make build-ui build        # UI first: ui/embed.go embeds ui/dist
@@ -381,6 +372,33 @@ samples/             sample traces and eval sets
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for ground rules and the pre-PR checklist.
+
+### Deploying from source
+
+For maintainers. A Helm chart lives in `charts/ego` (Deployment, Service, PVC, optional HTTPRoutes). Copy
+`deploy/values.example.yaml` to `deploy/values.yaml` (gitignored), set the registry, hostname and service
+account, then:
+
+```bash
+make image          # builds the UI, pushes the image with ko (needs a clean tree)
+make deploy-diff    # what would change
+make deploy
+```
+
+Registry and cluster go in `deploy/local.mk` (gitignored): `KO_DOCKER_REPO`, `KUBE_CONTEXT`. `nameOverride`
+keeps the names of an existing release. The image is a single static binary on a distroless base. A new
+root-level `/api/...` endpoint needs an entry in `httpRoute.rootPaths`, or the gateway answers 404.
+
+### Releasing
+
+**Releasing:** push a tag, `git tag vX.Y.Z && git push origin vX.Y.Z`. Running the *Release* workflow by hand builds
+the binaries without publishing anything. The publishing jobs run in the `release` environment: add required reviewers
+(and a tag rule) to it under Settings > Environments so a tag alone cannot publish. The checksums file and the image are
+signed keyless with cosign (the Sigstore identity is the workflow): `cosign verify-blob --bundle checksums.txt.bundle
+--certificate-identity-regexp "https://github.com/triageagent-dev/ego/" --certificate-oidc-issuer
+https://token.actions.githubusercontent.com checksums.txt`, and `cosign verify` on the image. The chart is not signed.
+New GHCR packages are private until their visibility is changed under the package settings, which has to be done once
+for the image and once for the chart before the repository is opened up.
 
 ## License
 
