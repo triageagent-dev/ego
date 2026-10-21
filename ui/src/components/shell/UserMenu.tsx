@@ -1,33 +1,9 @@
-import { useEffect, useState } from 'react';
 import { css } from '@emotion/react';
 import { User, LogOut } from 'lucide-react';
-import { config } from '../../config';
-
-interface MeState {
-  authenticated: boolean;
-  // false when the server runs without auth: no login to offer.
-  authEnabled?: boolean;
-  username?: string;
-  role?: string;
-}
+import { useMe } from '../../lib/me';
 
 export function UserMenu() {
-  const [me, setMe] = useState<MeState | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    fetch(config.api.endpoints.authMe)
-      .then(res => (res.ok ? res.json() : { authenticated: false }))
-      .then(data => {
-        if (active) setMe(data);
-      })
-      .catch(() => {
-        if (active) setMe({ authenticated: false });
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const me = useMe();
 
   // Render nothing while loading rather than flashing a "logged out" state
   // that the successful check would immediately replace.

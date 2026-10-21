@@ -3,11 +3,6 @@ import { css } from '@emotion/react';
 import { Radio, Play, FileJson, History, Coins, Gauge, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useTraceContext } from '../../context/TraceContext';
 import type { ViewType } from '../../lib/types';
-import { UserMenu } from './UserMenu';
-import { ModeSwitch } from './ModeSwitch';
-import { TenantSwitch } from './TenantSwitch';
-import { VersionLink } from './VersionLink';
-import { ConnectionDot } from './ConnectionDot';
 import { TABS, tabForView } from './routes';
 
 const ICONS: Partial<Record<ViewType, React.ReactNode>> = {
@@ -70,18 +65,6 @@ export const Sidebar: React.FC = () => {
           </button>
         ))}
       </div>
-
-      {!collapsed && (
-        <div css={footerStyle}>
-          <TenantSwitch stacked />
-          <UserMenu />
-          <ModeSwitch />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <ConnectionDot />
-            <VersionLink />
-          </div>
-        </div>
-      )}
     </nav>
   );
 };
@@ -199,15 +182,4 @@ const activeItemStyle = css`
   &:hover {
     color: var(--accent-primary);
   }
-`;
-
-const footerStyle = css`
-  margin-top: auto;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border-default);
-  font-family: var(--font-mono);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
 `;

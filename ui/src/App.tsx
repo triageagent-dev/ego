@@ -10,6 +10,7 @@ import { RunsView } from './components/runs/RunsView';
 import { UsageView } from './components/usage/UsageView';
 import { QualityView } from './components/quality/QualityView';
 import { TabBar } from './components/shell/TabBar';
+import { ClassicHeader } from './components/shell/ClassicHeader';
 import { Sidebar } from './components/shell/Sidebar';
 import { useUiMode } from './lib/mode';
 import { startConnectionMonitor } from './lib/connection';
@@ -85,6 +86,19 @@ function AppContent() {
   useShellNavigation();
   useEffect(() => startConnectionMonitor(), []);
 
+  const views = (
+    <main style={{ flex: 1, overflow: 'auto', minHeight: 0, minWidth: 0 }}>
+      {state.currentView === 'upload' && <UploadView />}
+      {state.currentView === 'dashboard' && <DashboardView />}
+      {state.currentView === 'inspector' && <InspectorView />}
+      {state.currentView === 'builder' && <BuilderView />}
+      {state.currentView === 'streaming' && <LiveStreamingView />}
+      {state.currentView === 'runs' && <RunsView />}
+      {state.currentView === 'usage' && <UsageView />}
+      {state.currentView === 'quality' && <QualityView />}
+    </main>
+  );
+
   return (
     <div style={mode === 'tui'
       ? { display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }
@@ -93,16 +107,12 @@ function AppContent() {
       : { display: 'flex', flexDirection: 'row', height: `${100 / CLASSIC_ZOOM}vh`, zoom: CLASSIC_ZOOM, overflow: 'hidden' }}>
       <SessionExpiredBanner />
       {mode === 'tui' ? <TabBar /> : <Sidebar />}
-      <main style={{ flex: 1, overflow: 'auto', minHeight: 0, minWidth: 0 }}>
-        {state.currentView === 'upload' && <UploadView />}
-        {state.currentView === 'dashboard' && <DashboardView />}
-        {state.currentView === 'inspector' && <InspectorView />}
-        {state.currentView === 'builder' && <BuilderView />}
-        {state.currentView === 'streaming' && <LiveStreamingView />}
-        {state.currentView === 'runs' && <RunsView />}
-        {state.currentView === 'usage' && <UsageView />}
-        {state.currentView === 'quality' && <QualityView />}
-      </main>
+      {mode === 'tui' ? views : (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
+          <ClassicHeader />
+          {views}
+        </div>
+      )}
     </div>
   );
 }
