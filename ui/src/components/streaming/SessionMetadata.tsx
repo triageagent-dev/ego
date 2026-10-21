@@ -29,7 +29,7 @@ function MetadataItem({ label, children }: { label: string; children: React.Reac
   return (
     <div>
       <div style={{
-        fontSize: '10px',
+        fontSize: '11px',
         color: 'var(--text-tertiary)',
         marginBottom: '4px',
         fontWeight: 600,
@@ -38,7 +38,7 @@ function MetadataItem({ label, children }: { label: string; children: React.Reac
         {label}
       </div>
       <div style={{
-        fontSize: '13px',
+        fontSize: '14px',
         fontWeight: 400,
         color: 'var(--text-primary)',
       }}>
