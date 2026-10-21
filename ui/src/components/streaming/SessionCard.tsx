@@ -94,8 +94,10 @@ function RoundBadge({ n, title, color, background }: { n: number; title: string;
   );
 }
 
+// The date badge and the text after the badges have colours of their own, none shared with another badge.
+const WHEN_COLOR = '#d6c28f';
+const KIND_COLOR = '#5eead4';
 const TURNS_TONE = { color: '#fb923c', background: 'rgba(251, 146, 60, 0.16)' };
-const CALLS_TONE = { color: '#fb7185', background: 'rgba(251, 113, 133, 0.16)' };
 
 export function SessionCard({ defaultExpanded, session, isSelected, onSelect, onRemove, evaluationResult, compareOption }: SessionCardProps) {
   const [expanded, setExpanded] = useState(!!defaultExpanded);
@@ -136,22 +138,11 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
   const totalCacheCreation = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheCreationTokens || 0), 0) || 0;
   const totalCacheRead = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheReadTokens || 0), 0) || 0;
 
-  // The line under the badges: when, what ran, how many calls, and errors last.
-  const details: Array<{ key: string; text: string; error?: boolean; round?: boolean; title?: string }> = [];
-  if (session.startedAt) {
-    details.push({ key: 'when', text: formatStarted(session.startedAt) });
-  }
-  if (session.rootSpanName) details.push({ key: 'root', text: session.rootSpanName });
-  if (session.status === 'complete' && session.llmCalls != null) {
-    details.push({
-      key: 'calls',
-      text: String(session.llmCalls),
-      round: true,
-      title: session.llmCalls === 0 ? 'no LLM call' : `${session.llmCalls} LLM call${session.llmCalls === 1 ? '' : 's'}`,
-    });
-  }
+  // The text after the badges: what ran, and errors last.
+  const details: Array<{ key: string; text: string; color: string }> = [];
+  if (session.rootSpanName) details.push({ key: 'root', text: session.rootSpanName, color: KIND_COLOR });
   if ((session.errors ?? 0) > 0) {
-    details.push({ key: 'errors', text: `${session.errors} error${session.errors === 1 ? '' : 's'}`, error: true });
+    details.push({ key: 'errors', text: `${session.errors} error${session.errors === 1 ? '' : 's'}`, color: '#ef4444' });
   }
 
   return (
@@ -182,6 +173,23 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
       }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {session.startedAt && (
+              <span
+                title={new Date(session.startedAt).toLocaleString()}
+                style={{
+                  fontSize: '12.5px',
+                  fontWeight: 500,
+                  color: WHEN_COLOR,
+                  background: 'rgba(214, 194, 143, 0.1)',
+                  padding: '1px 7px',
+                  borderRadius: 'var(--radius)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {formatStarted(session.startedAt)}
+              </span>
+            )}
+
             {tenantLabel && (
               <span
                 title="tenant"
@@ -298,11 +306,7 @@ export function SessionCard({ defaultExpanded, session, isSelected, onSelect, on
                 {details.map((d, i) => (
                   <Fragment key={d.key}>
                     {i > 0 && <span aria-hidden>·</span>}
-                    {d.round ? (
-                      <RoundBadge n={Number(d.text)} title={d.title ?? ''} {...CALLS_TONE} />
-                    ) : (
-                      <span style={d.error ? { color: '#ef4444', fontWeight: 600 } : { color: 'var(--text-secondary)' }}>{d.text}</span>
-                    )}
+                    <span style={{ color: d.color, fontWeight: d.key === 'errors' ? 600 : 400 }}>{d.text}</span>
                   </Fragment>
                 ))}
               </span>
