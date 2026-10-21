@@ -433,7 +433,7 @@ const metricCardStyles = (borderColor: string) => css`
 
   &:hover {
     border-color: ${borderColor};
-    box-shadow: none;
+    box-shadow: 0 0 20px ${borderColor}33;
     transform: translateY(-2px);
   }
 `;
@@ -488,6 +488,7 @@ const statusBadgeStyles = (color: string) => css`
   color: ${color};
   font-size: 0.75rem;
   font-weight: 600;
+  letter-spacing: 0.5px;
 `;
 
 const comparisonGridStyles = css`
@@ -509,6 +510,8 @@ const columnLabelStyles = css`
   font-size: 0.688rem;
   font-weight: 600;
   color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 `;
 
 const columnContentStyles = css`
@@ -606,6 +609,8 @@ const perInvocationLabelStyles = css`
   font-size: 0.688rem;
   color: var(--text-secondary);
   margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 `;
 
 const scoresListStyles = css`
@@ -656,6 +661,8 @@ const miniColumnLabelStyles = css`
   font-size: 0.625rem;
   font-weight: 600;
   color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   margin-bottom: 4px;
 `;
 
@@ -708,7 +715,7 @@ const diffHintStyles = css`
 
 const jevVerdictStyles = css`
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 11px;
   font-family: var(--font-mono);
   color: var(--text-secondary);
 `;

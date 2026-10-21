@@ -91,7 +91,7 @@ const tabStyle = css`
 
   kbd {
     font: inherit;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-muted);
   }
 

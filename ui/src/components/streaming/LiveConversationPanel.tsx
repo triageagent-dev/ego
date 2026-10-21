@@ -162,7 +162,7 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
           marginBottom: '8px',
         }}>
           <div style={{
-            fontSize: '12px',
+            fontSize: '11px',
             fontWeight: 600,
             color: 'var(--text-tertiary)',
             display: 'flex',
@@ -187,16 +187,16 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {turns.length > 1 && (
-              <div style={{ display: 'flex', gap: '8px', fontSize: '12px' }}>
+              <div style={{ display: 'flex', gap: '8px', fontSize: '11px' }}>
                 <button
                   onClick={() => setAllExpanded(true)}
-                  style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: 0, fontSize: '12px' }}
+                  style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: 0, fontSize: '11px' }}
                 >
                   Expand all
                 </button>
                 <button
                   onClick={() => setAllExpanded(false)}
-                  style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: 0, fontSize: '12px' }}
+                  style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: 0, fontSize: '11px' }}
                 >
                   Collapse all
                 </button>
@@ -204,7 +204,7 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
             )}
 
             <label style={{
-              fontSize: '12px',
+              fontSize: '11px',
               color: 'var(--text-tertiary)',
               display: 'flex',
               alignItems: 'center',
@@ -267,25 +267,27 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
                   userSelect: 'none',
                 }}
               >
-                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', width: '10px', flexShrink: 0 }}>
+                <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', width: '10px', flexShrink: 0 }}>
                   {isExpanded ? '▾' : '▸'}
                 </span>
                 <span style={{
-                  fontSize: '12px',
+                  fontSize: '10px',
                   fontWeight: 700,
                   color: '#a79ff0',
+                  textTransform: 'uppercase' as const,
+                  letterSpacing: '0.5px',
                   flexShrink: 0,
                 }}>
                   Turn {i + 1}
                 </span>
                 {modelInfo?.turnStartedAt != null && (
-                  <span title="When this turn started" style={{ fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>
+                  <span title="When this turn started" style={{ fontSize: '10px', color: 'var(--text-muted)', flexShrink: 0 }}>
                     {formatTurnTime(modelInfo.turnStartedAt)}
                   </span>
                 )}
                 {toolCount > 0 && (
                   <span style={{
-                    fontSize: '12px',
+                    fontSize: '10px',
                     fontWeight: 600,
                     color: toolErrorCount > 0 ? '#ef4444' : 'var(--text-tertiary)',
                     background: toolErrorCount > 0 ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-primary)',
@@ -300,7 +302,7 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
                 )}
                 {tokens != null && (
                   <span style={{
-                    fontSize: '12px',
+                    fontSize: '10px',
                     fontWeight: 600,
                     color: '#10b981',
                     background: 'rgba(16, 185, 129, 0.08)',
@@ -313,7 +315,7 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
                 )}
                 {modelInfo?.turnLatencyMs != null && (
                   <span style={{
-                    fontSize: '12px',
+                    fontSize: '10px',
                     fontWeight: 600,
                     color: 'var(--text-tertiary)',
                     flexShrink: 0,
@@ -335,7 +337,7 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
                   </span>
                 )}
                 {isLast && isActive && !hasAgentResponse && (
-                  <span style={{ fontSize: '12px', color: '#10b981', fontWeight: 600, marginLeft: 'auto', flexShrink: 0 }}>
+                  <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 600, marginLeft: 'auto', flexShrink: 0 }}>
                     in progress
                   </span>
                 )}

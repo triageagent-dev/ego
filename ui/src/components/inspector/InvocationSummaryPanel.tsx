@@ -197,12 +197,12 @@ const invocationCardStyles = (selected: boolean) => css`
   padding: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: none;
+  box-shadow: ${selected ? 'var(--glow-info)' : 'none'};
 
   &:hover {
     border-color: var(--accent-primary);
     transform: translateY(-2px);
-    box-shadow: none;
+    box-shadow: ${selected ? 'var(--glow-info)' : '0 4px 16px rgba(181, 171, 252, 0.15)'};
   }
 `;
 
@@ -248,6 +248,8 @@ const sectionLabelStyles = css`
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
 `;
 

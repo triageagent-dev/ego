@@ -41,7 +41,7 @@ const cardStyle = css`
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
   }
 
@@ -72,7 +72,7 @@ const cardStyle = css`
 
   .per-invocation {
     margin-top: 6px;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-muted);
   }
 

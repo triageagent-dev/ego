@@ -313,6 +313,6 @@ const backButtonStyles = css`
 
   &:hover {
     background: var(--accent-purple);
-    box-shadow: none;
+    box-shadow: 0 0 20px rgba(181, 171, 252, 0.3);
   }
 `;

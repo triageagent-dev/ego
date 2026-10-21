@@ -76,7 +76,7 @@ const pagerStyle = css`
   justify-content: center;
   gap: 8px;
   padding: 8px 0;
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-secondary);
 
   button {

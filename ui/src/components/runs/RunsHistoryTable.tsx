@@ -154,7 +154,9 @@ const tableStyle = css`
     color: var(--text-primary);
     font-weight: 600;
     border-bottom: 2px solid var(--border-default);
-    font-size: 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
     padding: 5px 12px;
   }
 

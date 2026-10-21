@@ -91,6 +91,8 @@ const labelBadgeStyles = (color: string) => css`
   flex-shrink: 0;
   font-size: 0.625rem;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   color: ${color};
   border: 1px solid ${color};
   border-radius: var(--radius);

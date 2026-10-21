@@ -36,7 +36,9 @@ const tableStyle = css`
     color: var(--text-primary);
     font-weight: 600;
     border-bottom: 2px solid var(--border-default);
-    font-size: 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
     padding: 12px 16px;
   }
 
@@ -292,20 +294,20 @@ export const AnnotationTable: React.FC<AnnotationTableProps> = ({
             }}
           >
             <div style={{
-              fontSize: '12px', fontWeight: 700, color: '#a79ff0',
-              marginBottom: '12px',
+              fontSize: '11px', fontWeight: 700, color: '#a79ff0',
+              marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px',
             }}>
               Turn {idx + 1}
             </div>
             <div style={{ marginBottom: '8px' }}>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '4px' }}>User</div>
+              <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>User</div>
               <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius)', borderLeft: '3px solid #a79ff0' }}>
                 {inv.userText || '(no text)'}
               </div>
             </div>
             {inv.toolCalls.length > 0 && (
               <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '4px' }}>Tool Calls</div>
+                <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Tool Calls</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   {inv.toolCalls.map((tc, i) => (
                     <div key={i} style={{ fontSize: '12px', color: '#b5abfc', fontFamily: 'monospace', background: 'rgba(181, 171, 252, 0.08)', padding: '6px 10px', borderRadius: 'var(--radius)' }}>
@@ -317,7 +319,7 @@ export const AnnotationTable: React.FC<AnnotationTableProps> = ({
             )}
             {inv.agentText && (
               <div>
-                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '4px' }}>Agent</div>
+                <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Agent</div>
                 <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', padding: '8px 12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius)', borderLeft: '3px solid #10b981' }}>
                   {inv.agentText}
                 </div>

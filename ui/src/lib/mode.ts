@@ -11,10 +11,9 @@ const CLASSIC_FONTS =
 
 export function storedMode(): UiMode {
   try {
-    // Classic is the default; the terminal look is kept for whoever chose it.
-    return localStorage.getItem(KEY) === 'tui' ? 'tui' : 'classic';
+    return localStorage.getItem(KEY) === 'classic' ? 'classic' : 'tui';
   } catch {
-    return 'classic';
+    return 'tui';
   }
 }
 
@@ -40,10 +39,10 @@ export function applyMode(mode: UiMode, persist = true): void {
 
 export function useUiMode(): [UiMode, (m: UiMode) => void] {
   const [mode, setModeState] = useState<UiMode>(() =>
-    document.documentElement.dataset.mode === 'tui' ? 'tui' : 'classic',
+    document.documentElement.dataset.mode === 'classic' ? 'classic' : 'tui',
   );
   useEffect(() => {
-    const sync = () => setModeState(document.documentElement.dataset.mode === 'tui' ? 'tui' : 'classic');
+    const sync = () => setModeState(document.documentElement.dataset.mode === 'classic' ? 'classic' : 'tui');
     window.addEventListener(CHANGED, sync);
     return () => window.removeEventListener(CHANGED, sync);
   }, []);

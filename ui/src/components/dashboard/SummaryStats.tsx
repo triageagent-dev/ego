@@ -33,6 +33,8 @@ const statsStyle = css`
   .stat-label {
     font-size: 14px;
     color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
 
   .pass-rate-card {

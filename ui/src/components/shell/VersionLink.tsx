@@ -33,7 +33,7 @@ const linkStyle = css`
   align-items: center;
   gap: 6px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11.5px;
 
   &:hover {
     color: var(--accent-primary);

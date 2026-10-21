@@ -34,10 +34,10 @@
   --radius: 3px;
 
   /* Glows */
-  --glow-success: none;
-  --glow-failure: none;
-  --glow-info: none;
-  --glow-warning: none;
+  --glow-success: 0 0 12px rgba(74, 222, 128, 0.25);
+  --glow-failure: 0 0 12px rgba(248, 113, 113, 0.25);
+  --glow-info: 0 0 12px rgba(181, 171, 252, 0.2);
+  --glow-warning: 0 0 12px rgba(245, 158, 11, 0.25);
 
   /* Type: one monospace face everywhere */
   --font-mono: Menlo, 'JetBrains Mono', 'SF Mono', Consolas, monospace;
@@ -74,9 +74,7 @@
   --border-default: #3a4052;
   --radius: 6px;
 
-  /* Titles, labels, scores and numbers use the proportional face; only ids and hashes stay monospace. */
-  --font-mono: 'Archivo', sans-serif;
-  --font-code: 'IBM Plex Mono', Menlo, monospace;
+  --font-mono: 'IBM Plex Mono', Menlo, monospace;
   --font-display: 'Archivo', sans-serif;
   --font-body: 'Archivo', sans-serif;
   --body-size: 14px;
@@ -97,7 +95,6 @@
 
 body {
   font-family: var(--font-body);
-  font-variant-numeric: tabular-nums;
   background-color: var(--bg-primary);
   color: var(--text-secondary);
   line-height: 1.45;

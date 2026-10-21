@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { ChevronRight, AlertTriangle, FileJson } from 'lucide-react';
 import { message, Button } from 'antd';
 import type { TraceResult } from '../../lib/types';
-import { truncateTraceId, getStatusColor, copyToClipboard } from '../../lib/utils';
+import { truncateTraceId, getStatusColor, getStatusGlow, copyToClipboard } from '../../lib/utils';
 import { MetricScoreCard } from './MetricScoreCard';
 import { useTraceContext } from '../../context/TraceContext';
 import { generateEvalSet } from '../../lib/evalset-builder';
@@ -27,7 +27,7 @@ const cardStyle = css`
 
   &:hover {
     transform: translateY(-4px);
-    box-shadow: none;
+    box-shadow: 0 8px 32px rgba(181, 171, 252, 0.15);
     border-color: var(--accent-primary);
   }
 
@@ -83,7 +83,9 @@ const cardStyle = css`
   .metrics-title {
     font-size: 12px;
     color: var(--text-muted);
+    text-transform: uppercase;
     margin-bottom: 8px;
+    letter-spacing: 0.5px;
   }
 
   .metrics-list {
@@ -157,6 +159,7 @@ export const TraceCard: React.FC<TraceCardProps> = ({ traceResult, threshold, on
     'PASSED';
 
   const statusColor = getStatusColor(overallStatus as any);
+  const statusGlow = getStatusGlow(overallStatus as any);
 
   const handleCopyTraceId = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -206,7 +209,7 @@ export const TraceCard: React.FC<TraceCardProps> = ({ traceResult, threshold, on
           style={{
             backgroundColor: `${statusColor}20`,
             border: `1px solid ${statusColor}60`,
-            boxShadow: 'none'
+            boxShadow: statusGlow
           }}
         >
           <div

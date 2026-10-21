@@ -74,7 +74,7 @@ const sectionContainerStyles = (color: string, isHighlighted: boolean) => css`
 
   ${isHighlighted && `
     border-color: ${color};
-    box-shadow: none;
+    box-shadow: 0 0 16px ${color}33;
   `}
 
   &:hover {
@@ -110,6 +110,7 @@ const iconContainerStyles = (color: string) => css`
 const titleStyles = css`
   font-size: 0.875rem;
   font-weight: 600;
+  letter-spacing: 0.3px;
 `;
 
 const sectionContentStyles = css`

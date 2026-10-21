@@ -138,7 +138,7 @@ const itemNameStyle = css`
 `;
 
 const itemMetaStyle = css`
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-muted);
 `;
 

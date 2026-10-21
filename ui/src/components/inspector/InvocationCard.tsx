@@ -117,7 +117,7 @@ const cardStyles = (isSelected: boolean) => css`
 
   ${isSelected && `
     border-color: var(--accent-primary);
-    box-shadow: none;
+    box-shadow: 0 0 20px rgba(181, 171, 252, 0.2);
   `}
 
   &:hover {
@@ -147,6 +147,7 @@ const invocationNumberStyles = css`
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--accent-primary);
+  letter-spacing: 0.3px;
 `;
 
 const invocationIdStyles = css`
