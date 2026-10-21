@@ -104,7 +104,7 @@ export const OnlineScoresPanel: React.FC<Props> = ({ sessionId }) => {
 
 // A thumb, up for agree and down for disagree, drawn in the button's colour.
 const ThumbIcon = ({ up = false }: { up?: boolean }) => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
     strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
     style={up ? undefined : { transform: 'scaleY(-1)' }}>
     <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z" />
@@ -121,7 +121,7 @@ const panelStyle = css`
   padding: 8px 0;
   margin-bottom: 8px;
   border-bottom: 1px solid var(--border);
-  font-size: 12.5px;
+  font-size: 14px;
   display: grid;
   /* metric | score | thumbs | note | verdict */
   grid-template-columns: max-content max-content max-content minmax(160px, 420px) 1fr;
@@ -136,7 +136,7 @@ const thumbsStyle = css`
 `;
 
 const headStyle = css`
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-tertiary);
@@ -161,13 +161,15 @@ const scoreStyle = css`
 `;
 
 const btnStyle = css`
-  padding: 1px 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
   border-radius: var(--radius);
   border: 1px solid var(--border-default);
   background: transparent;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 14px;
   cursor: pointer;
   &:hover:not(:disabled) {
     color: var(--text-primary);
@@ -182,12 +184,12 @@ const onStyle = css`
 
 const noteStyle = css`
   width: 100%;
-  padding: 1px 6px;
+  padding: 4px 8px;
   border-radius: var(--radius);
   border: 1px solid var(--border-default);
   background: transparent;
   color: var(--text-primary);
-  font-size: 11.5px;
+  font-size: 14px;
 `;
 
 const dimStyle = css`
