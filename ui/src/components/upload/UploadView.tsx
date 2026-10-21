@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Select, Slider } from 'antd';
 import { css } from '@emotion/react';
-import { Play, Pencil } from 'lucide-react';
+import { Play, Pencil, Settings } from 'lucide-react';
 import { FileDropZone } from './FileDropZone';
 import { MetricGroup, useMetricGroups } from './MetricSelector';
 import { SessionPicker } from './SessionPicker';
@@ -173,6 +173,29 @@ const sideStatsStyle = css`
   color: var(--text-tertiary);
 `;
 
+const settingsButtonStyle = css`
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 7px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+  }
+`;
+
+const settingsButtonOnStyle = css`
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  background: rgba(167, 159, 240, 0.12);
+`;
+
 const cardOpenStyle = css`
   background: var(--bg-elevated);
   border-color: var(--accent-primary);
@@ -326,6 +349,8 @@ export const UploadView: React.FC = () => {
   }, []);
   const [picked, setPicked] = useState('');
   const section = picked || SOURCES;
+  // The settings are not a step of the list: they open from the icon in the header, over the details.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [evalSetDrawerOpen, setEvalSetDrawerOpen] = useState(false);
   const [traceEditorIndex, setTraceEditorIndex] = useState<number | null>(null);
 
@@ -342,9 +367,12 @@ export const UploadView: React.FC = () => {
   const card = (id: string, title: string, extra: React.ReactNode, chips: React.ReactNode, desc?: React.ReactNode, side?: React.ReactNode) => (
     <button
       key={id}
-      css={[cardStyle, section === id && cardOpenStyle]}
-      onClick={() => setPicked(id)}
-      aria-pressed={section === id}
+      css={[cardStyle, !settingsOpen && section === id && cardOpenStyle]}
+      onClick={() => {
+        setPicked(id);
+        setSettingsOpen(false);
+      }}
+      aria-pressed={!settingsOpen && section === id}
     >
       <span css={cardMainStyle} style={side ? undefined : { gridColumn: '1 / -1' }}>
         <span css={cardTitleStyle}>{title}{extra}</span>
@@ -528,6 +556,15 @@ export const UploadView: React.FC = () => {
         <p css={subtitleStyle}>
           traces + a golden set, scored by the metrics you pick
         </p>
+        <button
+          css={[settingsButtonStyle, settingsOpen && settingsButtonOnStyle]}
+          onClick={() => setSettingsOpen((o) => !o)}
+          title={`Settings: ${state.judgeModel} · pass ≥ ${state.threshold}`}
+          aria-label="Settings"
+          aria-pressed={settingsOpen}
+        >
+          <Settings size={15} />
+        </button>
       </PageTitle>
 
       {state.errors.length > 0 && (
@@ -605,21 +642,6 @@ export const UploadView: React.FC = () => {
               </>,
             );
           })}
-          {card(
-            SETTINGS,
-            'settings',
-            null,
-            <>
-              <span css={chipStyle}>{state.judgeModel}</span>
-              <span css={chipStyle}>pass ≥ {state.threshold}</span>
-            </>,
-            null,
-            <>
-              <span>The model that judges, and the score a trace needs to pass.</span>
-              <span css={sideWhenStyle}>Keep both the same from run to run, so the scores stay comparable.</span>
-            </>,
-          )}
-
           <div style={{ marginTop: 6 }}>
             <Button
               type="primary"
@@ -639,7 +661,7 @@ export const UploadView: React.FC = () => {
           </div>
         </div>
 
-        <aside css={detailsStyle}>{detailsOf(section)}</aside>
+        <aside css={detailsStyle}>{detailsOf(settingsOpen ? SETTINGS : section)}</aside>
       </div>
 
       {state.evalSetFile && (
