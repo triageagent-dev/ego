@@ -226,7 +226,7 @@ func authLogoutHandler(secret string, revoked *revocations) http.HandlerFunc {
 			}
 		}
 		deleteCookie(w, sessionCookieName)
-		http.Redirect(w, r, "/evals", http.StatusSeeOther)
+		http.Redirect(w, r, "/auth/signed-out", http.StatusSeeOther)
 	}
 }
 

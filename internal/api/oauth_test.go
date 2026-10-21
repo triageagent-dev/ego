@@ -167,8 +167,8 @@ func TestAuthLogoutHandler_ClearsSessionCookieAndRedirects(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
 	}
-	if got := rec.Header().Get("Location"); got != "/evals" {
-		t.Errorf("Location = %q, want %q", got, "/evals")
+	if got := rec.Header().Get("Location"); got != "/auth/signed-out" {
+		t.Errorf("Location = %q, want %q", got, "/auth/signed-out")
 	}
 	var cleared *http.Cookie
 	for _, c := range rec.Result().Cookies() {

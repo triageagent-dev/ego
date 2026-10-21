@@ -239,6 +239,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		topMux.HandleFunc("/auth/login", authLoginHandler(githubOAuth))
 		topMux.HandleFunc("/auth/callback", authCallbackHandler(githubOAuth, roleStore))
 		topMux.HandleFunc("/auth/logout", authLogoutHandler(sessionSecret, revoked))
+		topMux.HandleFunc("/auth/signed-out", signedOutHandler)
 		logx.Infof("independent GitHub OAuth enabled for %s: org=%q, callback=%q", addr, githubOAuth.Org, githubOAuth.callbackURL())
 	}
 	if roleStore != nil {

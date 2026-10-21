@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -50,5 +51,25 @@ func TestLogoutIsPostOnly(t *testing.T) {
 	h(rec, httptest.NewRequest(http.MethodPost, "/auth/logout", nil))
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("POST /auth/logout = %d, want 303", rec.Code)
+	}
+}
+
+func TestSignedOutPageIsTheLogoLinkingToSignIn(t *testing.T) {
+	rec := httptest.NewRecorder()
+	signedOutHandler(rec, httptest.NewRequest(http.MethodGet, "/auth/signed-out", nil))
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Header().Get("Content-Type"), "text/html") || rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("signed-out = %d %v", rec.Code, rec.Header())
+	}
+	if !strings.Contains(body, `href="/auth/login"`) || !strings.Contains(body, "<svg") {
+		t.Errorf("the page must be the logo linking to sign-in:\n%s", body)
+	}
+	if strings.Contains(body, "<script") {
+		t.Error("the page must not run script")
+	}
+	rec = httptest.NewRecorder()
+	signedOutHandler(rec, httptest.NewRequest(http.MethodPost, "/auth/signed-out", nil))
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("POST = %d, want 405", rec.Code)
 	}
 }
