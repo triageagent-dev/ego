@@ -12,7 +12,7 @@ export const TABS: Tab[] = [
   { key: '1', label: 'sessions', view: 'streaming', also: ['annotation-queue'] },
   { key: '2', label: 'evaluate', view: 'upload', also: ['dashboard', 'inspector', 'comparison'] },
   { key: '3', label: 'runs', view: 'runs' },
-  { key: '4', label: 'tokens', view: 'usage' },
+  { key: '4', label: 'usage', view: 'usage' },
   { key: '5', label: 'quality', view: 'quality' },
   { key: '6', label: 'sets', view: 'builder' },
 ];
@@ -33,7 +33,8 @@ export function parseHash(hash: string): { name: string; params: URLSearchParams
 
 export function viewForHash(hash: string): ViewType | null {
   const { name } = parseHash(hash);
-  return TABS.find((t) => t.label === name)?.view ?? null;
+  // The tab was called "tokens" before; old links keep working.
+  return TABS.find((t) => t.label === (name === 'tokens' ? 'usage' : name))?.view ?? null;
 }
 
 /** A link target that opens the sessions tab on one session, expanded. */
