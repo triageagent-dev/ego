@@ -6,12 +6,11 @@
 
 <p align="center"><b>Reality testing for AI agents</b></p>
 
+In psychology, the ego is the part of the mind that tests reality: it tells what is imagined from what actually happened, and holds the self-image up against the world. An agent has the same split.
+
 ego scores AI agents from the OpenTelemetry traces they already emit, and closes the loop: when scores drop it
 diagnoses why, hands the diagnosis to the agent over MCP, records what the agent changed and checks that the
 scores recovered. It never re-runs the agent.
-
-The name: the ego is the part of the mind that tests reality. ego holds an agent's answer against what its tools
-actually returned.
 
 One static Go binary: REST API, web UI, OTLP receivers and an MCP server. No SDK to add, no extra runtime.
 
