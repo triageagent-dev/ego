@@ -1,6 +1,7 @@
 import { OnlineScoresPanel } from './OnlineScoresPanel';
 import { SessionMetadata } from './SessionMetadata';
 import { SpansPanel } from './SpansPanel';
+import { ClaudeCodePanel } from './ClaudeCodePanel';
 import { LiveConversationPanel } from './LiveConversationPanel';
 import { sessionFigures, type SessionCardProps } from './SessionCard';
 import { formatTurnTime } from '../../lib/trace-helpers';
@@ -188,6 +189,8 @@ export function SessionDetails({ session }: { session: SessionCardProps['session
         </div>
         </details>
       )}
+
+      {session.rootSpanName?.startsWith('claude_code.') && <ClaudeCodePanel sessionId={session.sessionId} />}
 
       {session.status === 'complete' && <OnlineScoresPanel sessionId={session.sessionId} />}
       {<SpansPanel sessionId={session.sessionId} />}
