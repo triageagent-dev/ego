@@ -273,6 +273,7 @@ over HTTP; it adds `evaluate_traces`, which scores local files.
 | `label_session` | Agree or disagree with a judge's score, with a note. For people, not for the agent that produced the session. |
 | `get_usage` | Token spend in a window, by kind, tenant, model or service, and the largest sessions. |
 | `list_sessions`, `summarize_session` | Sessions with filters (agent, tenant, since, text, complete); one session's turns and tool calls. |
+| `get_session_spans` | One session's spans with their attributes; `errors_only` returns the failed ones with their message and their parent's attributes, to find why a session shows an error. |
 | `list_metrics`, `list_runs`, `get_run_results` | Metrics; evaluation runs and their per-case results. |
 | `run_findings` | Run the findings sweep now. Admin. |
 | `list_role_bindings`, `set_role_binding`, `delete_role_binding` | Manage roles. Admin; on stdio only with `--admin-tools`. |
