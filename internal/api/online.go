@@ -250,6 +250,7 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		MetricResults:      []metricResultDTO{},
 		ConversionWarnings: []string{},
 		AgentName:          f.Service,
+		Model:              f.Model,
 	}, invocations, evaluators, nil, e.getJudge(evalCtx), noVertexEval, e.getJev, nil)
 	for i := range result.MetricResults {
 		result.MetricResults[i] = unscoredAsError(result.MetricResults[i])
@@ -397,7 +398,7 @@ func (e *OnlineEngine) recordRun(f online.Features, p online.Profile, result tra
 			Score:               m.Score,
 			PerInvocationScores: m.PerInvocationScores,
 			TraceID:             &traceID,
-			Details:             withAgent(m.Details, f.Service),
+			Details:             withSource(m.Details, f.Service, f.Model),
 			ErrorText:           m.Error,
 			CreatedAt:           created,
 		})
@@ -408,13 +409,19 @@ func (e *OnlineEngine) recordRun(f online.Features, p online.Profile, result tra
 	return hr.runID
 }
 
-// withAgent records the session's service in a result's details, so the
-// run summary can name its agents for role scoping.
-func withAgent(details map[string]any, service string) map[string]any {
-	if service == "" {
+// withSource records the session's service and model in a result's details, so the run summary can name its
+// agents (for role scoping) and its models.
+func withSource(details map[string]any, service, model string) map[string]any {
+	if service == "" && model == "" {
 		return details
 	}
-	out := map[string]any{"agent": service}
+	out := map[string]any{}
+	if service != "" {
+		out["agent"] = service
+	}
+	if model != "" {
+		out["model"] = model
+	}
 	for k, v := range details {
 		out[k] = v
 	}
@@ -439,12 +446,16 @@ func summarizeResultRows(rows []runResultRowDTO) runSummaryDTO {
 	summary := runSummaryDTO{PerMetric: map[string]perMetricSummaryDTO{}}
 	sessions := map[string]bool{}
 	agents := map[string]bool{}
+	models := map[string]bool{}
 	sums := map[string]float64{}
 	scored := map[string]int{}
 	for _, r := range rows {
 		sessions[r.EvalSetItemID] = true
 		if a, _ := r.Details["agent"].(string); a != "" {
 			agents[a] = true
+		}
+		if m, _ := r.Details["model"].(string); m != "" {
+			models[m] = true
 		}
 		pm := summary.PerMetric[r.EvaluatorName]
 		switch r.Status {
@@ -475,6 +486,7 @@ func summarizeResultRows(rows []runResultRowDTO) runSummaryDTO {
 		summary.Agents = append(summary.Agents, a)
 	}
 	sort.Strings(summary.Agents)
+	summary.Models = sortedKeys(models)
 	return summary
 }
 

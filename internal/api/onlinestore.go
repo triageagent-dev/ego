@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -569,4 +570,42 @@ func (s *SQLiteStore) FailedOnlineSessions(fromMs, toMs int64, limit int) ([]fai
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+// backfillRunModels gives the finished online runs written before runs named their models the models their sessions
+// were scored with (online_scores keeps the model per session). A run that has them, or whose sessions have none,
+// is left as it is.
+func backfillRunModels(db *sql.DB) error {
+	rows, err := db.Query(`SELECT r.run_id, GROUP_CONCAT(DISTINCT sc.model)
+		FROM runs r
+		JOIN online_evals e ON e.run_id = r.run_id
+		JOIN online_scores sc ON sc.session_id = e.session_id AND sc.model != ''
+		WHERE r.summary_json IS NOT NULL AND json_extract(r.summary_json, '$.models') IS NULL
+		GROUP BY r.run_id`)
+	if err != nil {
+		return fmt.Errorf("reading run models: %w", err)
+	}
+	models := map[string][]string{}
+	for rows.Next() {
+		var id, joined string
+		if err := rows.Scan(&id, &joined); err != nil {
+			rows.Close()
+			return err
+		}
+		list := strings.Split(joined, ",")
+		sort.Strings(list)
+		models[id] = list
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for id, list := range models {
+		b, _ := json.Marshal(list)
+		if _, err := db.Exec(`UPDATE runs SET summary_json = json_set(summary_json, '$.models', json(?)) WHERE run_id = ?`, string(b), id); err != nil {
+			return fmt.Errorf("writing models of run %s: %w", id, err)
+		}
+	}
+	return nil
 }

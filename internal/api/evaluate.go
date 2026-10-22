@@ -97,6 +97,8 @@ type traceResultDTO struct {
 	MetricResults      []metricResultDTO `json:"metricResults"`
 	ConversionWarnings []string          `json:"conversionWarnings"`
 	AgentName          string            `json:"agentName,omitempty"`
+	// Model is the model the trace called (the first LLM span's), "" when it is not known.
+	Model string `json:"model,omitempty"`
 }
 
 // runResultDTO mirrors ui/src/lib/types.ts's RunResult.
@@ -529,6 +531,7 @@ func evaluateOneTrace(
 	onMetric func(traceResultDTO),
 ) traceResultDTO {
 	conv := adk.ConvertTrace(tr)
+	meta := adk.ExtractTraceMetadata(tr, conv.Invocations)
 	traceResult := traceResultDTO{
 		TraceID:        tr.TraceID,
 		NumInvocations: len(conv.Invocations),
@@ -537,7 +540,8 @@ func evaluateOneTrace(
 		// the UI reads conversionWarnings.length without optional chaining.
 		ConversionWarnings: append([]string{}, conv.Warnings...),
 		MetricResults:      []metricResultDTO{},
-		AgentName:          adk.ExtractTraceMetadata(tr, conv.Invocations).AgentName,
+		AgentName:          meta.AgentName,
+		Model:              meta.Model,
 	}
 
 	if len(conv.Invocations) == 0 {

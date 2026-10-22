@@ -36,7 +36,9 @@ type runSummaryDTO struct {
 	ResultCounts resultCountsDTO                `json:"result_counts"`
 	PerMetric    map[string]perMetricSummaryDTO `json:"per_metric,omitempty"`
 	Agents       []string                       `json:"agents,omitempty"`
-	Errors       []string                       `json:"errors,omitempty"`
+	// Models are the distinct models the run's traces called, as the Models column of the runs table shows them.
+	Models []string `json:"models,omitempty"`
+	Errors []string `json:"errors,omitempty"`
 }
 
 // runDTO mirrors ui/src/lib/types.ts's Run.
@@ -113,7 +115,10 @@ func listRunsHandler(store *SQLiteStore) http.HandlerFunc {
 				limit = clampLimit(n, limit)
 			}
 		}
-		visible, err := store.ListRunsFor(roleInfoOrOpen(r.Context()), q["status"], limit, q.Get("before"))
+		// The tenant picked in the switcher limits the list to that tenant's online runs, as it does usage and scores.
+		info := roleInfoOrOpen(r.Context())
+		info.Tenants = narrowTenants(info.Tenants, q.Get("tenant"))
+		visible, err := store.ListRunsFor(info, q["status"], limit, q.Get("before"))
 		if err != nil {
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to list runs: "+err.Error())
 			return
@@ -345,6 +350,7 @@ func persistCompletedRun(store *SQLiteStore, spec runSpecSummaryDTO, req *evalua
 		ResultCounts: counts,
 		PerMetric:    perMetric,
 		Agents:       distinctAgentNames(result.TraceResults),
+		Models:       distinctModels(result.TraceResults),
 		Errors:       result.Errors,
 	}
 
@@ -360,6 +366,27 @@ func persistCompletedRun(store *SQLiteStore, spec runSpecSummaryDTO, req *evalua
 		errMsg = &msg
 	}
 	return store.FinishRun(run.RunID, status, summary, errMsg)
+}
+
+// distinctModels lists the models the traces of a run called, sorted; nil when none could be read.
+func distinctModels(results []traceResultDTO) []string {
+	seen := map[string]bool{}
+	for _, r := range results {
+		if r.Model != "" {
+			seen[r.Model] = true
+		}
+	}
+	return sortedKeys(seen)
+}
+
+// sortedKeys is the keys of a set in order, nil when it is empty.
+func sortedKeys(set map[string]bool) []string {
+	var out []string
+	for k := range set {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Returns nil (not an empty slice) when no trace in this run had a resolvable agent name; a scoped role

@@ -316,7 +316,7 @@ export interface RunSummary {
   per_metric?: Record<string, PerMetricSummary>;
   agents?: string[];
   errors?: string[];
-  performance_metrics?: { models?: string[] } & Record<string, unknown>;
+  models?: string[];
 }
 
 // spec.evalSet/evalConfig are stored as raw dicts, so their inner keys keep

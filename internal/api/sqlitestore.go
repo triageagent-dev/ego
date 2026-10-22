@@ -108,6 +108,10 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := backfillRunModels(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 
 	logx.Infof("session archive: %s", path)
 	return &SQLiteStore{db: db}, nil

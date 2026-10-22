@@ -131,7 +131,7 @@ export const RunsHistoryTable: React.FC<RunsHistoryTableProps> = ({ runs, onSele
       width: 190,
       ellipsis: true,
       render: (_: unknown, run: Run) => {
-        const models = run.summary?.performance_metrics?.models;
+        const models = run.summary?.models;
         if (!Array.isArray(models) || models.length === 0) return <span css={mutedStyle}>-</span>;
         return <span css={modelsStyle} title={models.join('\n')}>{modelsLabel(models)}</span>;
       },
