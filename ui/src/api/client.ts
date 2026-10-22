@@ -11,6 +11,7 @@ import type {
   EvalSet,
   EvalSetSummary,
   UsageSeries,
+  ThreadRow,
   LimitItem,
   UsageCall,
   UsageSession,
@@ -380,6 +381,13 @@ export async function getUsage(hours: number): Promise<UsageSeries> {
   if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load usage: ${httpStatusLabel(response)}`);
   return unwrap<UsageSeries>(response);
+}
+
+/** The threads the caller may see, the one seen last first (the picked tenant narrows them). */
+export async function getThreads(limit = 100): Promise<ThreadRow[]> {
+  const response = await fetch(withTenant(`${config.api.endpoints.threads}?limit=${limit}`));
+  if (!response.ok) throw new Error(`Failed to load threads: ${httpStatusLabel(response)}`);
+  return unwrap<ThreadRow[]>(response);
 }
 
 export async function getUsageLimits(): Promise<LimitItem[]> {

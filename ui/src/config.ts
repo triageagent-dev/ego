@@ -25,6 +25,7 @@ export const config = {
       evaluateStream: `${API_BASE_URL}/api/evaluate/stream`,
       runs: `${API_BASE_URL}/api/runs`,
       usage: `${API_BASE_URL}/api/usage`,
+      threads: `${API_BASE_URL}/api/threads`,
       usageLimits: `${API_BASE_URL}/api/usage/limits`,
       online: `${API_BASE_URL}/api/online`,
       onlineFindings: `${API_BASE_URL}/api/online/findings`,

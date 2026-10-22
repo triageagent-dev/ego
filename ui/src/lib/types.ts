@@ -613,6 +613,26 @@ export interface LiveSession {
   durationMs?: number;
   // Online evaluation scored it: the card shows judge scores a person can label.
   scored?: boolean;
+  // The sender's own id for the work this session is a part of, and its 1-based number in that thread. An always-on
+  // agent keeps one thread for weeks; ego cuts it into sessions (parts) of whole traces, the first under the
+  // thread's id and the n-th as `<thread>~n`.
+  thread?: string;
+  part?: number;
+}
+
+// One row of GET /api/threads.
+export interface ThreadRow {
+  thread: string;
+  firstSeen: string;
+  lastSeen: string;
+  segments: number;
+  // The newest segment still takes new traces.
+  open: boolean;
+  totalTokens: number;
+  // Mean online score of the newest scored segment.
+  lastScore?: number;
+  tenants?: string[];
+  agents?: string[];
 }
 
 // Inspector-specific types

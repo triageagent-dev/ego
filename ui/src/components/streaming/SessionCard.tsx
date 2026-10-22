@@ -64,7 +64,11 @@ export interface SessionCardProps {
     errors?: number;
     turns?: number;
     durationMs?: number;
+    thread?: string;
+    part?: number;
   };
+  /** Search the sessions for a thread: a click on the part chip. */
+  onSearchThread?: (thread: string) => void;
   isSelected: boolean;
   onSelect: () => void;
   onRemove?: () => void;
@@ -112,6 +116,7 @@ function shortTokens(n: number): string {
 // The date badge and the text after the badges have colours of their own, none shared with another badge.
 const WHEN_COLOR = '#d6c28f';
 const KIND_COLOR = '#5eead4';
+const PART_COLOR = '#a79ff0';
 const TURNS_TONE = { color: '#fb923c', background: 'rgba(251, 146, 60, 0.16)' };
 
 // What a session shows in its row and in its details: the conversation so far, the live token counts, the total
@@ -136,7 +141,7 @@ export function sessionFigures(session: SessionCardProps['session']) {
   return { conversationElements, liveStats, totalTokens, modelName };
 }
 
-export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onRemove, evaluationResult, compareOption }: SessionCardProps) {
+export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onRemove, evaluationResult, compareOption, onSearchThread }: SessionCardProps) {
   const { totalTokens, modelName } = sessionFigures(session);
   // Every model the session used, not the first and a count: `a / b`.
   const allModels = (session.models?.length ?? 0) > 1 ? session.models! : modelName ? [modelName] : [];
@@ -219,6 +224,30 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
               >
                 {formatStarted(session.startedAt)}
               </span>
+            )}
+
+            {(session.part ?? 1) > 1 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (session.thread) onSearchThread?.(session.thread);
+                }}
+                title={`Part ${session.part} of the thread ${session.thread ?? ''}: click to list every part`}
+                aria-label={`Part ${session.part}: search the thread`}
+                style={{
+                  fontSize: '11.5px',
+                  fontWeight: 500,
+                  color: PART_COLOR,
+                  background: 'transparent',
+                  border: `1px solid ${PART_COLOR}`,
+                  padding: '0 6px',
+                  lineHeight: '17px',
+                  borderRadius: 'var(--radius)',
+                  cursor: onSearchThread ? 'pointer' : 'default',
+                }}
+              >
+                part {session.part}
+              </button>
             )}
 
             {tenantLabel && (
