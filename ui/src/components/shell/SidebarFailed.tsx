@@ -107,7 +107,7 @@ export const SidebarFailed: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
       out.push({
         category: 'ego', at: Date.parse(alert.openedAt), scope: [scopeOf(alert.key.tenant), alert.key.kind].filter(Boolean).join(' · '),
         text: alert.key.metric, value: `${Math.round(alert.last.baseMean * 100)}→${Math.round(alert.last.curMean * 100)}%`,
-        title: 'An open alert: the score of this metric dropped', hash: '#ego',
+        title: 'An open alert: the score of this metric dropped', hash: `#ego?alert=${encodeURIComponent(alert.id)}`,
       });
     }
 

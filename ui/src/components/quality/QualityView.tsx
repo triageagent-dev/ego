@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
 import { pageStyle, headerStyle, titleStyle, subtitleStyle, filterRowStyle, segmentStyle, segBtnStyle, segActiveStyle, errorStyle, noteStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle, tileSubStyle, cardStyle, cardTitleStyle } from '../ui/page';
 import { Bar, Line } from 'react-chartjs-2';
@@ -15,7 +15,7 @@ import {
 import { useLiveData } from '../../lib/connection';
 import { getOnlineAlerts, getOnlineCorrections, getOnlineFindings, getOnlineSeries, getOnlineStatus, StorageUnavailableError } from '../../api/client';
 import { onlineRunsLink } from '../../lib/runLinks';
-import { sessionLink } from '../shell/routes';
+import { parseHash, sessionLink } from '../shell/routes';
 import { tenantName, useSelectedTenant, useTenantNames } from '../../lib/tenant';
 import type { OnlineAlert, OnlineCorrection, OnlineFinding, OnlineFindingState, OnlineSeriesPoint, OnlineStatus } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
@@ -116,6 +116,33 @@ export const QualityView: React.FC = () => {
   }, [hours, tenant]);
 
   useLiveData('quality', load);
+
+  // A link can name a finding or an alert to look at (#ego?finding=... or #ego?alert=...), as the sidebar's flag does:
+  // the page scrolls to its section, and a finding is opened. It runs again when the same page is linked anew.
+  const [wanted, setWanted] = useState<{ type: 'finding' | 'alert'; id: string; n: number } | null>(null);
+  useEffect(() => {
+    const apply = () => {
+      const { name, params } = parseHash(location.hash);
+      if (name !== 'ego' && name !== 'quality') return;
+      const finding = params.get('finding');
+      const alert = params.get('alert');
+      if (finding) setWanted({ type: 'finding', id: finding, n: Date.now() });
+      else if (alert) setWanted({ type: 'alert', id: alert, n: Date.now() });
+    };
+    apply();
+    window.addEventListener('hashchange', apply);
+    return () => window.removeEventListener('hashchange', apply);
+  }, []);
+  useEffect(() => {
+    if (!wanted) return;
+    if (wanted.type === 'finding') {
+      setFindingState('open');
+      setOpenFinding(wanted.id);
+    }
+    // After the sections have rendered with the data.
+    const t = setTimeout(() => document.getElementById(wanted.type === 'finding' ? 'ego-findings' : 'ego-alerts')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+    return () => clearTimeout(t);
+  }, [wanted, findings.length, alerts.length]);
 
   const scopes = useMemo(() => [...new Set(series.map(scopeOf))].sort(), [series]);
   const active = scope && scopes.includes(scope) ? scope : scopes[0] ?? null;
@@ -383,7 +410,7 @@ export const QualityView: React.FC = () => {
           </section>
           </div>
 
-          <section css={cardStyle}>
+          <section css={cardStyle} id="ego-alerts">
             <h2 css={cardTitleStyle}>Alerts</h2>
             {alerts.length === 0 ? (
               <p css={emptyStyle}>No regressions detected.</p>
@@ -416,7 +443,7 @@ export const QualityView: React.FC = () => {
             )}
           </section>
 
-          <section css={cardStyle}>
+          <section css={cardStyle} id="ego-findings">
             <h2 css={cardTitleStyle}>Findings</h2>
             <div css={[filterRowStyle, findingFilterStyle]}>
               <div css={segmentStyle} role="group" aria-label="Finding state">

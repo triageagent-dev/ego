@@ -57,7 +57,7 @@ export const SidebarReview: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
         <>
           {items.slice(0, SHOWN).map((i) => (
             <div key={i.id} css={popoverRowStyle}>
-              <button css={popoverItemStyle} onClick={() => { location.hash = '#ego'; close(); }} title={i.text}>
+              <button css={popoverItemStyle} onClick={() => { location.hash = `#ego?${i.type}=${encodeURIComponent(i.id)}`; close(); }} title={i.text}>
                 <span css={lineStyle}>
                   <span css={i.type === 'alert' ? alertTagStyle : findingTagStyle}>{i.type}</span>
                   <span css={scopeStyle}>{i.scope}</span>
@@ -68,7 +68,7 @@ export const SidebarReview: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
           ))}
           {items.length > SHOWN && (
             <div css={popoverRowStyle}>
-              <button css={popoverItemStyle} onClick={() => { location.hash = '#ego'; close(); }}>
+              <button css={popoverItemStyle} onClick={() => { location.hash = '#ego?alert=all'; close(); }}>
                 <span css={moreStyle}>+{items.length - SHOWN} more on the ego page</span>
               </button>
             </div>
