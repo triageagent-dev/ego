@@ -2,6 +2,7 @@ package api
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/incremental"
@@ -492,4 +493,43 @@ func (s *SessionStore) pruneThreadsLocked() {
 			delete(s.threads, key)
 		}
 	}
+}
+
+// maxEarlierPartField bounds each quoted field of the previous-part excerpt, in characters.
+const maxEarlierPartField = 600
+
+// EarlierPart is a short excerpt of the segment before sessionID in its thread: the last user prompt and the final
+// answer of its last invocation, each truncated. The judge reads it as context for segment n >= 2. ok is false for a
+// first segment, and when the previous one is gone or holds no text (a Claude Code segment's spans carry none).
+func (s *SessionStore) EarlierPart(sessionID string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.lookupLocked(sessionID)
+	if !ok || sess.partNo() <= 1 {
+		return "", false
+	}
+	prev, ok := s.lookupLocked(segmentID(sess.threadKey(), sess.partNo()-1))
+	if !ok {
+		return "", false
+	}
+	invs := prev.Invocations
+	if len(invs) == 0 {
+		invs = extractInvocationsForUI(otlp.BuildTrace(prev.ID, prev.Spans))
+	}
+	for i := len(invs) - 1; i >= 0; i-- {
+		prompt, answer := clipChars(invs[i].UserText, maxEarlierPartField), clipChars(invs[i].AgentText, maxEarlierPartField)
+		if prompt == "" && answer == "" {
+			continue
+		}
+		return "Last user prompt: " + prompt + "\nFinal answer: " + answer, true
+	}
+	return "", false
+}
+
+func clipChars(s string, n int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) <= n {
+		return string(r)
+	}
+	return string(r[:n]) + "..."
 }

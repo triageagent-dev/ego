@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -59,10 +60,12 @@ type usageJudge struct {
 	onUsage func(int64)
 	calls   int
 	reply   string // "" answers yes
+	prompts []string
 }
 
 func (j *usageJudge) Generate(ctx context.Context, prompt string) (string, error) {
 	j.calls++
+	j.prompts = append(j.prompts, prompt)
 	j.onUsage(250)
 	if j.reply != "" {
 		return j.reply, nil
@@ -318,5 +321,68 @@ func TestOnlineStatus_SessionsScored24hIsPersisted(t *testing.T) {
 	e2.now = e.now
 	if got := e2.status().SessionsScored24h; got != 3 {
 		t.Errorf("after a restart the count = %d, want 3", got)
+	}
+}
+
+// withThreadAttr puts ego.thread on every resource of an export.
+func withThreadAttr(body map[string]any, thread string) map[string]any {
+	res := body["resourceSpans"].([]any)[0].(map[string]any)["resource"].(map[string]any)
+	res["attributes"] = append(res["attributes"].([]any),
+		map[string]any{"key": threadAttr, "value": map[string]any{"stringValue": thread}})
+	return body
+}
+
+// The online engine hears about a segment once, when it closes, and judges part n with the end of part n-1 as
+// fenced context.
+func TestOnlineEngine_ScoresASegmentAtCloseWithTheEarlierPart(t *testing.T) {
+	e, sessions, archive, fake := newTestEngine(t, testOnlineConfig)
+	sessions.SetOnComplete(e.Enqueue)
+	sessions.idleTimeout, sessions.completionGrace = time.Hour, time.Hour
+	now := time.Date(2026, 10, 4, 12, 30, 0, 0, time.UTC)
+	e.now = func() time.Time { return now }
+	ctx := context.Background()
+
+	sessions.Ingest(withThreadAttr(onlineSessionBody("aaaaaaaaaaaa0001", now.UnixMilli(), "rca", "why is checkout down?", "The payment service is out of memory."), "pod"))
+	if len(e.queue) != 0 {
+		t.Fatalf("queued %d before the segment closed, want none", len(e.queue))
+	}
+	sessions.completeSession("pod") // the quiet state is not the close
+	if len(e.queue) != 0 {
+		t.Fatalf("queued %d at the quiet state, want none", len(e.queue))
+	}
+	sessions.Ingest(withThreadAttr(onlineSessionBody("bbbbbbbbbbbb0002", now.Add(3*time.Hour).UnixMilli(), "rca", "and now?", "Memory is back to normal."), "pod"))
+	if len(e.queue) != 1 || <-e.queue != "pod" {
+		t.Fatal("part 1 must be queued exactly once, when part 2 opened")
+	}
+
+	e.process(ctx, "pod")
+	if fake.calls == 0 {
+		t.Fatal("part 1 was not judged")
+	}
+	for _, p := range fake.prompts {
+		if strings.Contains(p, "<earlier_part>") {
+			t.Fatalf("part 1 has no earlier part, yet its prompt carries one: %q", p)
+		}
+	}
+	fake.prompts = nil
+	e.process(ctx, "pod~2")
+	if len(fake.prompts) == 0 {
+		t.Fatal("part 2 was not judged")
+	}
+	for _, p := range fake.prompts {
+		for _, want := range []string{"<earlier_part>", "why is checkout down?", "The payment service is out of memory."} {
+			if !strings.Contains(p, want) {
+				t.Errorf("part 2's prompt lacks %q: %q", want, p)
+			}
+		}
+	}
+	// Scored once each, whatever is enqueued again.
+	e.process(ctx, "pod")
+	if st := e.status(); st.Counts[online.SkipAlreadySeen] != 1 {
+		t.Errorf("counts = %v, want one skip as already seen", st.Counts)
+	}
+	rows, _ := archive.OnlineSamples(0)
+	if len(rows) != 2 {
+		t.Errorf("%d scores stored, want 2 (one per segment)", len(rows))
 	}
 }

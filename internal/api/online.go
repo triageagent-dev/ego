@@ -187,7 +187,10 @@ func (e *OnlineEngine) Start(stop <-chan struct{}) {
 	}()
 }
 
-// process samples and maybe scores one completed session.
+// process samples and maybe scores one segment that has been closed for good (SessionStore.closeSegmentLocked is
+// the only caller of the hook that queues it). The segment is scored once, after its final trace: the queue sees it
+// once per close, a closed segment never reopens, and OnlineEvalExists below keeps a repeat from scoring it again.
+// Spans of its own traces that arrive after the score do not change it.
 func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 	if done, err := e.store.OnlineEvalExists(sessionID); err != nil {
 		logx.Errorf("online: %v", err)
@@ -242,6 +245,18 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 
 	evalCtx, cancel := context.WithTimeout(ctx, onlineEvalTimeout)
 	defer cancel()
+	// The part of the thread before this one, as context for the judge (segment n >= 2 only).
+	getJudge := e.getJudge(evalCtx)
+	if earlier, ok := e.sessions.EarlierPart(sessionID); ok {
+		inner := getJudge
+		getJudge = func(model string) (judge.Model, error) {
+			m, err := inner(model)
+			if err != nil {
+				return nil, err
+			}
+			return judge.WithEarlierPart(m, earlier), nil
+		}
+	}
 	e.judgeTokens.Store(0)
 	evaluators := profileEvaluators(p)
 	scoringStart := time.Now()
@@ -252,7 +267,7 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		ConversionWarnings: []string{},
 		AgentName:          f.Service,
 		Model:              f.Model,
-	}, invocations, evaluators, nil, e.getJudge(evalCtx), noVertexEval, e.getJev, nil)
+	}, invocations, evaluators, nil, getJudge, noVertexEval, e.getJev, nil)
 	scoringMs := time.Since(scoringStart).Milliseconds()
 	for i := range result.MetricResults {
 		result.MetricResults[i] = unscoredAsError(result.MetricResults[i])
