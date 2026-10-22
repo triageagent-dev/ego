@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { css } from '@emotion/react';
-import { Radio, Play, FileJson, History, Coins, Gauge, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Radio, Play, FileJson, History, Coins, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useTraceContext } from '../../context/TraceContext';
 import type { ViewType } from '../../lib/types';
 import { SidebarFailed } from './SidebarFailed';
@@ -14,7 +14,8 @@ const ICONS: Partial<Record<ViewType, React.ReactNode>> = {
   upload: <Play size={18} />,
   runs: <History size={18} />,
   usage: <Coins size={18} />,
-  quality: <Gauge size={18} />,
+  // The ego mark: this tab is ego's own view of the agents (scores, findings, corrections).
+  quality: <img src="/favicon.svg" alt="" width={18} height={18} style={{ display: 'block' }} />,
   builder: <FileJson size={18} />,
 };
 

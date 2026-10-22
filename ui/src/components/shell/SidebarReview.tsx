@@ -55,7 +55,7 @@ export const SidebarReview: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
         <>
           {items.slice(0, SHOWN).map((i) => (
             <div key={i.id} css={popoverRowStyle}>
-              <button css={popoverItemStyle} onClick={() => { location.hash = '#quality'; close(); }} title={i.text}>
+              <button css={popoverItemStyle} onClick={() => { location.hash = '#ego'; close(); }} title={i.text}>
                 <span css={lineStyle}>
                   <span css={i.type === 'alert' ? alertTagStyle : findingTagStyle}>{i.type}</span>
                   <span css={scopeStyle}>{i.scope}</span>
@@ -66,8 +66,8 @@ export const SidebarReview: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
           ))}
           {items.length > SHOWN && (
             <div css={popoverRowStyle}>
-              <button css={popoverItemStyle} onClick={() => { location.hash = '#quality'; close(); }}>
-                <span css={moreStyle}>+{items.length - SHOWN} more on the quality page</span>
+              <button css={popoverItemStyle} onClick={() => { location.hash = '#ego'; close(); }}>
+                <span css={moreStyle}>+{items.length - SHOWN} more on the ego page</span>
               </button>
             </div>
           )}

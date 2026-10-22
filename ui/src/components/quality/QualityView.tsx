@@ -134,9 +134,9 @@ export const QualityView: React.FC = () => {
     <div css={pageStyle}>
       <header css={headerStyle}>
         <PageTitle>
-          <h1 css={titleStyle}>quality</h1>
+          <h1 css={titleStyle}>ego</h1>
           <p css={subtitleStyle}>
-            how sampled live sessions score on the metrics you chose
+            how sampled agent sessions score on the metrics you chose · RSI: ego diagnoses what regressed, the agent corrects itself, ego verifies it worked
           </p>
         </PageTitle>
       </header>
