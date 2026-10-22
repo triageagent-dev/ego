@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/triageagent-dev/ego/internal/judge"
+	"github.com/triageagent-dev/ego/internal/online"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -101,5 +103,36 @@ func TestListRunsFollowsThePickedTenant(t *testing.T) {
 		if got := count(tenant); got != want {
 			t.Errorf("tenant %q lists %d runs, want %d", tenant, got, want)
 		}
+	}
+}
+
+func TestResolvedEvaluatorsFillWhatTheProfileLeavesEmpty(t *testing.T) {
+	custom := 0.9
+	p := online.Profile{Evaluators: []online.Evaluator{
+		{Name: "jev_grounded"},
+		{Name: "rubric_based_final_response_quality_v1"},
+		{Name: "hallucinations_v1", JudgeModel: "gemini-x", Threshold: &custom},
+		{Name: "tool_trajectory_avg_score"},
+		{Name: "safety_v1"},
+	}}
+	got := resolvedEvaluators(p, []metricResultDTO{{MetricName: "jev_grounded", JudgeModel: "jev-model"}})
+	want := []struct {
+		model, match string
+		threshold    float64
+	}{
+		{"jev-model", "", defaultThreshold},
+		{judge.DefaultModel, "", defaultThreshold},
+		{"gemini-x", "", custom},
+		{"", "EXACT", defaultThreshold},
+		{vertexEvalServiceLabel, "", defaultThreshold},
+	}
+	for i, w := range want {
+		g := got[i]
+		if g.Type != "builtin" || g.JudgeModel != w.model || g.TrajectoryMatchType != w.match || g.Threshold == nil || *g.Threshold != w.threshold {
+			t.Errorf("%s resolved to %+v, want model %q match %q threshold %v", g.Name, g, w.model, w.match, w.threshold)
+		}
+	}
+	if p.Evaluators[0].Threshold != nil {
+		t.Error("the profile itself was changed")
 	}
 }

@@ -311,6 +311,43 @@ func profileEvaluators(p online.Profile) []evaluatorConfigDTO {
 	return out
 }
 
+// resolvedEvaluators is the profile's evaluators with what scoring settled on in place of what the profile left empty
+// (the type, the threshold, the judge model, the trajectory match type), so a run shows the configuration it ran with.
+// The model of a jev metric is known only from its results.
+func resolvedEvaluators(p online.Profile, results []metricResultDTO) []evaluatorConfigDTO {
+	out := profileEvaluators(p)
+	for i := range out {
+		ev := &out[i]
+		if ev.Type == "" {
+			ev.Type = "builtin"
+		}
+		if ev.Threshold == nil {
+			t := defaultThreshold
+			ev.Threshold = &t
+		}
+		switch {
+		case decision.IsMetric(ev.Name):
+			for _, r := range results {
+				if r.JudgeModel != "" && decision.IsMetric(r.MetricName) {
+					ev.JudgeModel = r.JudgeModel
+					break
+				}
+			}
+		case judgeMetrics[ev.Name]:
+			if ev.JudgeModel == "" {
+				ev.JudgeModel = judge.DefaultModel
+			}
+		case vertexEvalMetrics[ev.Name]:
+			ev.JudgeModel = vertexEvalServiceLabel
+		default:
+			if ev.TrajectoryMatchType == "" && strings.Contains(ev.Name, "trajectory") {
+				ev.TrajectoryMatchType = string(eval.MatchExact)
+			}
+		}
+	}
+	return out
+}
+
 func noVertexEval() (*vertexeval.Client, error) {
 	return nil, errors.New("Vertex managed-eval metrics are not available to online evaluation")
 }
@@ -364,7 +401,7 @@ func (e *OnlineEngine) recordRun(f online.Features, p online.Profile, result tra
 		if f.Tenant != "" {
 			label = "online · " + f.Tenant + " · " + f.Kind
 		}
-		cfg := map[string]any{"evaluators": profileEvaluators(p)}
+		cfg := map[string]any{"evaluators": resolvedEvaluators(p, result.MetricResults)}
 		run, err := e.store.CreateRun(runSpecSummaryDTO{
 			Approach:   "online",
 			EvalSet:    map[string]any{"name": label},

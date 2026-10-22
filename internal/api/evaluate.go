@@ -129,6 +129,9 @@ var vertexEvalMetrics = map[string]bool{
 	"multi_turn_tool_use_quality_v1":   true,
 }
 
+// defaultThreshold is the pass threshold of an evaluator that sets none.
+const defaultThreshold = 0.5
+
 // vertexEvalServiceLabel names the "model" for vertex_judge results: the
 // Vertex Managed Eval Service doesn't accept a caller-chosen model name
 // (unlike judgeMetrics), it's a fixed managed backend.
@@ -589,7 +592,7 @@ func evaluateInvocations(
 			continue
 		}
 
-		threshold := 0.5
+		threshold := defaultThreshold
 		if evaluator.Threshold != nil {
 			threshold = *evaluator.Threshold
 		}

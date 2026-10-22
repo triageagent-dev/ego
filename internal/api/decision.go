@@ -35,7 +35,7 @@ func runDecisionEvaluators(ctx context.Context, evaluators []evaluatorConfigDTO,
 		if (ev.Type != "" && ev.Type != "builtin") || !decision.IsMetric(ev.Name) {
 			continue
 		}
-		threshold := 0.5
+		threshold := defaultThreshold
 		if ev.Threshold != nil {
 			threshold = *ev.Threshold
 		}
