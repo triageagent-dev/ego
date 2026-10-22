@@ -602,6 +602,8 @@ export interface LiveSession {
   rootSpanName?: string;
   llmCalls?: number;
   errors?: number;
+  // The prompts of a Claude Code session, which has no invocations to count.
+  turns?: number;
   // Distinct gen_ai.agent.name and model values on the session's spans, in the order first seen.
   agents?: string[];
   // Tenants of the session: the sender's tenant, or the tenant attribute values on its spans.

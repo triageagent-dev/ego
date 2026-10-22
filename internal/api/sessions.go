@@ -74,6 +74,9 @@ type SessionSummary struct {
 	LLMCalls     int             `json:"llmCalls"`
 	// Errors counts spans whose status is ERROR (otel.status_code).
 	Errors int `json:"errors"`
+	// Turns counts the prompts of a Claude Code session (its claude_code.interaction spans). Its spans carry no
+	// message text for the invocation count to be made of, so this is its turn count; 0 (omitted) for any other session.
+	Turns int `json:"turns,omitempty"`
 	// Agents and Models are the distinct gen_ai.agent.name and model values on the session's spans, in the
 	// order first seen, so the list can say who ran and on what before the session completes.
 	Agents []string `json:"agents,omitempty"`
@@ -125,6 +128,7 @@ func summarize(s *Session) SessionSummary {
 		RootSpanName: rootName,
 		LLMCalls:     llmCalls,
 		Errors:       errs,
+		Turns:        claudeCodeTurns(s.Spans),
 		DurationMs:   spanWindowMs(s.Spans),
 		SessionID:    s.ID,
 		TraceID:      s.PrimaryTraceID,
@@ -246,6 +250,17 @@ func spanWindowMs(spans []*tracepkg.Span) int64 {
 	return (end - start) / 1000
 }
 
+// claudeCodeTurns counts the prompts of a Claude Code session: one claude_code.interaction span per prompt.
+func claudeCodeTurns(spans []*tracepkg.Span) int {
+	n := 0
+	for _, sp := range spans {
+		if sp.OperationName == "claude_code.interaction" {
+			n++
+		}
+	}
+	return n
+}
+
 func spanOutline(spans []*tracepkg.Span) (rootName string, llmCalls, errs int) {
 	var rootStart int64
 	for _, sp := range spans {
@@ -280,6 +295,7 @@ type sessionCompleteEvent struct {
 	RootSpanName string          `json:"rootSpanName,omitempty"`
 	LLMCalls     int             `json:"llmCalls"`
 	Errors       int             `json:"errors"`
+	Turns        int             `json:"turns,omitempty"`
 	DurationMs   int64           `json:"durationMs"`
 }
 
@@ -1077,6 +1093,7 @@ func (s *SessionStore) completeSession(sessionID string) {
 			RootSpanName: rootName,
 			LLMCalls:     llmCalls,
 			Errors:       errs,
+			Turns:        claudeCodeTurns(session.Spans),
 			DurationMs:   durationMs,
 		}, sessionID, agents, tenants, false)
 	}

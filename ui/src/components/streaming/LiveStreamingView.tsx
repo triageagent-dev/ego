@@ -241,6 +241,7 @@ export function LiveStreamingView() {
       models?: string[];
       llmCalls?: number;
       errors?: number;
+      turns?: number;
       durationMs?: number;
       scored?: boolean;
     };
@@ -277,6 +278,7 @@ export function LiveStreamingView() {
                 rootSpanName: s.rootSpanName,
                 llmCalls: s.llmCalls,
                 errors: s.errors,
+                turns: s.turns,
                 durationMs: s.durationMs,
               });
             }
@@ -302,6 +304,7 @@ export function LiveStreamingView() {
             models: s.models,
             llmCalls: s.llmCalls,
             errors: s.errors,
+            turns: s.turns,
             durationMs: s.durationMs,
             scored: s.scored,
           });
@@ -579,6 +582,7 @@ export function LiveStreamingView() {
                 rootSpanName: data.rootSpanName,
                 llmCalls: data.llmCalls,
                 errors: data.errors,
+                turns: data.turns,
                 durationMs: data.durationMs,
               });
             } else {
@@ -593,6 +597,7 @@ export function LiveStreamingView() {
                 rootSpanName: data.rootSpanName,
                 llmCalls: data.llmCalls,
                 errors: data.errors,
+                turns: data.turns,
                 durationMs: data.durationMs,
               });
             }

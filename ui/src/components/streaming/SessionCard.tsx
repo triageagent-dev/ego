@@ -62,6 +62,7 @@ export interface SessionCardProps {
     rootSpanName?: string;
     llmCalls?: number;
     errors?: number;
+    turns?: number;
     durationMs?: number;
   };
   isSelected: boolean;
@@ -152,6 +153,8 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
   const tenantLabel = session.tenants?.map(tenantName).join(' · ') ?? '';
 
   const providerName = session.invocations?.[0]?.modelInfo?.provider || null;
+  // A Claude Code session has no invocations to count (its spans carry no messages): the server counts its prompts.
+  const turnCount = session.turns || session.invocations?.length || 0;
 
   const totalCacheCreation = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheCreationTokens || 0), 0) || 0;
   const totalCacheRead = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheReadTokens || 0), 0) || 0;
@@ -272,12 +275,8 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
               </span>
             )}
 
-            {session.invocations && session.invocations.length > 0 && (
-              <RoundBadge
-                n={session.invocations.length}
-                title={`${session.invocations.length} turn${session.invocations.length === 1 ? '' : 's'}`}
-                {...TURNS_TONE}
-              />
+            {turnCount > 0 && (
+              <RoundBadge n={turnCount} title={`${turnCount} turn${turnCount === 1 ? '' : 's'}`} {...TURNS_TONE} />
             )}
 
             {totalTokens > 0 && (

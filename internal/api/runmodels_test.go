@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/triageagent-dev/ego/internal/judge"
 	"github.com/triageagent-dev/ego/internal/online"
+	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -137,5 +138,20 @@ func TestResolvedEvaluatorsFillWhatTheProfileLeavesEmpty(t *testing.T) {
 	}
 	if p.Evaluators[0].Threshold != nil {
 		t.Error("the profile itself was changed")
+	}
+}
+
+func TestSessionSummaryCountsClaudeCodePrompts(t *testing.T) {
+	span := func(op string) *tracepkg.Span { return &tracepkg.Span{OperationName: op} }
+	s := &Session{ID: "s", Spans: []*tracepkg.Span{
+		span("claude_code.interaction"), span("claude_code.llm_request"), span("claude_code.tool"),
+		span("claude_code.interaction"), span("claude_code.llm_request"),
+	}}
+	if got := summarize(s).Turns; got != 2 {
+		t.Fatalf("turns = %d, want 2", got)
+	}
+	other := &Session{ID: "o", Spans: []*tracepkg.Span{span("invoke_agent"), span("chat")}}
+	if got := summarize(other).Turns; got != 0 {
+		t.Fatalf("a session that is not Claude Code's has %d turns", got)
 	}
 }
