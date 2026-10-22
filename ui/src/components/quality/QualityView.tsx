@@ -50,6 +50,9 @@ function scopeOf(p: { tenant: string; kind: string }): string {
   return p.tenant ? `${tenantName(p.tenant)} · ${p.kind}` : p.kind;
 }
 
+// A score (0 to 1) as a percentage: 0.41 reads 41%.
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+
 function formatTokens(n: number): string {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
   if (n >= 1e3) return `${Math.round(n / 1e3)}k`;
@@ -219,7 +222,7 @@ export const QualityView: React.FC = () => {
       {status && (
         <>
           <div css={tilesStyle}>
-            <Tile label="Ego score" value={egoScore === null ? '–' : egoScore.toFixed(2)}
+            <Tile label="Ego score" value={egoScore === null ? '–' : `${Math.round(egoScore * 100)}%`}
               sub={egoScore === null ? 'nothing scored in this window' : `mean of ${scoreCount.toLocaleString()} scores, last ${RANGES.find(r => r.hours === hours)?.label ?? `${hours}h`}`} />
             <Tile label="Judge tokens today" value={formatTokens(status.budget.spent.judgeTokens)}
               sub={status.budget.caps.judgeTokensPerDay ? `of ${formatTokens(status.budget.caps.judgeTokensPerDay)} cap` : 'no Gemini judges'} />
@@ -274,7 +277,7 @@ export const QualityView: React.FC = () => {
                         callbacks: {
                           label: item => {
                             const n = (item.dataset as unknown as { counts: number[] }).counts[item.dataIndex];
-                            return ` ${item.dataset.label}: ${(item.raw as number)?.toFixed(2)} (n=${n})`;
+                            return ` ${item.dataset.label}: ${Math.round((item.raw as number) * 100)}% (n=${n})`;
                           },
                         },
                       },
@@ -290,7 +293,7 @@ export const QualityView: React.FC = () => {
                         max: 1,
                         grid: { color: 'rgba(58, 64, 82, 0.5)' },
                         border: { display: false },
-                        ticks: { color: '#6b7586' },
+                        ticks: { color: '#6b7586', callback: v => `${Math.round(Number(v) * 100)}%` },
                       },
                     },
                   }}
@@ -340,10 +343,10 @@ export const QualityView: React.FC = () => {
                     animation: false,
                     plugins: {
                       legend: { display: false },
-                      tooltip: { callbacks: { label: item => ` ${(item.raw as number).toFixed(2)} over ${byMetric.counts[item.dataIndex]} scores` } },
+                      tooltip: { callbacks: { label: item => ` ${Math.round((item.raw as number) * 100)}% over ${byMetric.counts[item.dataIndex]} scores` } },
                     },
                     scales: {
-                      x: { min: 0, max: 1, grid: { color: 'rgba(58, 64, 82, 0.5)' }, border: { display: false }, ticks: { color: '#6b7586' } },
+                      x: { min: 0, max: 1, grid: { color: 'rgba(58, 64, 82, 0.5)' }, border: { display: false }, ticks: { color: '#6b7586', callback: v => `${Math.round(Number(v) * 100)}%` } },
                       y: { grid: { display: false }, ticks: { color: '#a8b2c1' }, border: { color: '#3a4052' } },
                     },
                   }}
@@ -399,8 +402,8 @@ export const QualityView: React.FC = () => {
                         <td><span css={[tagStyle, a.status === 'open' && openTagStyle]}>{a.status}</span></td>
                         <td>{scopeOf(a.key)}</td>
                         <td css={monoStyle}>{a.key.metric}</td>
-                        <td css={numStyle}>{a.last.baseMean.toFixed(2)} <span css={dimStyle}>n={a.last.nBase}</span></td>
-                        <td css={numStyle}>{a.last.curMean.toFixed(2)} <span css={dimStyle}>n={a.last.nCur}</span></td>
+                        <td css={numStyle}>{pct(a.last.baseMean)} <span css={dimStyle}>n={a.last.nBase}</span></td>
+                        <td css={numStyle}>{pct(a.last.curMean)} <span css={dimStyle}>n={a.last.nCur}</span></td>
                         <td>{a.last.suspect || '–'}</td>
                         <td css={monoStyle} title={(a.last.worst ?? []).join(', ')}>{(a.last.worst ?? []).join(', ') || '–'}</td>
                         <td>{new Date(a.openedAt).toLocaleString()}</td>
@@ -453,7 +456,7 @@ export const QualityView: React.FC = () => {
                       <p><b>Suggested correction.</b> {chosenFinding.diagnosis.suggested_correction}</p>
                     )}
                     <p css={dimStyle}>
-                      window mean {chosenFinding.window.mean.toFixed(2)} over {chosenFinding.window.n} sessions
+                      window mean {pct(chosenFinding.window.mean)} over {chosenFinding.window.n} sessions
                       {chosenFinding.model ? ` · diagnosed by ${chosenFinding.model}` : ' · written from the evidence alone'}
                       {' · '}{chosenFinding.confirmed ?? 0} checked by a person
                     </p>
@@ -495,8 +498,8 @@ export const QualityView: React.FC = () => {
                         <td css={wrapCellStyle} title={c.verification.reason}>{c.what}</td>
                         <td css={monoStyle}>{c.version || '–'}</td>
                         <td><span css={[tagStyle, c.state === 'failed' && openTagStyle]}>{c.state}</span></td>
-                        <td css={numStyle}>{c.verification.before.mean.toFixed(2)} <span css={dimStyle}>n={c.verification.before.n}</span></td>
-                        <td css={numStyle}>{c.verification.after.n > 0 ? c.verification.after.mean.toFixed(2) : '–'} <span css={dimStyle}>n={c.verification.after.n}</span></td>
+                        <td css={numStyle}>{pct(c.verification.before.mean)} <span css={dimStyle}>n={c.verification.before.n}</span></td>
+                        <td css={numStyle}>{c.verification.after.n > 0 ? pct(c.verification.after.mean) : '–'} <span css={dimStyle}>n={c.verification.after.n}</span></td>
                         <td>{new Date(c.created_at).toLocaleString()}</td>
                       </tr>
                     ))}

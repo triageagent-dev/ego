@@ -61,7 +61,7 @@ export const SidebarFailed: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
                   <span css={whenStyle}>{formatStarted(new Date(f.lastAt).toISOString())}</span>
                   {f.tenant && <span css={tenantStyle}>{tenantName(f.tenant)}</span>}
                   <span css={kindStyle} title={f.metrics.split(',').join('\n')}>{metricsLabel(f.metrics)}</span>
-                  <span css={countStyle} title="Lowest failing score">{f.lowest.toFixed(2)}</span>
+                  <span css={countStyle} title="Lowest failing score">{Math.round(f.lowest * 100)}%</span>
                 </span>
               </button>
             </div>

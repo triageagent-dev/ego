@@ -28,7 +28,7 @@ export const SidebarReview: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
       setItems([
         ...alerts.filter((a: OnlineAlert) => a.status === 'open').map((a): Item => ({
           id: a.id, type: 'alert', scope: scope(a.key.tenant, a.key.kind), metric: a.key.metric,
-          text: `${a.last.baseMean.toFixed(2)} → ${a.last.curMean.toFixed(2)}`,
+          text: `${Math.round(a.last.baseMean * 100)}% → ${Math.round(a.last.curMean * 100)}%`,
         })),
         ...findings.filter((f) => f.state === 'open').map((f): Item => ({
           id: f.finding_id, type: 'finding', scope: scope(f.tenant, f.kind), metric: f.metric, text: f.diagnosis.failure_mode,

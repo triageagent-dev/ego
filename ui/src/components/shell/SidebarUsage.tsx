@@ -97,7 +97,7 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
   }
   if (figures.scored != null) day.push(['scored', short(figures.scored), 'sessions scored by online evaluation (quality)']);
   const ego: Row[] = [];
-  if (figures.ego != null) ego.push(['score', figures.ego.toFixed(2), 'mean online score of the last 24 hours, over every metric (0 to 1)']);
+  if (figures.ego != null) ego.push(['score', `${Math.round(figures.ego * 100)}%`, 'mean online score of the last 24 hours, over every metric']);
   const runs: Row[] = [];
   if (figures.pass != null) runs.push(['pass', `${Math.round(figures.pass * 100)}%`, 'average pass rate of the latest runs']);
   if (ego.length === 0 && day.length === 0 && runs.length === 0) return null;
