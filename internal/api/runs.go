@@ -38,7 +38,10 @@ type runSummaryDTO struct {
 	Agents       []string                       `json:"agents,omitempty"`
 	// Models are the distinct models the run's traces called, as the Models column of the runs table shows them.
 	Models []string `json:"models,omitempty"`
-	Errors []string `json:"errors,omitempty"`
+	// DurationMs is the time an online run spent scoring its sessions, added up. An hourly run stays open for the
+	// whole hour, so its start and finish say nothing about the work; 0 for a run that did not record it.
+	DurationMs int64    `json:"duration_ms,omitempty"`
+	Errors     []string `json:"errors,omitempty"`
 }
 
 // runDTO mirrors ui/src/lib/types.ts's Run.

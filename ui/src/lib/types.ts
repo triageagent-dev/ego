@@ -317,6 +317,7 @@ export interface RunSummary {
   agents?: string[];
   errors?: string[];
   models?: string[];
+  duration_ms?: number;
 }
 
 // spec.evalSet/evalConfig are stored as raw dicts, so their inner keys keep

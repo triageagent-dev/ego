@@ -13,14 +13,17 @@ import (
 
 func TestSummarizeResultRowsNamesModels(t *testing.T) {
 	rows := []runResultRowDTO{
-		{EvalSetItemID: "a", EvaluatorName: "m", Status: "passed", Details: withSource(nil, "svc", "gemini-2.5-flash")},
-		{EvalSetItemID: "b", EvaluatorName: "m", Status: "failed", Details: withSource(map[string]any{"x": 1}, "svc", "gemini-2.5-pro")},
-		{EvalSetItemID: "c", EvaluatorName: "m", Status: "passed", Details: withSource(nil, "svc", "gemini-2.5-flash")},
+		{EvalSetItemID: "a", EvaluatorName: "m", Status: "passed", Details: withSource(nil, "svc", "gemini-2.5-flash", 1200)},
+		{EvalSetItemID: "b", EvaluatorName: "m", Status: "failed", Details: withSource(map[string]any{"x": 1}, "svc", "gemini-2.5-pro", 800)},
+		{EvalSetItemID: "c", EvaluatorName: "m", Status: "passed", Details: withSource(nil, "svc", "gemini-2.5-flash", 1200)},
 		{EvalSetItemID: "d", EvaluatorName: "m", Status: "passed"},
 	}
 	got := summarizeResultRows(rows)
 	if want := []string{"gemini-2.5-flash", "gemini-2.5-pro"}; !reflect.DeepEqual(got.Models, want) {
 		t.Fatalf("models = %v, want %v", got.Models, want)
+	}
+	if got.DurationMs != 3200 {
+		t.Fatalf("duration = %d ms, want the scoring time of each session added up, 3200", got.DurationMs)
 	}
 	if got := summarizeResultRows(rows[3:]); got.Models != nil {
 		t.Fatalf("a run without models has %v", got.Models)

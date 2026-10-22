@@ -79,7 +79,10 @@ export function passRate(run: Run): number | null {
   return counts.passed / decided;
 }
 
+// An online run is one per hour and stays open for the hour, so its start and finish say nothing about the work: it
+// reports the time it spent scoring, and runs from before that was recorded have no duration.
 export function runDurationMs(run: Run): number | null {
+  if (run.spec.approach === 'online') return run.summary?.duration_ms || null;
   if (!run.startedAt || !run.finishedAt) return null;
   const ms = Date.parse(run.finishedAt) - Date.parse(run.startedAt);
   return Number.isFinite(ms) && ms >= 0 ? ms : null;

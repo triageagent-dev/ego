@@ -244,6 +244,7 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 	defer cancel()
 	e.judgeTokens.Store(0)
 	evaluators := profileEvaluators(p)
+	scoringStart := time.Now()
 	result := evaluateInvocations(evalCtx, traceResultDTO{
 		TraceID:            f.TraceID,
 		NumInvocations:     len(invocations),
@@ -252,6 +253,7 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		AgentName:          f.Service,
 		Model:              f.Model,
 	}, invocations, evaluators, nil, e.getJudge(evalCtx), noVertexEval, e.getJev, nil)
+	scoringMs := time.Since(scoringStart).Milliseconds()
 	for i := range result.MetricResults {
 		result.MetricResults[i] = unscoredAsError(result.MetricResults[i])
 	}
@@ -271,7 +273,7 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 	for _, r := range d.Reasons {
 		e.count("sampled_" + r)
 	}
-	runID := e.recordRun(f, p, result, now)
+	runID := e.recordRun(f, p, result, now, scoringMs)
 	scores := make([]onlineScoreRow, 0, len(result.MetricResults))
 	for _, m := range result.MetricResults {
 		scores = append(scores, onlineScoreRow{Metric: m.MetricName, Score: m.Score, Status: runStatusFromMetric(m)})
@@ -386,7 +388,7 @@ func (e *OnlineEngine) getJev() (*decision.Client, error) {
 // recordRun appends a session's results to its (tenant, kind) run for the
 // current UTC hour, opening it (and finishing the previous hour's) as
 // needed. It returns the run ID, "" on a storage error.
-func (e *OnlineEngine) recordRun(f online.Features, p online.Profile, result traceResultDTO, now time.Time) string {
+func (e *OnlineEngine) recordRun(f online.Features, p online.Profile, result traceResultDTO, now time.Time, scoringMs int64) string {
 	hour := now.UTC().Truncate(time.Hour)
 	key := f.Tenant + "\x00" + f.Kind
 	e.mu.Lock()
@@ -435,7 +437,7 @@ func (e *OnlineEngine) recordRun(f online.Features, p online.Profile, result tra
 			Score:               m.Score,
 			PerInvocationScores: m.PerInvocationScores,
 			TraceID:             &traceID,
-			Details:             withSource(m.Details, f.Service, f.Model),
+			Details:             withSource(m.Details, f.Service, f.Model, scoringMs),
 			ErrorText:           m.Error,
 			CreatedAt:           created,
 		})
@@ -446,13 +448,16 @@ func (e *OnlineEngine) recordRun(f online.Features, p online.Profile, result tra
 	return hr.runID
 }
 
-// withSource records the session's service and model in a result's details, so the run summary can name its
-// agents (for role scoping) and its models.
-func withSource(details map[string]any, service, model string) map[string]any {
-	if service == "" && model == "" {
+// withSource records the session's service and model, and how long scoring it took, in a result's details, so the
+// run summary can name its agents (for role scoping) and models and add up its duration.
+func withSource(details map[string]any, service, model string, scoringMs int64) map[string]any {
+	if service == "" && model == "" && scoringMs == 0 {
 		return details
 	}
 	out := map[string]any{}
+	if scoringMs > 0 {
+		out["scoringMs"] = scoringMs
+	}
 	if service != "" {
 		out["agent"] = service
 	}
@@ -478,12 +483,24 @@ func (e *OnlineEngine) finishRun(runID string) {
 	}
 }
 
+// detailMillis reads a millisecond count from a result's details: a number from JSON, or the int64 it was written as.
+func detailMillis(v any) int64 {
+	switch n := v.(type) {
+	case float64:
+		return int64(n)
+	case int64:
+		return n
+	}
+	return 0
+}
+
 // summarizeResultRows builds a run summary from stored result rows.
 func summarizeResultRows(rows []runResultRowDTO) runSummaryDTO {
 	summary := runSummaryDTO{PerMetric: map[string]perMetricSummaryDTO{}}
 	sessions := map[string]bool{}
 	agents := map[string]bool{}
 	models := map[string]bool{}
+	scoring := map[string]int64{}
 	sums := map[string]float64{}
 	scored := map[string]int{}
 	for _, r := range rows {
@@ -493,6 +510,9 @@ func summarizeResultRows(rows []runResultRowDTO) runSummaryDTO {
 		}
 		if m, _ := r.Details["model"].(string); m != "" {
 			models[m] = true
+		}
+		if ms := detailMillis(r.Details["scoringMs"]); ms > 0 {
+			scoring[r.EvalSetItemID] = ms
 		}
 		pm := summary.PerMetric[r.EvaluatorName]
 		switch r.Status {
@@ -524,6 +544,9 @@ func summarizeResultRows(rows []runResultRowDTO) runSummaryDTO {
 	}
 	sort.Strings(summary.Agents)
 	summary.Models = sortedKeys(models)
+	for _, ms := range scoring {
+		summary.DurationMs += ms
+	}
 	return summary
 }
 
