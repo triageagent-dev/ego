@@ -1,5 +1,6 @@
 import React from 'react';
 import { css } from '@emotion/react';
+import { ChartBox } from '../ui/ChartBox';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -216,16 +217,16 @@ export const PerformanceCharts: React.FC<PerformanceChartsProps> = ({ traceResul
     <div css={chartsContainerStyle}>
       <div css={chartCardStyle}>
         <h3>Latency Across Traces</h3>
-        <div css={chartWrapperStyle}>
+        <ChartBox css={chartWrapperStyle}>
           <Bar data={latencyData} options={latencyOptions} />
-        </div>
+        </ChartBox>
       </div>
 
       <div css={chartCardStyle}>
         <h3>Token Usage Across Traces</h3>
-        <div css={chartWrapperStyle}>
+        <ChartBox css={chartWrapperStyle}>
           <Bar data={tokenData} options={tokenOptions} />
-        </div>
+        </ChartBox>
       </div>
     </div>
   );

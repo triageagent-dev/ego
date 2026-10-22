@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
+import { ChartBox } from '../ui/ChartBox';
 import { pageStyle, headerStyle, titleStyle, subtitleStyle, filterRowStyle, segmentStyle, segBtnStyle, segActiveStyle, errorStyle, noteStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle, tileSubStyle, cardStyle, cardTitleStyle } from '../ui/page';
 import { Bar, Line } from 'react-chartjs-2';
 import {
@@ -286,7 +287,7 @@ export const QualityView: React.FC = () => {
             {!chart ? (
               <p css={emptyStyle}>No scored sessions in this window.</p>
             ) : (
-              <div css={chartBoxStyle}>
+              <ChartBox css={chartBoxStyle}>
                 <Line
                   data={chart}
                   options={{
@@ -325,7 +326,7 @@ export const QualityView: React.FC = () => {
                     },
                   }}
                 />
-              </div>
+              </ChartBox>
             )}
           </section>
 
@@ -334,7 +335,7 @@ export const QualityView: React.FC = () => {
             {!perHour || perHour.datasets.length === 0 ? (
               <p css={emptyStyle}>No scored sessions in this window.</p>
             ) : (
-              <div css={chartBoxStyle}>
+              <ChartBox css={chartBoxStyle}>
                 <Bar
                   data={perHour}
                   options={{
@@ -349,7 +350,7 @@ export const QualityView: React.FC = () => {
                     },
                   }}
                 />
-              </div>
+              </ChartBox>
             )}
           </section>
           </div>
@@ -360,7 +361,7 @@ export const QualityView: React.FC = () => {
             {!byMetric || byMetric.labels.length === 0 ? (
               <p css={emptyStyle}>No scored sessions in this window.</p>
             ) : (
-              <div css={[chartBoxStyle, shortChartStyle]}>
+              <ChartBox css={[chartBoxStyle, shortChartStyle]}>
                 <Bar
                   data={byMetric}
                   options={{
@@ -378,7 +379,7 @@ export const QualityView: React.FC = () => {
                     },
                   }}
                 />
-              </div>
+              </ChartBox>
             )}
           </section>
 
@@ -387,7 +388,7 @@ export const QualityView: React.FC = () => {
             {agreementChart.labels.length === 0 ? (
               <p css={emptyStyle}>No labels in the last 7 days. Agree or disagree with a score on a session's card.</p>
             ) : (
-              <div css={[chartBoxStyle, shortChartStyle]}>
+              <ChartBox css={[chartBoxStyle, shortChartStyle]}>
                 <Bar
                   data={agreementChart}
                   options={{
@@ -405,7 +406,7 @@ export const QualityView: React.FC = () => {
                     },
                   }}
                 />
-              </div>
+              </ChartBox>
             )}
           </section>
           </div>

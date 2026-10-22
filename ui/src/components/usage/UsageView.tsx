@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
+import { ChartBox } from '../ui/ChartBox';
 import { sessionLink } from '../shell/routes';
 import { pageStyle, headerStyle, titleStyle, subtitleStyle, filterRowStyle, segmentStyle, segLabelStyle, segBtnStyle, segActiveStyle, errorStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle, tileSubStyle, cardStyle, cardTitleStyle } from '../ui/page';
 import { Bar } from 'react-chartjs-2';
@@ -302,7 +303,7 @@ export const UsageView: React.FC = () => {
             {view.totals.calls === 0 ? (
               <p css={emptyStyle}>No LLM calls with token counts in this window.</p>
             ) : (
-              <div css={chartBoxStyle}>
+              <ChartBox css={chartBoxStyle}>
                 <Bar
                   data={{ labels: view.labels, datasets: view.datasets }}
                   options={{
@@ -349,7 +350,7 @@ export const UsageView: React.FC = () => {
                     },
                   }}
                 />
-              </div>
+              </ChartBox>
             )}
           </section>
 

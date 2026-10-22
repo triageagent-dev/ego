@@ -1,6 +1,7 @@
 import React from 'react';
 import { css } from '@emotion/react';
 import { cardStyle, cardTitleStyle } from '../ui/page';
+import { ChartBox } from '../ui/ChartBox';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -129,9 +130,9 @@ export const PassRateTrendChart: React.FC<PassRateTrendChartProps> = ({ runs }) 
   return (
     <div css={cardStyle}>
       <h3 css={cardTitleStyle}>Pass rate over time</h3>
-      <div css={chartWrapperStyle}>
+      <ChartBox css={chartWrapperStyle}>
         <Line data={{ labels, datasets }} options={options} />
-      </div>
+      </ChartBox>
     </div>
   );
 };

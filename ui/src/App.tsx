@@ -1,3 +1,4 @@
+import { ZOOM } from './lib/zoom';
 import { useEffect, useRef } from 'react';
 import { TraceProvider } from './context/TraceProvider';
 import { useTraceContext } from './context/TraceContext';
@@ -74,8 +75,6 @@ function useShellNavigation() {
   }, [setCurrentView]);
 }
 
-// How much larger the layout is drawn than its pixel sizes say.
-const ZOOM = 1.15;
 
 function AppContent() {
   const { state } = useTraceContext();
