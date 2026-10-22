@@ -95,7 +95,7 @@ func parseSpan(spanData map[string]any, resourceAttrs map[string]any, scopeName,
 	parentSpanID, _ := spanData["parentSpanId"].(string)
 	name, _ := spanData["name"].(string)
 
-	return &tracepkg.Span{
+	span := &tracepkg.Span{
 		TraceID:       traceID,
 		SpanID:        spanID,
 		ParentSpanID:  parentSpanID,
@@ -104,6 +104,8 @@ func parseSpan(spanData map[string]any, resourceAttrs map[string]any, scopeName,
 		Duration:      durationUs,
 		Tags:          attrs,
 	}
+	normalizeClaudeCode(span)
+	return span
 }
 
 const (

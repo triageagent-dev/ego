@@ -180,6 +180,26 @@ into sessions by `ego.session_name`, then `gen_ai.conversation.id`, then a synth
 conventions, OpenInference and ADK (`gcp.vertex.agent.*`) attributes are all understood. Set `ego.eval_set_id`
 on the resource to tie a session to an eval set.
 
+### Claude Code
+
+The native OpenTelemetry traces of the Claude Code CLI (spans named `claude_code.*`) use their own attribute
+names and set no `gen_ai.usage.*`. At ingest ego adds the GenAI attributes next to the originals, so they show up
+as sessions with token usage, an agent and a tenant. A span the sender already gave one of these attributes keeps
+it, and spans of any other sender are not touched.
+
+| Claude Code span | Added when absent |
+|---|---|
+| every `claude_code.*` | `gen_ai.conversation.id` = `session.id` (unless `ego.session_name` or `gen_ai.conversation.id` is set), so all prompts of one Claude Code session are one ego session; `gen_ai.agent.name` = the resource's `gen_ai.agent.name`, else `service.name` |
+| `claude_code.llm_request` | `gen_ai.operation.name` = `chat`; `gen_ai.request.model` = `model`; `gen_ai.response.finish_reasons` = `stop_reason`; `gen_ai.usage.input_tokens` = `input_tokens` + `cache_read_tokens` + `cache_creation_tokens`; `gen_ai.usage.output_tokens` = `output_tokens`; `gen_ai.usage.cache_read.input_tokens`; `gen_ai.usage.cache_creation.input_tokens` and `gen_ai.usage.cache_write.input_tokens` = `cache_creation_tokens`; `success=false` marks the span as an error |
+| `claude_code.tool` | `gen_ai.operation.name` = `execute_tool`; `gen_ai.tool.name` = `tool_name` (else `tool_name_safe`); `gen_ai.tool.call.id` = `tool_use_id` |
+| `claude_code.interaction` | `input.value` = `user_prompt`, unless it is empty or `<REDACTED>` |
+
+Claude Code's `input_tokens` leaves cached tokens out, while the GenAI convention counts them in the input, so
+cache reads and cache writes are counted in `gen_ai.usage.input_tokens` (and therefore in ego's token usage).
+Prompts and tool output the sender redacted are never stored as content. The tenant is read from `ego.tenant`
+(or `--usage-tenant-attr`) on the span or the resource, so set it with `OTEL_RESOURCE_ATTRIBUTES`; the agent is
+`service.name` (`claude-code` unless `OTEL_SERVICE_NAME` says otherwise).
+
 Offline, `ego run` reads Jaeger JSON and OTLP JSON/JSONL files.
 
 The live feed is `GET /ws/ui-updates` (WebSocket). `GET /stream/ui-updates` (Server-Sent Events) is there for
