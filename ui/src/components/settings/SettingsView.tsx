@@ -6,7 +6,7 @@ import { useMe } from '../../lib/me';
 import type { LimitItem } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
 import { VersionLink } from '../shell/VersionLink';
-import { errorStyle, pageStyle, subtitleStyle, tileLabelStyle, tilesStyle, tileStyle, tileSubStyle, tileValueStyle, titleStyle } from '../ui/page';
+import { errorStyle, pageStyle, subtitleStyle, titleStyle } from '../ui/page';
 import { EvalSettingsForm } from './EvalSettingsForm';
 
 // 1,234,567 -> 1.2M
@@ -22,9 +22,9 @@ function amount(n: number, unit: LimitItem['unit']): string {
   return short(n);
 }
 
-// One limit as a tile, like the usage page's: the figure in use (or the limit, for one that is not counted), what it is
-// out of, and a thin bar for a running total. Red and amber are for budgets that stop work; a full cache is normal.
-const LimitTile: React.FC<{ item: LimitItem }> = ({ item }) => {
+// One limit as a row: its name, and at the end the figure in use (or the limit, for one that is not counted) with what it
+// is out of, and a thin bar under a running total. Red and amber are for budgets that stop work; a full cache is normal.
+const LimitRow: React.FC<{ item: LimitItem }> = ({ item }) => {
   const unlimited = item.limit === 0;
   const counted = item.used !== undefined;
   const pct = counted && !unlimited ? Math.min(100, (item.used! / item.limit) * 100) : null;
@@ -32,12 +32,14 @@ const LimitTile: React.FC<{ item: LimitItem }> = ({ item }) => {
   const color = !budget ? 'var(--accent-primary)' : pct !== null && pct >= 90 ? 'var(--status-failure)' : pct !== null && pct >= 70 ? 'var(--status-warning)' : 'var(--accent-primary)';
   const daily = budget ? ' a day' : '';
   return (
-    <div css={tileStyle} title={item.note}>
-      <div css={tileLabelStyle}>{item.label}</div>
-      <div css={tileValueStyle}>{counted ? short(item.used!) : amount(item.limit, item.unit)}</div>
-      <div css={tileSubStyle}>
-        {counted ? `of ${unlimited ? 'no limit' : amount(item.limit, item.unit) + daily}` : item.unit === 'days' ? 'then deleted' : 'at most'}
-      </div>
+    <div css={limitRowStyle} title={item.note}>
+      <span css={rowLabelStyle}>{item.label}</span>
+      <span css={rowValueStyle}>
+        {counted ? short(item.used!) : amount(item.limit, item.unit)}
+        <span css={ofStyle}>
+          {counted ? ` of ${unlimited ? 'no limit' : amount(item.limit, item.unit) + daily}` : item.unit === 'days' ? ' then deleted' : ' at most'}
+        </span>
+      </span>
       {pct !== null && (
         <div css={trackStyle}>
           <div css={fillStyle} style={{ width: `${pct}%`, background: color }} />
@@ -84,9 +86,7 @@ export const SettingsView: React.FC = () => {
             {[...groups.entries()].map(([group, items]) => (
               <div key={group} css={groupStyle}>
                 <div css={groupTitleStyle}>{group}</div>
-                <div css={tilesStyle}>
-                  {items.map((item) => <LimitTile key={item.key} item={item} />)}
-                </div>
+                {items.map((item) => <LimitRow key={item.key} item={item} />)}
               </div>
             ))}
           </section>
@@ -177,7 +177,7 @@ const groupStyle = css`
 `;
 
 const groupTitleStyle = css`
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   color: var(--text-muted);
   font-size: 11.5px;
   text-transform: lowercase;
@@ -195,9 +195,29 @@ const rowValueStyle = css`
   white-space: nowrap;
 `;
 
+const limitRowStyle = css`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 16px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+
+  &:last-of-type {
+    border-bottom: none;
+  }
+`;
+
+const ofStyle = css`
+  color: var(--text-muted);
+  font-family: var(--font-display);
+`;
+
 const trackStyle = css`
-  height: 4px;
-  margin-top: 6px;
+  flex-basis: 100%;
+  height: 3px;
+  margin-top: 4px;
   border-radius: var(--radius);
   background: var(--bg-elevated);
   overflow: hidden;
