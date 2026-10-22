@@ -1,8 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import { css } from '@emotion/react';
-import { getOnlineStatus, getUsage, listRuns } from '../../api/client';
+import { getOnlineSeries, getOnlineStatus, getUsage, listRuns } from '../../api/client';
 import { passRate } from '../runs/runHistory';
-import type { Run, UsageSeries } from '../../lib/types';
+import type { OnlineSeriesPoint, Run, UsageSeries } from '../../lib/types';
 import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
 import { useLiveData } from '../../lib/connection';
 import { useSelectedTenant } from '../../lib/tenant';
@@ -19,6 +19,8 @@ interface Figures {
   scored?: number;
   // The average pass rate of the latest runs; null when none has a decided result.
   pass?: number | null;
+  // The ego score: the mean online score of the last 24 hours, weighted by how many scores each hour had.
+  ego?: number | null;
 }
 
 // 1,234,567 -> 1.2M: short enough for the narrow rail.
@@ -46,6 +48,17 @@ function usageTotals(series: UsageSeries): Usage {
   return t;
 }
 
+// The mean of the hourly mean scores, each weighted by its count; null when nothing was scored.
+function egoScore(series: OnlineSeriesPoint[]): number | null {
+  let sum = 0;
+  let n = 0;
+  for (const p of series) {
+    sum += p.mean * p.n;
+    n += p.n;
+  }
+  return n > 0 ? sum / n : null;
+}
+
 function averagePassRate(runs: Run[]): number | null {
   const rates = runs.map(passRate).filter((r): r is number => r !== null);
   return rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
@@ -64,12 +77,13 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
   // The tenant is read by the requests (getUsage narrows by it); the runs list takes no tenant, so the pass rate
   // stays across everything the role may see.
   const load = useCallback(async (current: () => boolean) => {
-    const [u, o, r] = await Promise.allSettled([getUsage(24), getOnlineStatus(), listRuns({ limit: 200 })]);
+    const [u, o, r, e] = await Promise.allSettled([getUsage(24), getOnlineStatus(), listRuns({ limit: 200 }), getOnlineSeries(24)]);
     if (!current()) return;
     setFigures({
       usage: u.status === 'fulfilled' ? usageTotals(u.value) : undefined,
       scored: o.status === 'fulfilled' ? o.value.sessionsScored24h : undefined,
       pass: r.status === 'fulfilled' ? averagePassRate(r.value) : undefined,
+      ego: e.status === 'fulfilled' ? egoScore(e.value) : undefined,
     });
   }, [tenant]);
 
@@ -82,9 +96,11 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
     day.push(['cost', shortCost(figures.usage.cost), 'estimated from list prices, not billed']);
   }
   if (figures.scored != null) day.push(['scored', short(figures.scored), 'sessions scored by online evaluation (quality)']);
+  const ego: Row[] = [];
+  if (figures.ego != null) ego.push(['score', figures.ego.toFixed(2), 'mean online score of the last 24 hours, over every metric (0 to 1)']);
   const runs: Row[] = [];
   if (figures.pass != null) runs.push(['pass', `${Math.round(figures.pass * 100)}%`, 'average pass rate of the latest runs']);
-  if (day.length === 0 && runs.length === 0) return null;
+  if (ego.length === 0 && day.length === 0 && runs.length === 0) return null;
 
   const rowsOf = (list: Row[]) =>
     list.map(([label, value, title]) => (
@@ -96,6 +112,12 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
 
   return (
     <div css={[boxStyle, collapsed && collapsedBoxStyle]}>
+      {ego.length > 0 && (
+        <button css={sectionStyle} onClick={() => actions.setCurrentView('quality')} title="Last 24 hours. Open ego.">
+          <span css={headingStyle}>ego</span>
+          {rowsOf(ego)}
+        </button>
+      )}
       {day.length > 0 && (
         <button css={sectionStyle} onClick={() => actions.setCurrentView(figures.usage ? 'usage' : 'quality')} title="Last 24 hours. Open usage.">
           <span css={headingStyle}>24h</span>

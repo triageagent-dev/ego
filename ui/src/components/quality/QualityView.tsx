@@ -186,6 +186,10 @@ export const QualityView: React.FC = () => {
     };
   }, [agreementRows]);
 
+  // The ego score of the window: the mean of the hourly means, weighted by how many scores each had.
+  const scoreCount = series.reduce((n, p) => n + p.n, 0);
+  const egoScore = scoreCount > 0 ? series.reduce((sum, p) => sum + p.mean * p.n, 0) / scoreCount : null;
+
   const counts = status ? Object.entries(status.counts).sort((a, b) => b[1] - a[1]) : [];
   const sampled = counts.filter(([k]) => k.startsWith('sampled_')).reduce((s, [, v]) => s + v, 0);
   const openAlerts = alerts.filter(a => a.status === 'open');
@@ -215,6 +219,8 @@ export const QualityView: React.FC = () => {
       {status && (
         <>
           <div css={tilesStyle}>
+            <Tile label="Ego score" value={egoScore === null ? '–' : egoScore.toFixed(2)}
+              sub={egoScore === null ? 'nothing scored in this window' : `mean of ${scoreCount.toLocaleString()} scores, last ${RANGES.find(r => r.hours === hours)?.label ?? `${hours}h`}`} />
             <Tile label="Judge tokens today" value={formatTokens(status.budget.spent.judgeTokens)}
               sub={status.budget.caps.judgeTokensPerDay ? `of ${formatTokens(status.budget.caps.judgeTokensPerDay)} cap` : 'no Gemini judges'} />
             <Tile label="Jev calls today" value={String(status.budget.spent.jevCalls)}
@@ -246,7 +252,7 @@ export const QualityView: React.FC = () => {
 
           <div css={chartsGridStyle}>
           <section css={cardStyle}>
-            <h2 css={cardTitleStyle}>Mean score per hour{active ? `, ${active}` : ''}</h2>
+            <h2 css={cardTitleStyle}>Ego score{active ? `, ${active}` : ''}</h2>
             {!chart ? (
               <p css={emptyStyle}>No scored sessions in this window.</p>
             ) : (
