@@ -82,6 +82,8 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
   const from = Math.min(start, maxStart);
   const visible = shown.slice(from, from + size);
   const below = shown.length - (from + visible.length);
+  // The window moves by a page from the arrows under and over the list, and by a row from the arrow keys.
+  const move = (rows: number) => setStart(Math.max(0, Math.min(maxStart, from + rows)));
   const jump = (l: string) => {
     const i = shown.findIndex((r) => isTenant(r) && letterOf(r) === l);
     if (i >= 0) setStart(Math.min(i, maxStart));
@@ -117,12 +119,22 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
           onKeyDown={(e) => {
             const first = shown.find((r) => !r.head);
             if (e.key === 'Enter' && first) onPick(first.key);
+            else if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              move(1);
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              move(-1);
+            }
           }}
           placeholder={`Search ${options.length} tenants`}
           aria-label="Search tenants"
         />
       </label>
       <div css={pinnedStyle}>{pickable(ALL)}</div>
+      {from > 0 && (
+        <button css={moreStyle} onClick={() => move(-size)}>↑ {from} above</button>
+      )}
       <div css={bodyStyle}>
         <div css={listStyle} role="listbox">
           {visible.map((r) => (r.head ? <div key={r.key} css={groupStyle}>{r.label}</div> : pickable(r)))}
@@ -136,7 +148,7 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
           </div>
         )}
       </div>
-      {below > 0 && <div css={moreStyle}>↓ {below} below — type to narrow</div>}
+      {below > 0 && <button css={moreStyle} onClick={() => move(size)}>↓ {below} more · or type to narrow</button>}
     </div>
   );
 };
@@ -255,9 +267,20 @@ const letterStyle = css`
 `;
 
 const moreStyle = css`
+  display: block;
+  width: 100%;
   padding: 5px 6px 2px;
-  color: var(--text-tertiary);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
   font-size: 0.68rem;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--accent-primary);
+  }
 `;
 
 // "All tenants" stays on top however the list below is moved or narrowed.
