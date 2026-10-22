@@ -206,7 +206,7 @@ export const QualityView: React.FC = () => {
         <PageTitle>
           <h1 css={titleStyle}>ego</h1>
           <p css={subtitleStyle}>
-            how sampled agent sessions score on the metrics you chose · RSI: ego diagnoses what regressed, the agent corrects itself, ego verifies it worked
+            how sampled agent sessions score · RSI loop: diagnose, correct, verify
           </p>
         </PageTitle>
       </header>
