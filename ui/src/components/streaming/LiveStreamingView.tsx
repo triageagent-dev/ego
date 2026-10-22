@@ -163,14 +163,17 @@ export function LiveStreamingView() {
     });
   };
   // What the server is asked for. A change of any of these starts again at the newest page.
+  // A search for a session id (one long word) looks everywhere: a session that began days ago, has no LLM call or is
+  // not scored is still the one asked for, so the range and those filters do not apply to it.
+  const byId = /^\S{16,}$/.test(debouncedQuery);
   const listParams = (() => {
     const p = new URLSearchParams({ limit: String(SESSIONS_PAGE) });
     const ms = TIME_RANGES.find(r => r.key === timeRange)?.ms;
-    if (ms) p.set('since', `${ms / 3_600_000}h`);
+    if (ms && !byId) p.set('since', `${ms / 3_600_000}h`);
     if (pickedTenant) p.set('tenant', pickedTenant.endsWith('/*') ? pickedTenant.slice(0, -1) : pickedTenant);
     if (debouncedQuery) p.set('q', debouncedQuery);
-    if (!showNoLLM) p.set('llm', 'true');
-    if (scoredOnly) p.set('scored', 'true');
+    if (!showNoLLM && !byId) p.set('llm', 'true');
+    if (scoredOnly && !byId) p.set('scored', 'true');
     return p;
   })();
   const listKey = listParams.toString();
@@ -691,7 +694,7 @@ export function LiveStreamingView() {
     .filter(s => s.status === 'active')
     .sort(byStartedAtDesc);
   const completedSessions = sessions
-    .filter(s => s.status === 'complete' && !hideDone)
+    .filter(s => s.status === 'complete' && (!hideDone || byId))
     .sort(byStartedAtDesc);
   const allSessions = [...activeLiveSessions, ...completedSessions];
   const renderPager = (inline: boolean) => !focused && !hideDone && (pageIdx > 0 || nextCursor) ? (
