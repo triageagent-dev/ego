@@ -128,7 +128,7 @@ func usage() {
 
 Usage:
   ego run <trace-file>... --eval-set <path> -m <metric> [-m <metric>...] [flags]
-  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth] [--audit-log] [--log-level info]
+  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--segment-idle 30m] [--segment-max-spans n] [--segment-max-age 6h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth] [--audit-log] [--log-level info]
                    [--admin-github-users user1,user2] [--default-role member]
   ego auth mint-token --name <label> [--ttl-days 90] [--secret ...]
   ego mcp [--server-url http://localhost:8001] [--session-token ...] [--trace-dir dir] [--admin-tools]
@@ -438,6 +438,12 @@ func serveCmd(args []string) error {
 		"completed sessions kept in memory with --session-db; older ones stay in the archive and load on demand (0 = no cap); falls back to EGO_SESSION_MEMORY")
 	sessionRetention := fs.Duration("session-retention", envDurationOrDefault("SESSION_RETENTION", api.DefaultSessionRetention),
 		"delete archived sessions not updated for this long, once a day, then compact the file (0 = keep forever); falls back to EGO_SESSION_RETENTION")
+	segmentIdle := fs.Duration("segment-idle", envDurationOrDefault("SEGMENT_IDLE", api.DefaultSegmentIdle),
+		"a thread's segment (the session that is scored) closes for good when its last span ended more than this long ago and a new trace arrives, or when it has been quiet this long; a trace within this window joins it; falls back to EGO_SEGMENT_IDLE")
+	segmentMaxSpans := fs.Int("segment-max-spans", envIntOrDefault("SEGMENT_MAX_SPANS", api.DefaultSegmentMaxSpans),
+		"a segment holding this many spans or more takes no new trace (checked between traces, never inside one); the next trace opens the next segment; falls back to EGO_SEGMENT_MAX_SPANS")
+	segmentMaxAge := fs.Duration("segment-max-age", envDurationOrDefault("SEGMENT_MAX_AGE", api.DefaultSegmentMaxAge),
+		"a segment whose first span is older than this takes no new trace; falls back to EGO_SEGMENT_MAX_AGE")
 	usageTenantAttr := fs.String("usage-tenant-attr", env("USAGE_TENANT_ATTR"),
 		"span attribute the token usage view reads the tenant from (e.g. tenant.id); empty records no tenant; falls back to EGO_USAGE_TENANT_ATTR")
 	evalDailyTokens := fs.Int64("eval-daily-tokens", envInt64OrDefault("EVAL_DAILY_TOKENS", api.DefaultEvalDailyToks),
@@ -481,7 +487,8 @@ func serveCmd(args []string) error {
 		}
 	}
 	return api.Serve(*addr, *otlpAddr, *otlpGRPCAddr, *healthAddr, *sessionDB, *sessionSecret, githubOAuth, adminUsers, *defaultRole,
-		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens}, *onlineConfig, *otlpToken)
+		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens,
+			SegmentIdle: *segmentIdle, SegmentMaxSpans: *segmentMaxSpans, SegmentMaxAge: *segmentMaxAge}, *onlineConfig, *otlpToken)
 }
 
 // envIntOrDefault reads an integer env var, falling back to def when it is

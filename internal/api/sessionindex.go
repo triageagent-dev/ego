@@ -44,6 +44,13 @@ type sessionIndexRow struct {
 	Tenants   []string
 	Agents    []string
 	Search    string
+	// Thread and Part place the segment in its thread; Closed says it is final; EndedMs is the end of its last span;
+	// TraceIDs are the traces it holds, so a thread's routing can be rebuilt from the index alone.
+	Thread   string
+	Part     int
+	Closed   bool
+	EndedMs  int64
+	TraceIDs []string
 	// Scored is true when online evaluation scored the session (read from online_scores, never stored here).
 	Scored bool
 }
@@ -103,10 +110,19 @@ func indexRowOf(s *Session) sessionIndexRow {
 	root, llm, _ := spanOutline(s.Spans)
 	service, _, _ := spanServiceAndTokens(s.Spans)
 	tenants := sessionTenants(s)
-	text := []string{s.ID, s.PrimaryTraceID, service, root}
+	text := []string{s.ID, s.threadKey(), s.PrimaryTraceID, service, root}
 	text = append(text, agents...)
 	text = append(text, models...)
 	text = append(text, tenants...)
+	traceIDs := make([]string, 0, len(s.TraceIDs))
+	for id := range s.TraceIDs {
+		traceIDs = append(traceIDs, id)
+	}
+	sort.Strings(traceIDs)
+	ended := s.StartedAt.UnixMilli()
+	if s.lastUs > 0 {
+		ended = s.lastUs / 1000
+	}
 	return sessionIndexRow{
 		ID:        s.ID,
 		StartedMs: s.StartedAt.UnixMilli(),
@@ -115,6 +131,11 @@ func indexRowOf(s *Session) sessionIndexRow {
 		Tenants:   tenants,
 		Agents:    agents,
 		Search:    strings.ToLower(strings.Join(text, indexSep)),
+		Thread:    s.threadKey(),
+		Part:      s.partNo(),
+		Closed:    s.Closed,
+		EndedMs:   ended,
+		TraceIDs:  traceIDs,
 	}
 }
 
@@ -135,14 +156,45 @@ func ensureSessionIndexSchema(db *sql.DB) error {
 			return fmt.Errorf("creating session index: %w", err)
 		}
 	}
+	// Columns added with segments. trace_ids stays NULL on a row written before them, which BackfillSessionIndex
+	// reads as "index this session again".
+	for _, c := range []struct{ name, def string }{
+		{"thread", "TEXT NOT NULL DEFAULT ''"},
+		{"part", "INTEGER NOT NULL DEFAULT 1"},
+		{"closed", "INTEGER NOT NULL DEFAULT 0"},
+		{"ended_ms", "INTEGER NOT NULL DEFAULT 0"},
+		{"trace_ids", "TEXT"},
+	} {
+		if err := addColumn(db, "session_index", c.name, c.def); err != nil {
+			return err
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_session_index_thread ON session_index(thread, part)`); err != nil {
+		return fmt.Errorf("creating session index thread index: %w", err)
+	}
+	// Every session archived before segments is part 1 of its own thread, closed when it had completed (see
+	// sessionHeader). Rows written since always carry a thread, so this touches only the rows that predate it.
+	if _, err := db.Exec(`UPDATE session_index SET thread = session_id, part = 1, closed = complete, ended_ms = started_ms WHERE thread = ''`); err != nil {
+		return fmt.Errorf("filling session index threads: %w", err)
+	}
 	return nil
 }
 
-func writeIndexRows(tx *sql.Tx, rows []sessionIndexRow) error {
-	stmt, err := tx.Prepare(`INSERT INTO session_index (session_id, started_ms, complete, llm_calls, tenants, agents, search)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+// writeIndexRows upserts index rows. With fillOnly, a row the index already has is rewritten only while it lacks its
+// trace ids (written before segments): the backfill read the session some moments ago, and must not overwrite what a
+// flush has written since.
+func writeIndexRows(tx *sql.Tx, rows []sessionIndexRow, fillOnly bool) error {
+	guard := ""
+	if fillOnly {
+		guard = " WHERE session_index.trace_ids IS NULL"
+	}
+	stmt, err := tx.Prepare(`INSERT INTO session_index (session_id, started_ms, complete, llm_calls, tenants, agents, search,
+			thread, part, closed, ended_ms, trace_ids)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET started_ms = excluded.started_ms, complete = excluded.complete,
-			llm_calls = excluded.llm_calls, tenants = excluded.tenants, agents = excluded.agents, search = excluded.search`)
+			llm_calls = excluded.llm_calls, tenants = excluded.tenants, agents = excluded.agents, search = excluded.search,
+			thread = excluded.thread, part = excluded.part, closed = excluded.closed, ended_ms = excluded.ended_ms,
+			trace_ids = excluded.trace_ids` + guard)
 	if err != nil {
 		return err
 	}
@@ -152,7 +204,12 @@ func writeIndexRows(tx *sql.Tx, rows []sessionIndexRow) error {
 		if r.Complete {
 			done = 1
 		}
-		if _, err := stmt.Exec(r.ID, r.StartedMs, done, r.LLMCalls, joinIndexList(r.Tenants), joinIndexList(r.Agents), r.Search); err != nil {
+		closed := 0
+		if r.Closed {
+			closed = 1
+		}
+		if _, err := stmt.Exec(r.ID, r.StartedMs, done, r.LLMCalls, joinIndexList(r.Tenants), joinIndexList(r.Agents), r.Search,
+			r.Thread, r.Part, closed, r.EndedMs, joinIndexList(r.TraceIDs)); err != nil {
 			return err
 		}
 	}
@@ -168,7 +225,7 @@ func (s *SQLiteStore) BackfillSessionIndex(tenantAttr string) (int, error) {
 	for {
 		rows, err := s.db.Query(`SELECT s.session_id, s.data FROM sessions s
 			LEFT JOIN session_index i ON i.session_id = s.session_id
-			WHERE i.session_id IS NULL AND s.session_id > ? ORDER BY s.session_id LIMIT ?`, last, batch)
+			WHERE (i.session_id IS NULL OR i.trace_ids IS NULL) AND s.session_id > ? ORDER BY s.session_id LIMIT ?`, last, batch)
 		if err != nil {
 			return added, err
 		}
@@ -188,10 +245,7 @@ func (s *SQLiteStore) BackfillSessionIndex(tenantAttr string) (int, error) {
 				continue
 			}
 			// Not restoreSession: a completed session's invocations are not needed for its index row.
-			idx = append(idx, indexRowOf(&Session{
-				ID: snap.SessionID, Sender: snap.Sender, tenantAttr: tenantAttr, PrimaryTraceID: snap.TraceID,
-				Spans: snap.Spans, StartedAt: snap.StartedAt, IsComplete: snap.IsComplete,
-			}))
+			idx = append(idx, indexRowOf(sessionHeader(snap, tenantAttr)))
 		}
 		err = rows.Err()
 		rows.Close()
@@ -203,7 +257,7 @@ func (s *SQLiteStore) BackfillSessionIndex(tenantAttr string) (int, error) {
 			if err != nil {
 				return added, err
 			}
-			if err := writeIndexRows(tx, idx); err != nil {
+			if err := writeIndexRows(tx, idx, true); err != nil {
 				tx.Rollback()
 				return added, err
 			}
@@ -582,4 +636,52 @@ func (s *SessionStore) countMatches(req SessionPageRequest, want sessionPageFilt
 			return n + memMatches, true, true
 		}
 	}
+}
+
+// threadSegment is one segment of a thread as the index knows it.
+type threadSegment struct {
+	ID       string
+	Part     int
+	Closed   bool
+	TraceIDs []string
+}
+
+// ThreadSegments lists the indexed segments of a thread, oldest part first, with their trace ids: what the ingest
+// path needs to route a trace of a thread it has not seen since the process started.
+func (s *SQLiteStore) ThreadSegments(thread string) ([]threadSegment, error) {
+	rows, err := s.db.Query(`SELECT session_id, part, closed, COALESCE(trace_ids, '') FROM session_index WHERE thread = ? ORDER BY part`, thread)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []threadSegment
+	for rows.Next() {
+		var seg threadSegment
+		var closed int
+		var traces string
+		if err := rows.Scan(&seg.ID, &seg.Part, &closed, &traces); err != nil {
+			return nil, err
+		}
+		seg.Closed, seg.TraceIDs = closed == 1, splitIndexList(traces)
+		out = append(out, seg)
+	}
+	return out, rows.Err()
+}
+
+// OpenThreads lists the threads that have a segment which is not closed yet.
+func (s *SQLiteStore) OpenThreads() ([]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT thread FROM session_index WHERE closed = 0`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var th string
+		if err := rows.Scan(&th); err != nil {
+			return nil, err
+		}
+		out = append(out, th)
+	}
+	return out, rows.Err()
 }

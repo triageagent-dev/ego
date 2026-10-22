@@ -19,16 +19,24 @@ const (
 	evalSetIDAttr       = "ego.eval_set_id"
 	genAIConversationID = "gen_ai.conversation.id"
 
-	maxSpansPerSession = 10000
-
 	defaultIdleTimeout     = 30 * time.Second
 	defaultCompletionGrace = 3 * time.Second
 )
 
 // Session is one live OTLP-ingested session: the aggregated spans of every trace grouped under one session
 // identity.
+//
+// A session is a segment of a thread (segments.go): ID is the thread's id for the first part and "<thread>~n" for
+// part n. Thread and Part are stored, so the thread table is an indexed query rather than a parse of ids.
 type Session struct {
-	ID             string
+	ID string
+	// Thread is the sender's own id for the work this session is a part of, Part its 1-based number in that thread.
+	Thread string
+	Part   int
+	// Closed is true once the segment is final: it takes no new trace and is scored. A merely complete (quiet)
+	// segment can still reopen.
+	Closed         bool
+	ClosedAt       *time.Time
 	PrimaryTraceID string
 	EvalSetID      string
 	Metadata       map[string]any
@@ -45,6 +53,10 @@ type Session struct {
 	// spans' tenant label (tenantAttr) and keyed with the sender, see tenantKey.
 	Sender     string
 	tenantAttr string
+	// firstUs and lastUs are the earliest span start and latest span end (microseconds), lastArrival the wall-clock
+	// time the last span came in; segments close on them.
+	firstUs, lastUs int64
+	lastArrival     time.Time
 
 	// changeSeq is this session's own stamp from SessionStore.changeSeq as
 	// of its last mutation - only ever set with SessionStore.mu held. A
@@ -61,7 +73,12 @@ type Session struct {
 // "session" field. Invocations mirrors SessionInfo.invocations: nil unless the session is complete and has at
 // least one real invocation (populated by completeSession's batch GenAI-semconv conversion).
 type SessionSummary struct {
-	SessionID    string          `json:"sessionId"`
+	SessionID string `json:"sessionId"`
+	// Thread and Part place the session in its thread: the sender's own id and the 1-based number of this segment.
+	// Closed is true once the segment is final and scored.
+	Thread       string          `json:"thread,omitempty"`
+	Part         int             `json:"part,omitempty"`
+	Closed       bool            `json:"closed,omitempty"`
 	TraceID      string          `json:"traceId"`
 	EvalSetID    *string         `json:"evalSetId"`
 	SpanCount    int             `json:"spanCount"`
@@ -137,6 +154,9 @@ func summarize(s *Session) SessionSummary {
 		Turns:        claudeCodeTurns(s.Spans),
 		DurationMs:   spanWindowMs(s.Spans),
 		SessionID:    s.ID,
+		Thread:       s.threadKey(),
+		Part:         s.partNo(),
+		Closed:       s.Closed,
 		TraceID:      s.PrimaryTraceID,
 		EvalSetID:    evalSetID,
 		SpanCount:    len(s.Spans),
@@ -321,6 +341,17 @@ type SessionStore struct {
 	idleTimers       map[string]*time.Timer
 	completionTimers map[string]*time.Timer
 
+	// Segments (segments.go): threads routes new traces and late spans to a segment, sweepTimers close a thread's
+	// open segment once it is due, and the three limits are the close rules.
+	threads         map[string]*threadState
+	sweepTimers     map[string]*time.Timer
+	lastThreadPrune time.Time
+	segIdle         time.Duration
+	segMaxSpans     int
+	segMaxAge       time.Duration
+	// now is the clock of the segment rules; tests replace it.
+	now func() time.Time
+
 	// changeSeq/lastPersistedSeq let flushPersist skip its snapshot+DB
 	// round trip entirely when nothing has changed since the last
 	// successful persist (e.g. an idle deployment with no active OTLP
@@ -363,13 +394,12 @@ type SessionStore struct {
 	sessionRetention time.Duration
 	lastSessionPrune time.Time
 
-	// onComplete, when set, is called with a session's ID after it
-	// completes, outside s.mu (online evaluation's hook). It must not
-	// block.
+	// onComplete, when set, is called with a segment's ID once it is closed for good (not when it merely goes quiet),
+	// outside s.mu (online evaluation's hook). It must not block.
 	onComplete func(sessionID string)
 }
 
-// SetOnComplete registers the session-complete hook. Call before serving.
+// SetOnComplete registers the segment-closed hook. Call before serving.
 func (s *SessionStore) SetOnComplete(fn func(sessionID string)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -393,6 +423,11 @@ type SessionLimits struct {
 	UsageTenantAttr string
 	// EvalDailyTokens caps the judge tokens interactive evaluations may use per UTC day; 0 means unlimited.
 	EvalDailyTokens int64
+	// SegmentIdle, SegmentMaxSpans and SegmentMaxAge are the rules that close a segment of a thread (segments.go);
+	// zero takes the default.
+	SegmentIdle     time.Duration
+	SegmentMaxSpans int
+	SegmentMaxAge   time.Duration
 }
 
 func NewSessionStore(hub *sseHub) *SessionStore {
@@ -404,6 +439,12 @@ func NewSessionStore(hub *sseHub) *SessionStore {
 		idleTimers:       map[string]*time.Timer{},
 		persistedSeq:     map[string]uint64{},
 		completionTimers: map[string]*time.Timer{},
+		threads:          map[string]*threadState{},
+		sweepTimers:      map[string]*time.Timer{},
+		segIdle:          DefaultSegmentIdle,
+		segMaxSpans:      DefaultSegmentMaxSpans,
+		segMaxAge:        DefaultSegmentMaxAge,
+		now:              time.Now,
 		usageTenantAttr:  DefaultTenantAttr,
 	}
 }
@@ -426,6 +467,15 @@ func NewSessionStoreWithArchive(hub *sseHub, store *SQLiteStore, limits SessionL
 	s.sessionRetention = limits.Retention
 	if limits.UsageTenantAttr != "" {
 		s.usageTenantAttr = limits.UsageTenantAttr
+	}
+	if limits.SegmentIdle > 0 {
+		s.segIdle = limits.SegmentIdle
+	}
+	if limits.SegmentMaxSpans > 0 {
+		s.segMaxSpans = limits.SegmentMaxSpans
+	}
+	if limits.SegmentMaxAge > 0 {
+		s.segMaxAge = limits.SegmentMaxAge
 	}
 	return s
 }
@@ -456,6 +506,7 @@ func (s *SessionStore) LoadPersisted() error {
 		if err := s.store.ForEachSnapshot(func(snap sessionSnapshot) {
 			for _, span := range snap.Spans {
 				if row, ok := usageRowFromSpan(span, snap.SessionID, s.usageTenantAttr, snap.Sender, traceTenantLabel(snap.Spans, s.usageTenantAttr)); ok {
+					row.Thread = snapThread(snap)
 					backfill = append(backfill, row)
 				}
 			}
@@ -500,13 +551,30 @@ func (s *SessionStore) LoadPersisted() error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	openThreads := map[string]bool{}
 	for _, snap := range snapshots {
 		id := snap.SessionID
-		s.sessions[id] = restoreSession(snap, s.usageTenantAttr)
+		sess := restoreSession(snap, s.usageTenantAttr)
+		s.sessions[id] = sess
 		s.order = append(s.order, id)
 		if !snap.IsComplete {
 			s.resetIdleTimerLocked(id)
 		}
+		if !sess.Closed {
+			openThreads[sess.threadKey()] = true
+		}
+	}
+	// A segment that was still open when the process stopped is closed by its thread's sweep once it is due, also
+	// when it is older than the sessions restored into memory.
+	if more, err := s.store.OpenThreads(); err != nil {
+		logx.Warnf("session archive: listing open threads: %v", err)
+	} else {
+		for _, th := range more {
+			openThreads[th] = true
+		}
+	}
+	for th := range openThreads {
+		s.scheduleSweepLocked(th, s.idleTimeout)
 	}
 	if len(snapshots) > 0 {
 		logx.Infof("restored %d session(s) from archive", len(snapshots))
@@ -532,12 +600,39 @@ const restoreBudgetBytes = 16 << 20
 // fresh extractor (see sessionSnapshot) and, for a completed session, its
 // invocations recomputed from the spans.
 func restoreSession(snap sessionSnapshot, tenantAttr string) *Session {
+	sess := sessionHeader(snap, tenantAttr)
+	if snap.IsComplete {
+		// Persisted snapshots predate this converter (or were archived
+		// before invocations existed) - recompute rather than leaving
+		// completed sessions permanently without detail after restart.
+		sess.Invocations = extractInvocationsForUI(otlp.BuildTrace(snap.SessionID, snap.Spans))
+	}
+	return sess
+}
+
+// snapThread is the thread an archived session belongs to: the stored one, or its own id for a session archived
+// before segments existed.
+func snapThread(snap sessionSnapshot) string {
+	if snap.Thread != "" {
+		return snap.Thread
+	}
+	return snap.SessionID
+}
+
+// sessionHeader rebuilds a Session from its snapshot without its invocations. A session archived before segments
+// existed is the first part of its own thread, and closed when it had completed: online evaluation already decided
+// about it when it completed, and a later span under its id opens part 2 instead of rescoring it.
+func sessionHeader(snap sessionSnapshot, tenantAttr string) *Session {
 	traceIDs := make(map[string]struct{}, len(snap.TraceIDs))
 	for _, tid := range snap.TraceIDs {
 		traceIDs[tid] = struct{}{}
 	}
 	sess := &Session{
 		ID:             snap.SessionID,
+		Thread:         snapThread(snap),
+		Part:           snap.Part,
+		Closed:         snap.Closed,
+		ClosedAt:       snap.ClosedAt,
 		Sender:         snap.Sender,
 		tenantAttr:     tenantAttr,
 		PrimaryTraceID: snap.TraceID,
@@ -551,12 +646,13 @@ func restoreSession(snap sessionSnapshot, tenantAttr string) *Session {
 		CompletedAt:    snap.CompletedAt,
 		extractor:      incremental.New(),
 	}
-	if snap.IsComplete {
-		// Persisted snapshots predate this converter (or were archived
-		// before invocations existed) - recompute rather than leaving
-		// completed sessions permanently without detail after restart.
-		sess.Invocations = extractInvocationsForUI(otlp.BuildTrace(snap.SessionID, snap.Spans))
+	if snap.Part == 0 {
+		sess.Part = 1
+		if snap.IsComplete {
+			sess.Closed, sess.ClosedAt = true, snap.CompletedAt
+		}
 	}
+	sess.recomputeBounds()
 	return sess
 }
 
@@ -654,6 +750,7 @@ func (s *SessionStore) flushPersist() error {
 		s.lastPersistedSeq = seq
 	}
 	s.evictLocked()
+	s.pruneThreadsLocked()
 	s.mu.Unlock()
 	s.pruneSessions()
 	return nil
@@ -819,6 +916,9 @@ func (s *SessionStore) Close() error {
 	for _, t := range s.completionTimers {
 		t.Stop()
 	}
+	for _, t := range s.sweepTimers {
+		t.Stop()
+	}
 	s.mu.Unlock()
 
 	if s.store == nil {
@@ -862,6 +962,7 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 	type parsedResource struct {
 		resourceAttrs                          map[string]any
 		sessionName, conversationID, evalSetID string
+		thread                                 string
 		traces                                 []*tracepkg.Trace
 	}
 	var parsed []parsedResource
@@ -871,19 +972,24 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 		p.sessionName, _ = p.resourceAttrs[sessionNameAttr].(string)
 		p.conversationID, _ = p.resourceAttrs[genAIConversationID].(string)
 		p.evalSetID, _ = p.resourceAttrs[evalSetIDAttr].(string)
+		p.thread, _ = p.resourceAttrs[threadAttr].(string)
 		p.traces = otlp.ParseExportRequest(map[string]any{"resourceSpans": []any{rs}})
 		parsed = append(parsed, p)
 	}
 
+	var out closings
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	ingested := 0
 	for _, p := range parsed {
 		resourceAttrs, sessionName, conversationID, evalSetID := p.resourceAttrs, p.sessionName, p.conversationID, p.evalSetID
 
 		for _, tr := range p.traces {
-			name := sessionName
+			// The sender's own thread name beats its session id: an agent whose runtime rotates the session id keeps
+			// one thread.
+			name := p.thread
+			if name == "" {
+				name = sessionName
+			}
 			if name == "" {
 				name = conversationID
 			}
@@ -903,11 +1009,12 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 				}
 			}
 
-			session, isNew := s.getOrCreateSession(name, tr.TraceID, evalSetID, sender, resourceAttrs)
-			if session.Sender != sender {
+			session, isNew, owned := s.placeTraceLocked(name, tr, evalSetID, sender, resourceAttrs, &out)
+			if !owned {
 				logx.Warnf("ingest: dropped spans for session %q: it belongs to another sender", name)
 				continue
 			}
+			arrived := s.now()
 
 			// session_started must reach clients before any update event for this session, so the UI has a
 			// session to attach those events to (LiveStreamingView.tsx's user_input/etc. handlers no-op on an
@@ -915,14 +1022,18 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 			var updates []sessionScopedUpdate
 
 			for _, span := range tr.AllSpans {
-				if len(session.Spans) >= maxSpansPerSession {
+				// Segments close on size between traces (segmentDueAt); this only stops one runaway trace.
+				if len(session.Spans) >= hardMaxSpansPerSegment {
 					break
 				}
 				session.Spans = append(session.Spans, span)
+				session.noteSpan(span)
+				session.lastArrival = arrived
 				s.markChangedLocked(session)
 				ingested++
 				if s.store != nil {
 					if row, ok := usageRowFromSpan(span, session.ID, s.usageTenantAttr, session.Sender, traceTenantLabel(tr.AllSpans, s.usageTenantAttr)); ok {
+						row.Thread = session.threadKey()
 						if row.Kind == "" {
 							row.Kind = traceRootName(session.Spans, span.TraceID)
 						}
@@ -947,12 +1058,24 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 					}
 				}
 
-				// Both timers ultimately call completeSession.
-				s.resetIdleTimerLocked(session.ID)
+				// Both timers ultimately call completeSession. A closed segment is final: it is already complete and
+				// stays so.
 				if span.ParentSpanID == "" {
 					session.HasRootSpan = true
-					s.scheduleCompletionLocked(session.ID)
 				}
+				if !session.Closed {
+					s.resetIdleTimerLocked(session.ID)
+					if span.ParentSpanID == "" {
+						s.scheduleCompletionLocked(session.ID)
+					}
+				}
+			}
+			if session.Closed {
+				// A late span of a closed segment's own trace: its invocations are rebuilt, the segment is neither
+				// reopened nor queued for scoring again.
+				session.Invocations = extractInvocationsForUI(otlp.BuildTrace(session.ID, session.Spans))
+			} else {
+				s.scheduleSweepLocked(name, s.segIdle)
 			}
 
 			if s.hub != nil {
@@ -971,57 +1094,9 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 			}
 		}
 	}
+	s.mu.Unlock()
+	s.finish(out)
 	return ingested
-}
-
-func (s *SessionStore) getOrCreateSession(name, traceID, evalSetID, sender string, resourceAttrs map[string]any) (*Session, bool) {
-	session := s.sessions[name]
-	if session == nil {
-		// A span for a session evicted from memory: bring it back rather
-		// than starting a second session under the same name.
-		if old, ok := s.lookupLocked(name); ok {
-			session = old
-			s.sessions[name] = session
-			s.order = append(s.order, name)
-			s.persistedSeq[name] = 0
-		}
-	}
-	isNew := false
-	if session == nil {
-		session = &Session{
-			ID:             name,
-			Sender:         sender,
-			tenantAttr:     s.usageTenantAttr,
-			PrimaryTraceID: traceID,
-			EvalSetID:      evalSetID,
-			Metadata:       withoutSessionAttrs(resourceAttrs),
-			TraceIDs:       map[string]struct{}{},
-			StartedAt:      time.Now().UTC(),
-			extractor:      incremental.New(),
-		}
-		s.sessions[name] = session
-		s.order = append(s.order, name)
-		s.markChangedLocked(session)
-		isNew = true
-	} else {
-		// Another sender's session is handed back untouched: the caller refuses the spans, and nothing about the
-		// session (eval set, completion, trace ids) may change on a stranger's say-so.
-		if session.Sender != sender {
-			return session, false
-		}
-		if evalSetID != "" {
-			session.EvalSetID = evalSetID
-			s.markChangedLocked(session)
-		}
-		// Reopen rather than leaving the session stuck complete.
-		if session.IsComplete {
-			session.IsComplete = false
-			session.CompletedAt = nil
-			s.markChangedLocked(session)
-		}
-	}
-	session.TraceIDs[traceID] = struct{}{}
-	return session, isNew
 }
 
 // resetIdleTimerLocked (re)starts the idle-completion timer for a session. Must be called with s.mu held; the
@@ -1047,7 +1122,8 @@ func (s *SessionStore) scheduleCompletionLocked(sessionID string) {
 }
 
 // completeSession marks a session complete and broadcasts session_complete, idempotently. Runs as an
-// idle/completion timer callback, so it acquires s.mu itself rather than assuming it's held.
+// idle/completion timer callback, so it acquires s.mu itself rather than assuming it's held. Complete is only the
+// quiet state the UI shows: online evaluation hears about a segment when it is closed (closeSegmentLocked).
 func (s *SessionStore) completeSession(sessionID string) {
 	s.mu.Lock()
 	session, ok := s.sessions[sessionID]
@@ -1055,56 +1131,9 @@ func (s *SessionStore) completeSession(sessionID string) {
 		s.mu.Unlock()
 		return
 	}
-
-	now := time.Now().UTC()
-	session.IsComplete = true
-	session.CompletedAt = &now
-	s.markChangedLocked(session)
-
-	// Batch-convert the session's full span set into real invocations (tool calls, user/agent text, model info)
-	// now that it's done -. Built from otlp.BuildTrace's merged parent/child tree, same as the Trace() method.
-	trace := otlp.BuildTrace(sessionID, session.Spans)
-	session.Invocations = extractInvocationsForUI(trace)
-
-	if t, ok := s.idleTimers[sessionID]; ok {
-		t.Stop()
-		delete(s.idleTimers, sessionID)
-	}
-	if t, ok := s.completionTimers[sessionID]; ok {
-		t.Stop()
-		delete(s.completionTimers, sessionID)
-	}
-
-	completedAt := now.Format(time.RFC3339)
-	invocations := session.Invocations
-	rootName, llmCalls, errs := spanOutline(session.Spans)
-	durationMs := spanWindowMs(session.Spans)
-	var agents, tenants []string
-	if s.hub != nil && s.hub.hasScoped() {
-		agents, _ = spanIdentities(session.Spans)
-		tenants = sessionTenants(session)
-	}
-	hub := s.hub
-	onComplete := s.onComplete
+	c := s.completeLocked(session)
 	s.mu.Unlock()
-
-	if onComplete != nil {
-		onComplete(sessionID)
-	}
-
-	if hub != nil {
-		hub.broadcastSession(sessionCompleteEvent{
-			Type:         "session_complete",
-			SessionID:    sessionID,
-			Invocations:  invocations,
-			CompletedAt:  &completedAt,
-			RootSpanName: rootName,
-			LLMCalls:     llmCalls,
-			Errors:       errs,
-			Turns:        claudeCodeTurns(session.Spans),
-			DurationMs:   durationMs,
-		}, sessionID, agents, tenants, false)
-	}
+	s.finish(closings{completions: []completion{c}})
 }
 
 type sessionScopedUpdate struct {

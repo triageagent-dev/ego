@@ -24,9 +24,11 @@ import (
 const DefaultUsageRetention = 90 * 24 * time.Hour
 
 type usageRow struct {
-	SpanID       string
-	TraceID      string
-	SessionID    string
+	SpanID    string
+	TraceID   string
+	SessionID string
+	// Thread is the thread the session is a segment of (segments.go).
+	Thread       string
 	StartMs      int64
 	DurationMs   int64
 	Service      string
@@ -53,9 +55,21 @@ func ensureUsageSchema(db *sql.DB) error {
 		name TEXT NOT NULL,
 		input_tokens INTEGER NOT NULL,
 		output_tokens INTEGER NOT NULL,
-		is_error INTEGER NOT NULL
+		is_error INTEGER NOT NULL,
+		thread TEXT NOT NULL DEFAULT ''
 	)`); err != nil {
 		return fmt.Errorf("creating llm_calls table: %w", err)
+	}
+	// A ledger written before segments has no thread column: add it, and read the session id as the thread, which is
+	// what every such session was.
+	if err := addColumn(db, "llm_calls", "thread", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_llm_calls_thread ON llm_calls(thread)`); err != nil {
+		return fmt.Errorf("creating llm_calls.thread index: %w", err)
+	}
+	if _, err := db.Exec(`UPDATE llm_calls SET thread = session_id WHERE thread = ''`); err != nil {
+		return fmt.Errorf("filling llm_calls.thread: %w", err)
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_llm_calls_start ON llm_calls(start_ms)`); err != nil {
 		return fmt.Errorf("creating llm_calls.start_ms index: %w", err)
@@ -155,8 +169,8 @@ func (s *SQLiteStore) InsertUsage(rows []usageRow) error {
 		return err
 	}
 	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO llm_calls
-		(span_id, trace_id, session_id, start_ms, duration_ms, service, tenant, kind, model, name, input_tokens, output_tokens, is_error)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		(span_id, trace_id, session_id, start_ms, duration_ms, service, tenant, kind, model, name, input_tokens, output_tokens, is_error, thread)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -164,7 +178,7 @@ func (s *SQLiteStore) InsertUsage(rows []usageRow) error {
 	defer stmt.Close()
 	for _, r := range rows {
 		if _, err := stmt.Exec(r.SpanID, r.TraceID, r.SessionID, r.StartMs, r.DurationMs, r.Service, r.Tenant,
-			r.Kind, r.Model, r.Name, r.InputTokens, r.OutputTokens, r.IsError); err != nil {
+			r.Kind, r.Model, r.Name, r.InputTokens, r.OutputTokens, r.IsError, cmp.Or(r.Thread, r.SessionID)); err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -383,4 +397,12 @@ func (s *SQLiteStore) UsageEmpty() (bool, error) {
 		return true, nil
 	}
 	return false, err
+}
+
+// addColumn adds a column to a table that may already have it.
+func addColumn(db *sql.DB, table, column, definition string) error {
+	if _, err := db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return fmt.Errorf("adding %s.%s: %w", table, column, err)
+	}
+	return nil
 }

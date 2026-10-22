@@ -118,7 +118,13 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 }
 
 type sessionSnapshot struct {
-	SessionID   string           `json:"session_id"`
+	SessionID string `json:"session_id"`
+	// Thread, Part, Closed and ClosedAt place the session in its thread (segments.go). Rows archived before
+	// segments existed have none of them: see sessionHeader.
+	Thread      string           `json:"thread,omitempty"`
+	Part        int              `json:"part,omitempty"`
+	Closed      bool             `json:"closed,omitempty"`
+	ClosedAt    *time.Time       `json:"closed_at,omitempty"`
 	TraceID     string           `json:"trace_id"`
 	EvalSetID   string           `json:"eval_set_id,omitempty"`
 	Metadata    map[string]any   `json:"metadata,omitempty"`
@@ -148,6 +154,10 @@ func snapshotOf(s *Session) sessionSnapshot {
 	}
 	return sessionSnapshot{
 		SessionID:   s.ID,
+		Thread:      s.threadKey(),
+		Part:        s.partNo(),
+		Closed:      s.Closed,
+		ClosedAt:    s.ClosedAt,
 		Sender:      s.Sender,
 		TraceID:     s.PrimaryTraceID,
 		EvalSetID:   s.EvalSetID,
@@ -201,7 +211,7 @@ func (s *SQLiteStore) SaveAll(sessions map[string]*Session) error {
 			return err
 		}
 	}
-	if err := writeIndexRows(tx, index); err != nil {
+	if err := writeIndexRows(tx, index, false); err != nil {
 		return err
 	}
 	return tx.Commit()
