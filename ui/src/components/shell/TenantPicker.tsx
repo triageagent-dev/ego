@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/react';
 import { Check, Search } from 'lucide-react';
 import type { TenantOption } from '../../lib/tenant';
@@ -17,6 +17,8 @@ interface Row {
 // A list that overflows by only a row or two is shown whole, a hint for one hidden row is worse than the row.
 const WINDOW = 10;
 const SLACK = 2;
+// How far the wheel turns for one row.
+const ROW_PX = 40;
 
 const ALL: Row = { key: '', label: 'All tenants' };
 
@@ -84,6 +86,26 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
   const below = shown.length - (from + visible.length);
   // The window moves by a page from the arrows under and over the list, and by a row from the arrow keys.
   const move = (rows: number) => setStart(Math.max(0, Math.min(maxStart, from + rows)));
+  // The mouse wheel moves the window a row at a time; the list has no scroll bar. A wheel turn that cannot move the
+  // window (the list is whole, or it is at an end) is left to the page.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const wheel = useRef(0);
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const room = e.deltaY < 0 ? from : maxStart - from;
+      if (room <= 0) return;
+      e.preventDefault();
+      wheel.current += e.deltaY;
+      const rows = Math.trunc(wheel.current / ROW_PX);
+      if (rows === 0) return;
+      wheel.current -= rows * ROW_PX;
+      setStart(Math.max(0, Math.min(maxStart, from + rows)));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [from, maxStart]);
   const jump = (l: string) => {
     const i = shown.findIndex((r) => isTenant(r) && letterOf(r) === l);
     if (i >= 0) setStart(Math.min(i, maxStart));
@@ -135,7 +157,7 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
       {from > 0 && (
         <button css={moreStyle} onClick={() => move(-size)}>↑ {from} above</button>
       )}
-      <div css={bodyStyle}>
+      <div css={bodyStyle} ref={bodyRef}>
         <div css={listStyle} role="listbox">
           {visible.map((r) => (r.head ? <div key={r.key} css={groupStyle}>{r.label}</div> : pickable(r)))}
           {shown.length === 0 && <div css={emptyStyle}>no tenant matches</div>}
