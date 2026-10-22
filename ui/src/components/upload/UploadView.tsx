@@ -343,8 +343,9 @@ const noteStyle = css`
   font-size: 11px;
 `;
 
-// The open card: the sources (traces and golden set) or a metric category's name.
+// The open card: the sources (traces and golden set), the eval sets, or a metric category's name.
 const SOURCES = 'sources';
+const EVALSETS = 'evalsets';
 
 
 export const UploadView: React.FC = () => {
@@ -362,7 +363,7 @@ export const UploadView: React.FC = () => {
   const [picked, setPicked] = useState('');
   const section = picked || SOURCES;
   // Where the golden set comes from: one the server keeps, a session of its own, or one written here.
-  const [goldenFrom, setGoldenFrom] = useState<'sets' | 'session' | 'new'>('sets');
+  const [goldenFrom, setGoldenFrom] = useState<'sets' | 'session'>('sets');
   const [evalSets, setEvalSets] = useState<EvalSetSummary[] | null>(null);
   const [goldenBusy, setGoldenBusy] = useState<string | null>(null);
   const [goldenError, setGoldenError] = useState('');
@@ -472,11 +473,10 @@ export const UploadView: React.FC = () => {
               <Segmented
                 size="small"
                 value={goldenFrom}
-                onChange={(v) => setGoldenFrom(v as 'sets' | 'session' | 'new')}
+                onChange={(v) => setGoldenFrom(v as 'sets' | 'session')}
                 options={[
                   { value: 'sets', label: `Saved eval sets${evalSets ? ` (${evalSets.length})` : ''}` },
                   { value: 'session', label: 'A session' },
-                  { value: 'new', label: '+ New' },
                 ]}
               />
               <div style={{ marginTop: 10 }}>
@@ -502,15 +502,6 @@ export const UploadView: React.FC = () => {
                     onUse={(ids) => actions.setEvalSet(new SessionEvalSetFile(ids[0]))}
                   />
                 )}
-                {goldenFrom === 'new' && (
-                  <NewGoldenForm
-                    onCreated={(id) => {
-                      // The new set is in the list from now on, and is the chosen one.
-                      listEvalSets().then(setEvalSets).catch(() => undefined);
-                      void chooseEvalSet(id);
-                    }}
-                  />
-                )}
                 {goldenError && <div css={goldenNoteStyle} style={{ color: 'var(--status-failure)' }}>{goldenError}</div>}
               </div>
             </>
@@ -532,6 +523,23 @@ export const UploadView: React.FC = () => {
 
   const detailsOf = (id: string) => {
     if (id === SOURCES) return <>{goldenBox}{tracesBox}</>;
+    if (id === EVALSETS) {
+      return (
+        <>
+          <h2 css={detailsTitleStyle}>eval sets</h2>
+          <p css={detailsHintStyle}>Write a golden conversation once and score against it as often as you like. Saved sets are listed under the golden set.</p>
+          <NewGoldenForm
+            onCreated={(id) => {
+              // The new set is saved, in the list from now on, and is the golden set of this evaluation.
+              listEvalSets().then(setEvalSets).catch(() => undefined);
+              void chooseEvalSet(id);
+              setGoldenFrom('sets');
+              setPicked(SOURCES);
+            }}
+          />
+        </>
+      );
+    }
     const group = groups.find(([name]) => name === id);
     if (group) {
       return (
@@ -593,6 +601,17 @@ export const UploadView: React.FC = () => {
                   ? `A golden set unlocks ${goldenMetrics} metric${goldenMetrics === 1 ? '' : 's'} that compare with one.`
                   : 'Score a few dozen recent sessions rather than one, so a single odd run does not decide.'}
               </span>
+            </>,
+          )}
+          {card(
+            EVALSETS,
+            'eval sets',
+            null,
+            <span css={chipStyle}>{evalSets === null ? '…' : `${evalSets.length} saved`}</span>,
+            null,
+            <>
+              <span>Golden conversations you write once and reuse.</span>
+              <span css={sideWhenStyle}>Create one here; it becomes the golden set of this evaluation.</span>
             </>,
           )}
           {groups.map(([name, metrics]) => {

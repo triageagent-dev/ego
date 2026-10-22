@@ -10,11 +10,12 @@ export interface Tab {
 
 export const TABS: Tab[] = [
   { key: '1', label: 'sessions', view: 'streaming' },
-  { key: '2', label: 'evaluate', view: 'upload', also: ['dashboard', 'inspector', 'comparison'] },
+  // The eval set builder is reached from a result's "save as eval set"; its tab is gone, creating one is a section of
+  // the evaluate page.
+  { key: '2', label: 'evaluate', view: 'upload', also: ['dashboard', 'inspector', 'comparison', 'builder'] },
   { key: '3', label: 'runs', view: 'runs' },
-  { key: '4', label: 'usage', view: 'usage' },
-  { key: '5', label: 'ego', view: 'quality' },
-  { key: '6', label: 'sets', view: 'builder' },
+  { key: '4', label: 'ego', view: 'quality' },
+  { key: '5', label: 'usage', view: 'usage' },
 ];
 
 export function tabForView(view: ViewType): Tab | undefined {

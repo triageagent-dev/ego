@@ -17,7 +17,7 @@ import { SettingsView } from './components/settings/SettingsView';
 import { SessionExpiredBanner } from './components/SessionExpiredBanner';
 
 // The current tab lives in the URL hash (#runs), so a view can be linked and
-// the back button works; the keys 1-6 switch tabs and / jumps to the search box.
+// the back button works; the keys 1-5 switch tabs and / jumps to the search box.
 function useShellNavigation() {
   const { state, actions } = useTraceContext();
   const { currentView } = state;
