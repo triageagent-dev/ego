@@ -137,6 +137,8 @@ func (b *REST) Sessions(ctx context.Context, filter SessionFilter) ([]SessionLis
 		Errors      int      `json:"errors"`
 		TotalTokens int64    `json:"totalTokens"`
 		Scored      bool     `json:"scored"`
+		Thread      string   `json:"thread"`
+		Part        int      `json:"part"`
 	}
 	// The server filters, after the caller's role limits, so the filter cannot widen what the caller sees.
 	path := "/api/streaming/sessions"
@@ -151,7 +153,37 @@ func (b *REST) Sessions(ctx context.Context, filter SessionFilter) ([]SessionLis
 		out[i] = SessionListItem{
 			SessionID: s.SessionID, IsComplete: s.IsComplete, SpanCount: s.SpanCount, StartedAt: s.StartedAt,
 			Agent: strings.Join(s.Agents, ", "), Tenant: strings.Join(s.Tenants, ", "), Service: s.Service,
-			ErrorSpans: s.Errors, TotalTokens: s.TotalTokens, Scored: s.Scored,
+			ErrorSpans: s.Errors, TotalTokens: s.TotalTokens, Scored: s.Scored, Thread: s.Thread, Part: s.Part,
+		}
+	}
+	return out, nil
+}
+
+func (b *REST) Threads(ctx context.Context, filter SessionFilter, limit int) ([]ThreadListItem, error) {
+	var raw []struct {
+		Thread      string   `json:"thread"`
+		FirstSeen   string   `json:"firstSeen"`
+		LastSeen    string   `json:"lastSeen"`
+		Segments    int      `json:"segments"`
+		Open        bool     `json:"open"`
+		TotalTokens int64    `json:"totalTokens"`
+		LastScore   *float64 `json:"lastScore"`
+		Tenants     []string `json:"tenants"`
+		Agents      []string `json:"agents"`
+	}
+	q := filter.Values()
+	q.Del("thread")
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	if err := b.get(ctx, "/api/threads?"+q.Encode(), &raw); err != nil {
+		return nil, err
+	}
+	out := make([]ThreadListItem, len(raw))
+	for i, t := range raw {
+		out[i] = ThreadListItem{
+			Thread: t.Thread, FirstSeen: t.FirstSeen, LastSeen: t.LastSeen, Segments: t.Segments, Open: t.Open,
+			TotalTokens: t.TotalTokens, LastScore: t.LastScore, Agent: strings.Join(t.Agents, ", "), Tenant: strings.Join(t.Tenants, ", "),
 		}
 	}
 	return out, nil

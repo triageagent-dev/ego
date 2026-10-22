@@ -120,7 +120,28 @@ func Tools(b Backend, o Options) []server.ServerTool {
 			mcp.WithBoolean("scored",
 				mcp.Description("true for sessions online evaluation has scored (their judge scores can be read with "+
 					"explain_session and labelled), false for the others. Omit for both.")),
+			mcp.WithString("thread",
+				mcp.Description("Only the sessions (segments) of this thread, as list_threads names it.")),
 		), Handler: listSessionsHandler(b)},
+
+		server.ServerTool{Tool: mcp.NewTool("list_threads",
+			mcp.WithDescription("List the threads of the agents you may see, the one seen last first: a thread is the id the "+
+				"sender itself uses (an always-on agent keeps one for weeks), and ego cuts it into sessions (segments) of whole "+
+				"traces, the first one under the thread's id and the n-th as <thread>~n. Each row has when the thread was "+
+				"first and last seen, its segment count, whether the newest segment is still open, the tokens its LLM calls "+
+				"used (from the usage ledger, so within its retention) and the mean online score of the newest scored "+
+				"segment. Read a thread's sessions with list_sessions and `thread`. Requires the ego server to be running."),
+			mcp.WithNumber("limit", mcp.DefaultNumber(50),
+				mcp.Description("Maximum number of threads to return (at most 200).")),
+			mcp.WithString("agent",
+				mcp.Description("Only threads in which this exact agent name (gen_ai.agent.name) ran.")),
+			mcp.WithString("tenant",
+				mcp.Description("Only threads of this tenant key, or \"<sender>/*\" for every tenant of one sender.")),
+			mcp.WithString("since",
+				mcp.Description("Only threads last seen at or after this: an RFC 3339 time or a duration such as 24h.")),
+			mcp.WithString("query",
+				mcp.Description("Case-insensitive text to find in the thread id, agent names or service.")),
+		), Handler: listThreadsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("summarize_session",
 			mcp.WithDescription("Get a structured summary of a session showing its invocations, tool calls, and messages "+
@@ -357,6 +378,7 @@ func listSessionsHandler(b Backend) server.ToolHandlerFunc {
 			Tenant: strings.TrimSpace(req.GetString("tenant", "")),
 			Since:  since,
 			Query:  strings.TrimSpace(req.GetString("query", "")),
+			Thread: strings.TrimSpace(req.GetString("thread", "")),
 		}
 		// A bool argument is only a filter when it was given: false means "still open", absent means both.
 		if _, given := req.GetArguments()["complete"]; given {
@@ -378,6 +400,32 @@ func listSessionsHandler(b Backend) server.ToolHandlerFunc {
 		}
 		if out == nil {
 			out = []SessionListItem{}
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func listThreadsHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		limit := req.GetInt("limit", 50)
+		if limit < 1 || limit > 200 {
+			return toolError(fmt.Errorf("limit must be between 1 and 200"))
+		}
+		since, err := ParseSince(req.GetString("since", ""), time.Now())
+		if err != nil {
+			return toolError(err)
+		}
+		out, err := b.Threads(ctx, SessionFilter{
+			Agent:  strings.TrimSpace(req.GetString("agent", "")),
+			Tenant: strings.TrimSpace(req.GetString("tenant", "")),
+			Since:  since,
+			Query:  strings.TrimSpace(req.GetString("query", "")),
+		}, limit)
+		if err != nil {
+			return toolError(err)
+		}
+		if out == nil {
+			out = []ThreadListItem{}
 		}
 		return mcp.NewToolResultStructuredOnly(out), nil
 	}

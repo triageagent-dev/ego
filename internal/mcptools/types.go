@@ -88,6 +88,27 @@ type SessionListItem struct {
 	TotalTokens int64 `json:"total_tokens"`
 	// Scored is true when online evaluation scored the session, so its judge scores can be read and labelled.
 	Scored bool `json:"scored"`
+	// Thread is the sender's own id for the work this session is a part of; Part is its 1-based number in that
+	// thread. An always-on agent's thread has many sessions (segments), each a bounded run of whole traces.
+	Thread string `json:"thread,omitempty"`
+	Part   int    `json:"part,omitempty"`
+}
+
+// ThreadListItem is one entry of list_threads: a thread (the sender's own session id, kept for as long as the
+// sender uses it) and the totals over its segments.
+type ThreadListItem struct {
+	Thread    string `json:"thread"`
+	FirstSeen string `json:"first_seen"`
+	LastSeen  string `json:"last_seen"`
+	// Segments counts the thread's sessions; Open is true while the newest one still takes new traces.
+	Segments int  `json:"segments"`
+	Open     bool `json:"open"`
+	// TotalTokens sums the input and output tokens of the thread's LLM calls (the usage ledger's retention applies).
+	TotalTokens int64 `json:"total_tokens"`
+	// LastScore is the mean online score of the newest segment that was scored; absent when none was.
+	LastScore *float64 `json:"last_score,omitempty"`
+	Agent     string   `json:"agent,omitempty"`
+	Tenant    string   `json:"tenant,omitempty"`
 }
 
 // SessionFilter narrows list_sessions. The server applies it after the caller's role limits, so a filter can only
@@ -106,6 +127,8 @@ type SessionFilter struct {
 	Complete *bool
 	// Scored, when set, keeps only sessions online evaluation has scored (true) or has not (false).
 	Scored *bool
+	// Thread keeps the sessions (segments) of one thread: its id, as list_sessions and list_threads report it.
+	Thread string
 }
 
 // Values is the filter as the query string of GET /api/streaming/sessions.
@@ -129,6 +152,9 @@ func (f SessionFilter) Values() url.Values {
 	if f.Scored != nil {
 		q.Set("scored", strconv.FormatBool(*f.Scored))
 	}
+	if f.Thread != "" {
+		q.Set("thread", f.Thread)
+	}
 	return q
 }
 
@@ -149,7 +175,7 @@ func ParseSessionFilter(q url.Values, now time.Time) (SessionFilter, error) {
 	}
 	f := SessionFilter{
 		Agent: strings.TrimSpace(q.Get("agent")), Tenant: strings.TrimSpace(q.Get("tenant")),
-		Since: since, Query: strings.TrimSpace(q.Get("q")),
+		Since: since, Query: strings.TrimSpace(q.Get("q")), Thread: strings.TrimSpace(q.Get("thread")),
 	}
 	if v := q.Get("complete"); v != "" {
 		b, err := strconv.ParseBool(v)

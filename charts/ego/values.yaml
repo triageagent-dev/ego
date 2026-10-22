@@ -153,6 +153,7 @@ httpRoute:
     - /api/usage
     - /api/online
     - /api/tenants
+    - /api/threads
     - /api/streaming
     - /api/validate
     - /mcp

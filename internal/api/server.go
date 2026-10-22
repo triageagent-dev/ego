@@ -139,6 +139,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/config", configHandler)
 	mux.HandleFunc("/api/metrics", metricsHandler)
 	mux.HandleFunc("/api/tenants", tenantsHandler(store, tenantNames))
+	mux.HandleFunc("/api/threads", threadsHandler(store))
 	mux.HandleFunc("/api/usage", usageHandler(archive))
 	mux.HandleFunc("/api/usage/calls", usageCallsHandler(archive))
 	mux.HandleFunc("/api/usage/limits", usageLimitsHandler(store, onlineEngine))

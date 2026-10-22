@@ -52,6 +52,21 @@ func (s *SessionStore) Find(f mcptools.SessionFilter, allow func(SessionSummary)
 			logx.Warnf("session archive: search %q: %v", f.Query, err)
 		}
 	}
+	if f.Thread != "" && s.store != nil {
+		// A thread's older segments may have left memory: read them back, newest first, up to the search bound.
+		segs, err := s.store.ThreadSegments(f.Thread)
+		if err != nil {
+			logx.Warnf("session archive: reading thread %q: %v", f.Thread, err)
+		}
+		for i := len(segs) - 1; i >= 0 && len(segs)-i <= archiveSearchHits; i-- {
+			if seen[segs[i].ID] {
+				continue
+			}
+			if sum, ok := s.Summary(segs[i].ID); ok {
+				add(sum)
+			}
+		}
+	}
 	if f.Scored != nil && *f.Scored && s.store != nil {
 		var sinceMs int64
 		if !f.Since.IsZero() {
@@ -108,7 +123,7 @@ func allowedBy(info RoleInfo) func(SessionSummary) bool {
 // filterSessions keeps the summaries that match f. It runs on a list already narrowed to what the caller's role may
 // see, never before, so a filter cannot widen anything.
 func filterSessions(list []SessionSummary, f mcptools.SessionFilter) []SessionSummary {
-	if f.Agent == "" && f.Tenant == "" && f.Since.IsZero() && f.Query == "" && f.Complete == nil {
+	if f.Agent == "" && f.Tenant == "" && f.Since.IsZero() && f.Query == "" && f.Complete == nil && f.Thread == "" {
 		return list
 	}
 	out := make([]SessionSummary, 0, len(list))
@@ -125,6 +140,9 @@ func sessionMatches(s SessionSummary, f mcptools.SessionFilter) bool {
 		return false
 	}
 	if f.Scored != nil && s.Scored != *f.Scored {
+		return false
+	}
+	if f.Thread != "" && s.Thread != f.Thread {
 		return false
 	}
 	if f.Agent != "" && !containsString(s.Agents, f.Agent) {
@@ -173,7 +191,7 @@ func sessionInTenant(tenants []string, want string) bool {
 // found by what the user said.
 func sessionMentions(s SessionSummary, needle string) bool {
 	has := func(v string) bool { return strings.Contains(strings.ToLower(v), needle) }
-	if has(s.SessionID) || has(s.Service) {
+	if has(s.SessionID) || has(s.Thread) || has(s.Service) {
 		return true
 	}
 	for _, a := range s.Agents {

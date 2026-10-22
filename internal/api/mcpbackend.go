@@ -51,8 +51,23 @@ func (b *mcpBackend) Sessions(ctx context.Context, filter mcptools.SessionFilter
 		out = append(out, mcptools.SessionListItem{
 			SessionID: s.SessionID, IsComplete: s.IsComplete, SpanCount: s.SpanCount, StartedAt: s.StartedAt,
 			Agent: strings.Join(s.Agents, ", "), Tenant: strings.Join(s.Tenants, ", "), Service: s.Service,
-			ErrorSpans: s.Errors, TotalTokens: s.TotalTokens, Scored: s.Scored,
+			ErrorSpans: s.Errors, TotalTokens: s.TotalTokens, Scored: s.Scored, Thread: s.Thread, Part: s.Part,
 		})
+	}
+	return out, nil
+}
+
+func (b *mcpBackend) Threads(ctx context.Context, filter mcptools.SessionFilter, limit int) ([]mcptools.ThreadListItem, error) {
+	rows, err := b.sessions.Threads(filter, limit, roleInfoOrOpen(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read threads: %w", err)
+	}
+	out := make([]mcptools.ThreadListItem, len(rows))
+	for i, t := range rows {
+		out[i] = mcptools.ThreadListItem{
+			Thread: t.Thread, FirstSeen: t.FirstSeen, LastSeen: t.LastSeen, Segments: t.Segments, Open: t.Open,
+			TotalTokens: t.TotalTokens, LastScore: t.LastScore, Agent: strings.Join(t.Agents, ", "), Tenant: strings.Join(t.Tenants, ", "),
+		}
 	}
 	return out, nil
 }

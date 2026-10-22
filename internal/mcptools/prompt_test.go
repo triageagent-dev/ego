@@ -43,7 +43,7 @@ func TestRSILoopPromptIsTheEmbeddedSkill(t *testing.T) {
 func TestSkillNamesOnlyRegisteredTools(t *testing.T) {
 	s := NewServer(NewREST("", "", nil), Options{})
 	for _, tool := range []string{"get_quality", "get_findings", "explain_session", "explain_regression", "summarize_session",
-		"register_correction", "list_corrections", "label_session"} {
+		"register_correction", "list_corrections", "label_session", "list_threads"} {
 		if s.GetTool(tool) == nil {
 			t.Errorf("the skill names %s, which the registry lacks", tool)
 		}

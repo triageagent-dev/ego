@@ -20,6 +20,9 @@ type Backend interface {
 	// Sessions lists the sessions the caller may see that match filter, in no particular order. The filter applies
 	// after the caller's role limits.
 	Sessions(ctx context.Context, filter SessionFilter) ([]SessionListItem, error)
+	// Threads answers list_threads: one row per thread the caller may see, the one seen last first. Of the filter,
+	// Agent, Tenant, Since (last seen) and Query apply.
+	Threads(ctx context.Context, filter SessionFilter, limit int) ([]ThreadListItem, error)
 	// SessionTraces returns a session's traces and its span count.
 	SessionTraces(ctx context.Context, sessionID string) (traces []*tracepkg.Trace, numSpans int, err error)
 

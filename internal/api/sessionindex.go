@@ -44,11 +44,13 @@ type sessionIndexRow struct {
 	Tenants   []string
 	Agents    []string
 	Search    string
-	// Thread and Part place the segment in its thread; Closed says it is final; EndedMs is the end of its last span;
+	// Thread and Part place the segment in its thread; Closed says it is final; FirstMs and EndedMs are the start of
+	// its first span and the end of its last;
 	// TraceIDs are the traces it holds, so a thread's routing can be rebuilt from the index alone.
 	Thread   string
 	Part     int
 	Closed   bool
+	FirstMs  int64
 	EndedMs  int64
 	TraceIDs []string
 	// Scored is true when online evaluation scored the session (read from online_scores, never stored here).
@@ -119,7 +121,10 @@ func indexRowOf(s *Session) sessionIndexRow {
 		traceIDs = append(traceIDs, id)
 	}
 	sort.Strings(traceIDs)
-	ended := s.StartedAt.UnixMilli()
+	first, ended := s.StartedAt.UnixMilli(), s.StartedAt.UnixMilli()
+	if s.firstUs > 0 {
+		first = s.firstUs / 1000
+	}
 	if s.lastUs > 0 {
 		ended = s.lastUs / 1000
 	}
@@ -134,6 +139,7 @@ func indexRowOf(s *Session) sessionIndexRow {
 		Thread:    s.threadKey(),
 		Part:      s.partNo(),
 		Closed:    s.Closed,
+		FirstMs:   first,
 		EndedMs:   ended,
 		TraceIDs:  traceIDs,
 	}
@@ -162,6 +168,7 @@ func ensureSessionIndexSchema(db *sql.DB) error {
 		{"thread", "TEXT NOT NULL DEFAULT ''"},
 		{"part", "INTEGER NOT NULL DEFAULT 1"},
 		{"closed", "INTEGER NOT NULL DEFAULT 0"},
+		{"first_ms", "INTEGER NOT NULL DEFAULT 0"},
 		{"ended_ms", "INTEGER NOT NULL DEFAULT 0"},
 		{"trace_ids", "TEXT"},
 	} {
@@ -174,7 +181,7 @@ func ensureSessionIndexSchema(db *sql.DB) error {
 	}
 	// Every session archived before segments is part 1 of its own thread, closed when it had completed (see
 	// sessionHeader). Rows written since always carry a thread, so this touches only the rows that predate it.
-	if _, err := db.Exec(`UPDATE session_index SET thread = session_id, part = 1, closed = complete, ended_ms = started_ms WHERE thread = ''`); err != nil {
+	if _, err := db.Exec(`UPDATE session_index SET thread = session_id, part = 1, closed = complete, first_ms = started_ms, ended_ms = started_ms WHERE thread = ''`); err != nil {
 		return fmt.Errorf("filling session index threads: %w", err)
 	}
 	return nil
@@ -189,11 +196,11 @@ func writeIndexRows(tx *sql.Tx, rows []sessionIndexRow, fillOnly bool) error {
 		guard = " WHERE session_index.trace_ids IS NULL"
 	}
 	stmt, err := tx.Prepare(`INSERT INTO session_index (session_id, started_ms, complete, llm_calls, tenants, agents, search,
-			thread, part, closed, ended_ms, trace_ids)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			thread, part, closed, first_ms, ended_ms, trace_ids)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET started_ms = excluded.started_ms, complete = excluded.complete,
 			llm_calls = excluded.llm_calls, tenants = excluded.tenants, agents = excluded.agents, search = excluded.search,
-			thread = excluded.thread, part = excluded.part, closed = excluded.closed, ended_ms = excluded.ended_ms,
+			thread = excluded.thread, part = excluded.part, closed = excluded.closed, first_ms = excluded.first_ms, ended_ms = excluded.ended_ms,
 			trace_ids = excluded.trace_ids` + guard)
 	if err != nil {
 		return err
@@ -209,7 +216,7 @@ func writeIndexRows(tx *sql.Tx, rows []sessionIndexRow, fillOnly bool) error {
 			closed = 1
 		}
 		if _, err := stmt.Exec(r.ID, r.StartedMs, done, r.LLMCalls, joinIndexList(r.Tenants), joinIndexList(r.Agents), r.Search,
-			r.Thread, r.Part, closed, r.EndedMs, joinIndexList(r.TraceIDs)); err != nil {
+			r.Thread, r.Part, closed, r.FirstMs, r.EndedMs, joinIndexList(r.TraceIDs)); err != nil {
 			return err
 		}
 	}
@@ -281,6 +288,7 @@ type sessionPageFilter struct {
 	complete *bool
 	llmOnly  bool
 	scored   *bool
+	thread   string
 }
 
 // TenantCounts counts the indexed sessions of every tenant key, over the whole archive. The tenant switcher is
@@ -358,6 +366,10 @@ func (f sessionPageFilter) where(after *sessionKey) (string, []any) {
 		q += " AND complete = ?"
 		args = append(args, done)
 	}
+	if f.thread != "" {
+		q += " AND thread = ?"
+		args = append(args, f.thread)
+	}
 	if f.llmOnly {
 		// A session still running may not have shown its LLM spans yet, so only finished ones are held to it.
 		q += " AND (llm_calls > 0 OR complete = 0)"
@@ -398,7 +410,7 @@ func (s *SQLiteStore) countIndex(f sessionPageFilter, skip []string) (int, error
 // indexPage returns up to limit index rows, newest first, older than after, matching f.
 func (s *SQLiteStore) indexPage(f sessionPageFilter, after *sessionKey, limit int) ([]sessionIndexRow, error) {
 	cond, args := f.where(after)
-	q := `SELECT session_id, started_ms, complete, llm_calls, tenants, agents, search, ` + scoredExpr + ` FROM session_index WHERE 1 = 1` + cond
+	q := `SELECT session_id, started_ms, complete, llm_calls, tenants, agents, search, thread, ` + scoredExpr + ` FROM session_index WHERE 1 = 1` + cond
 	q += " ORDER BY started_ms DESC, session_id DESC LIMIT ?"
 	args = append(args, limit)
 	rows, err := s.db.Query(q, args...)
@@ -411,7 +423,7 @@ func (s *SQLiteStore) indexPage(f sessionPageFilter, after *sessionKey, limit in
 		var r sessionIndexRow
 		var done, scored int
 		var tenants, agents string
-		if err := rows.Scan(&r.ID, &r.StartedMs, &done, &r.LLMCalls, &tenants, &agents, &r.Search, &scored); err != nil {
+		if err := rows.Scan(&r.ID, &r.StartedMs, &done, &r.LLMCalls, &tenants, &agents, &r.Search, &r.Thread, &scored); err != nil {
 			return nil, err
 		}
 		r.Complete, r.Scored = done == 1, scored == 1
@@ -456,7 +468,7 @@ func (s *SessionStore) Page(req SessionPageRequest, allow func(SessionSummary) b
 		return SessionPage{}, err
 	}
 	f := req.Filter
-	want := sessionPageFilter{since: f.Since, tenant: f.Tenant, agent: f.Agent, query: strings.ToLower(f.Query), complete: f.Complete, llmOnly: req.LLMOnly, scored: f.Scored}
+	want := sessionPageFilter{since: f.Since, tenant: f.Tenant, agent: f.Agent, query: strings.ToLower(f.Query), complete: f.Complete, llmOnly: req.LLMOnly, scored: f.Scored, thread: f.Thread}
 
 	keep := func(r sessionIndexRow) bool {
 		if !allow(SessionSummary{Agents: r.Agents, Tenants: r.Tenants}) {
@@ -478,6 +490,9 @@ func (s *SessionStore) Page(req SessionPageRequest, allow func(SessionSummary) b
 			return false
 		}
 		if want.scored != nil && r.Scored != *want.scored {
+			return false
+		}
+		if want.thread != "" && r.Thread != want.thread {
 			return false
 		}
 		return want.query == "" || strings.Contains(r.Search, want.query)

@@ -50,6 +50,12 @@ The diagnosis is a judge's summary, not a fact. Before you trust it, look at the
 Read the unsupported claims and failing rubrics. If the evidence does not show the failure mode the summary
 claims, say so to a person instead of acting on it.
 
+If you run for weeks under one session id, ego does not score that id as one session: it cuts it into segments of
+whole traces (the first keeps your id, the n-th is `<id>~n`) and scores each once, when it closes. Evidence session
+ids can be segments. `list_threads` shows your threads (when each was first and last seen, its segment count, tokens
+and the newest score); `list_sessions` with `thread` lists the segments of one. Name your thread with the resource
+attribute `ego.thread` when your runtime rotates its session id.
+
 ### 3. Decide one correction per finding
 
 A correction is a change to yourself: a prompt change, a tool-use rule, a new check in a skill. Keep it as small
