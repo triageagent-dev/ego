@@ -176,9 +176,25 @@ ego run trace.json -m jev_task_resolved -m jev_grounded --jev-questions question
 ## Ingesting traces
 
 OTLP/HTTP (`POST /v1/traces`, `:4318`) and OTLP/gRPC (`:4317`) feed the same session store. Spans are grouped
-into sessions by `ego.session_name`, then `gen_ai.conversation.id`, then a synthetic name. GenAI semantic
+into threads by `ego.thread`, then `ego.session_name`, then `gen_ai.conversation.id`, then a synthetic name. GenAI semantic
 conventions, OpenInference and ADK (`gcp.vertex.agent.*`) attributes are all understood. Set `ego.eval_set_id`
 on the resource to tie a session to an eval set.
+
+### Always-on agents: threads and segments
+
+The id above is the sender's own, and for an agent that wakes every few minutes for weeks it names the agent, not
+a unit of work. ego therefore keeps three levels. A **thread** is that id (set it with the resource attribute
+`ego.thread` when your runtime rotates its session id; it wins over `ego.session_name`). A **segment** is what ego
+stores, lists, scores and cites as a session: a run of whole traces. The first segment keeps the thread's id, the
+n-th is `<thread>~n`. A **turn** is one trace; a segment never cuts one. A trace goes to the segment its first span
+chose, so spans that arrive late still land in it.
+
+A segment closes for good when a new trace of its thread arrives, or after the thread has been quiet, and: its last
+span ended more than `--segment-idle` ago (default 30m; a trace within that window joins it), it holds
+`--segment-max-spans` spans or more (default 2000, checked between traces), or its first span is older than
+`--segment-max-age` (default 6h). A closed segment is scored by online evaluation once, with the end of the previous
+segment as context for the judge, and takes no new trace. Browse them with `GET /api/threads`, the Threads list of the
+Sessions view and the `list_threads` tool.
 
 ### Claude Code
 
@@ -215,7 +231,8 @@ ego serve --session-db ego.db
 ```
 
 Only the newest `--session-memory` completed sessions (default 200) stay in memory; older ones load on demand.
-`--session-retention` (default 30 days) deletes stale sessions daily.
+`--session-retention` (default 30 days) deletes stale sessions daily. The three flags that close a segment of a
+thread (`--segment-idle`, `--segment-max-spans`, `--segment-max-age`) are described under Ingesting traces.
 
 ## Online evaluation
 
@@ -387,6 +404,7 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`:
 | `EGO_ADMIN_GITHUB_USERS`, `EGO_DEFAULT_ROLE` | `--admin-github-users`, `--default-role` | Roles |
 | `EGO_OTLP_TOKEN` | `--otlp-token` | Shared bearer token for the OTLP receivers (sender tokens work too; with neither, pushes are refused) |
 | `EGO_EVAL_DAILY_TOKENS` | `--eval-daily-tokens` | Judge tokens interactive evaluation may use per UTC day (default 5000000, 0: unlimited) |
+| `EGO_SEGMENT_IDLE`, `EGO_SEGMENT_MAX_SPANS`, `EGO_SEGMENT_MAX_AGE` | `--segment-idle`, `--segment-max-spans`, `--segment-max-age` | When a thread's segment closes: quiet for this long (default 30m), this many spans (2000), or this old (6h) |
 | `EGO_USAGE_TENANT_ATTR` | `--usage-tenant-attr` | Span attribute the Usage view reads the tenant from |
 | `EGO_LOG_LEVEL` | `--log-level` | Log threshold: `debug`, `info` (default), `warn` or `error`. Lines are `time=… level=… msg=…` on stderr |
 | `EGO_AUDIT_LOG` | `--audit-log` | Log the GitHub user name of every sign-in and refused sign-in (off by default: no user names in the log) |

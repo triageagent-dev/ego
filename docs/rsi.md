@@ -55,6 +55,7 @@ Tools (all transports; tenant-scoped unless noted):
 | `get_quality` | `kind?`, `hours?` (default 24): open alerts, hourly series per metric, sessions scored, budget used today (not given to a tenant-limited caller: the meter is shared). One call to answer "how am I doing". |
 | `explain_regression` | `alert_id`: the alert, its suspect, and its worst sessions each with per-metric scores, the judge rationale, and the per-sentence verdicts (`unsupported`, `contradictory`, `disputed` first) or rubric verdicts. |
 | `explain_session` | `session_id`: the same evidence for one session, so an agent can look at a session it chooses. |
+| `list_threads` | `limit?`, `agent?`, `tenant?`, `since?`, `query?`: the agent's threads, the one seen last first, with first and last seen, segment count, tokens and the newest score. A session of an always-on agent is a segment (`<thread>`, `<thread>~2`, …); `list_sessions` with `thread` lists them. |
 | `get_findings` | `kind?`, `state?` (open, corrected, resolved, stale; default open), `since?`: findings newest first. |
 | `register_correction` | `finding_id?`, `kind`, `what` (free text, ≤ 2000 chars), `version?` (the `service.version` the change ships as), `by?`: records a correction, marks the finding `corrected`, returns the correction with its verification window. |
 | `list_corrections` | `kind?`, `state?`: corrections with their verification. |
