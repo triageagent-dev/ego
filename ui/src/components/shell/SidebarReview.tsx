@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { css } from '@emotion/react';
 import { getOnlineAlerts, getOnlineFindings } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
-import { tenantName, useTenantNames } from '../../lib/tenant';
+import { tenantName, useSelectedTenant, useTenantNames } from '../../lib/tenant';
 import type { OnlineAlert, OnlineFinding } from '../../lib/types';
 import { FlagIcon, popoverItemStyle, popoverRowStyle, SidebarPopover } from './SidebarPopover';
 
@@ -16,6 +16,8 @@ type Item = { id: string; type: 'alert' | 'finding'; scope: string; metric: stri
 export const SidebarReview: React.FC<{ collapsed: boolean }> = ({ collapsed }) => {
   const [items, setItems] = useState<Item[]>([]);
   useTenantNames();
+  // The lists are of the tenant picked in the account menu, so they are read again when it changes.
+  const picked = useSelectedTenant();
   const load = useCallback(async () => {
     try {
       const [alerts, findings] = await Promise.all([
@@ -36,7 +38,7 @@ export const SidebarReview: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
       // Online evaluation is not configured, or this role has none: no flag.
       setItems([]);
     }
-  }, []);
+  }, [picked]);
   useLiveData('quality', load);
 
   if (items.length === 0) return null;

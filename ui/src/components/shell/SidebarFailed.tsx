@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { css } from '@emotion/react';
 import { getFailedSessions, type FailedSession } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
-import { tenantName, useTenantNames } from '../../lib/tenant';
+import { tenantName, useSelectedTenant, useTenantNames } from '../../lib/tenant';
 import { formatStarted } from '../../lib/trace-helpers';
 import { sessionLink } from './routes';
 import { FlagIcon, popoverItemStyle, popoverNoteStyle, popoverRowStyle, SidebarPopover } from './SidebarPopover';
@@ -22,6 +22,8 @@ const GREEN = '#4ade80';
 export const SidebarFailed: React.FC<{ collapsed: boolean }> = ({ collapsed }) => {
   const [failed, setFailed] = useState<FailedSession[] | null>(null);
   useTenantNames();
+  // The lists are of the tenant picked in the account menu, so they are read again when it changes.
+  const picked = useSelectedTenant();
   const load = useCallback(async () => {
     try {
       setFailed(await getFailedSessions(5));
@@ -29,7 +31,7 @@ export const SidebarFailed: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
       // Online evaluation is not configured, or this role has none: no flag.
       setFailed(null);
     }
-  }, []);
+  }, [picked]);
   useLiveData('quality', load);
 
   if (failed === null) return null;

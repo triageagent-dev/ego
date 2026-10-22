@@ -1,11 +1,12 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
 import { pageStyle, headerStyle, titleStyle, subtitleStyle, filterRowStyle, segmentStyle, segBtnStyle, segActiveStyle, errorStyle, noteStyle, tilesStyle, tileStyle, tileLabelStyle, tileValueStyle, tileSubStyle, cardStyle, cardTitleStyle } from '../ui/page';
-import { Line } from 'react-chartjs-2';
+import { Bar, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
+  BarElement,
   LineElement,
   PointElement,
   Tooltip,
@@ -18,8 +19,9 @@ import { sessionLink } from '../shell/routes';
 import { tenantName, useSelectedTenant, useTenantNames } from '../../lib/tenant';
 import type { OnlineAlert, OnlineCorrection, OnlineFinding, OnlineFindingState, OnlineSeriesPoint, OnlineStatus } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
+import { store, stored } from '../../lib/stored';
 
-ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend);
 
 // Quality view. Online evaluation's state
 // (GET /api/online/status, /series, /alerts): judge spend against the daily
@@ -34,6 +36,12 @@ const RANGES: { label: string; hours: number }[] = [
 
 // Same categorical slots as the Usage view.
 const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9'];
+
+const legendOpts = {
+  position: 'top' as const,
+  align: 'start' as const,
+  labels: { color: '#a8b2c1', boxWidth: 12, boxHeight: 12, useBorderRadius: true, borderRadius: 2 },
+};
 
 const FINDING_STATES: OnlineFindingState[] = ['open', 'corrected', 'resolved', 'stale'];
 
@@ -54,7 +62,15 @@ function hourLabel(ms: number): string {
 }
 
 export const QualityView: React.FC = () => {
-  const [hours, setHours] = useState(24 * 7);
+  // The range is remembered per browser; 24 hours until a reader picks another.
+  const [hours, setHoursState] = useState(() => {
+    const h = Number(stored('ego.quality.hours'));
+    return RANGES.some(r => r.hours === h) ? h : 24;
+  });
+  const setHours = (h: number) => {
+    store('ego.quality.hours', String(h));
+    setHoursState(h);
+  };
   const [status, setStatus] = useState<OnlineStatus | null>(null);
   const [series, setSeries] = useState<OnlineSeriesPoint[]>([]);
   const [alerts, setAlerts] = useState<OnlineAlert[]>([]);
@@ -122,13 +138,60 @@ export const QualityView: React.FC = () => {
     return { labels: buckets.map(hourLabel), datasets };
   }, [series, active]);
 
+  // Scores per hour, stacked by scope: a session is counted once per scope and hour (its metrics all share the count).
+  const perHour = useMemo(() => {
+    if (series.length === 0) return null;
+    const buckets = [...new Set(series.map(p => p.bucketMs))].sort((a, b) => a - b);
+    const all = [...new Set(series.map(scopeOf))].sort();
+    return {
+      labels: buckets.map(hourLabel),
+      datasets: all.map((s, i) => ({
+        label: s,
+        data: buckets.map(b => Math.max(0, ...series.filter(p => p.bucketMs === b && scopeOf(p) === s).map(p => p.n))),
+        backgroundColor: SLOTS[i % SLOTS.length],
+        borderRadius: 2,
+      })),
+    };
+  }, [series]);
+
+  // The mean score of each metric of the open scope over the window, weighted by how many scores each hour had,
+  // weakest first: red below half, amber below 0.8.
+  const byMetric = useMemo(() => {
+    if (!active) return null;
+    const acc = new Map<string, { sum: number; n: number }>();
+    for (const p of series) {
+      if (scopeOf(p) !== active) continue;
+      const a = acc.get(p.metric) ?? { sum: 0, n: 0 };
+      a.sum += p.mean * p.n;
+      a.n += p.n;
+      acc.set(p.metric, a);
+    }
+    const rows = [...acc.entries()].filter(([, a]) => a.n > 0).map(([m, a]) => ({ m, mean: a.sum / a.n, n: a.n })).sort((x, y) => x.mean - y.mean);
+    return {
+      labels: rows.map(r => r.m),
+      counts: rows.map(r => r.n),
+      datasets: [{ data: rows.map(r => r.mean), backgroundColor: rows.map(r => (r.mean < 0.5 ? '#f87171' : r.mean < 0.8 ? '#f59e0b' : '#4ade80')), borderRadius: 2 }],
+    };
+  }, [series, active]);
+
+  const agreementRows = useMemo(() => (status?.labels ? Object.entries(status.labels.perMetric).sort((a, b) => a[0].localeCompare(b[0])) : []), [status]);
+
+  // How often people agree with each judge; a gated judge (too much disagreement to drive findings) is orange.
+  const agreementChart = useMemo(() => {
+    const rows = agreementRows;
+    return {
+      labels: rows.map(([m]) => m),
+      notes: rows.map(([, m]) => `${m.agree} agree · ${m.disagree} disagree${m.gated ? ' · gated' : ''}${m.drift !== undefined ? ` · drift ${m.drift.toFixed(2)}` : ''}`),
+      datasets: [{ data: rows.map(([, m]) => (m.agreement === null ? 0 : Math.round(m.agreement * 100))), backgroundColor: rows.map(([, m]) => (m.gated ? '#d95926' : '#199e70')), borderRadius: 2 }],
+    };
+  }, [agreementRows]);
+
   const counts = status ? Object.entries(status.counts).sort((a, b) => b[1] - a[1]) : [];
   const sampled = counts.filter(([k]) => k.startsWith('sampled_')).reduce((s, [, v]) => s + v, 0);
   const openAlerts = alerts.filter(a => a.status === 'open');
   const shownFindings = findings.filter(f => f.state === findingState);
   // The finding whose details are open: the one picked, else the first listed.
   const chosenFinding = shownFindings.find(f => f.finding_id === openFinding) ?? shownFindings[0];
-  const agreement = status?.labels ? Object.entries(status.labels.perMetric).sort((a, b) => a[0].localeCompare(b[0])) : [];
 
   return (
     <div css={pageStyle}>
@@ -160,6 +223,155 @@ export const QualityView: React.FC = () => {
               sub={status.sessionsScored24h != null ? 'in the last 24 hours' : 'since the server started'} />
             <Tile label="Open alerts" value={String(openAlerts.length)}
               sub={`watching ${status.profiles.length} profile${status.profiles.length === 1 ? '' : 's'} · ${status.sinks.length ? `alerts go to ${status.sinks.join(', ')}` : 'no alert channel'}`} />
+          </div>
+
+          <div css={filterRowStyle}>
+            <div css={segmentStyle} role="group" aria-label="Time range">
+              {RANGES.map(r => (
+                <button key={r.hours} css={[segBtnStyle, hours === r.hours && segActiveStyle]} onClick={() => setHours(r.hours)}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            {scopes.length > 0 && (
+              <div css={segmentStyle} role="group" aria-label="Call kind">
+                {scopes.map(s => (
+                  <button key={s} css={[segBtnStyle, active === s && segActiveStyle]} onClick={() => setScope(s)}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div css={chartsGridStyle}>
+          <section css={cardStyle}>
+            <h2 css={cardTitleStyle}>Mean score per hour{active ? `, ${active}` : ''}</h2>
+            {!chart ? (
+              <p css={emptyStyle}>No scored sessions in this window.</p>
+            ) : (
+              <div css={chartBoxStyle}>
+                <Line
+                  data={chart}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                      legend: {
+                        position: 'top',
+                        align: 'start',
+                        labels: { color: '#a8b2c1', boxWidth: 12, boxHeight: 12, useBorderRadius: true, borderRadius: 2 },
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: item => {
+                            const n = (item.dataset as unknown as { counts: number[] }).counts[item.dataIndex];
+                            return ` ${item.dataset.label}: ${(item.raw as number)?.toFixed(2)} (n=${n})`;
+                          },
+                        },
+                      },
+                    },
+                    scales: {
+                      x: {
+                        grid: { display: false },
+                        ticks: { color: '#6b7586', maxRotation: 0, autoSkipPadding: 16 },
+                        border: { color: '#3a4052' },
+                      },
+                      y: {
+                        min: 0,
+                        max: 1,
+                        grid: { color: 'rgba(58, 64, 82, 0.5)' },
+                        border: { display: false },
+                        ticks: { color: '#6b7586' },
+                      },
+                    },
+                  }}
+                />
+              </div>
+            )}
+          </section>
+
+          <section css={cardStyle}>
+            <h2 css={cardTitleStyle}>Sessions scored per hour</h2>
+            {!perHour || perHour.datasets.length === 0 ? (
+              <p css={emptyStyle}>No scored sessions in this window.</p>
+            ) : (
+              <div css={chartBoxStyle}>
+                <Bar
+                  data={perHour}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: legendOpts },
+                    scales: {
+                      x: { stacked: true, grid: { display: false }, ticks: { color: '#6b7586', maxRotation: 0, autoSkipPadding: 16 }, border: { color: '#3a4052' } },
+                      y: { stacked: true, beginAtZero: true, grid: { color: 'rgba(58, 64, 82, 0.5)' }, border: { display: false }, ticks: { color: '#6b7586', precision: 0 } },
+                    },
+                  }}
+                />
+              </div>
+            )}
+          </section>
+          </div>
+
+          <div css={chartsGridStyle}>
+          <section css={cardStyle}>
+            <h2 css={cardTitleStyle}>Score by metric{active ? `, ${active}` : ''}</h2>
+            {!byMetric || byMetric.labels.length === 0 ? (
+              <p css={emptyStyle}>No scored sessions in this window.</p>
+            ) : (
+              <div css={[chartBoxStyle, shortChartStyle]}>
+                <Bar
+                  data={byMetric}
+                  options={{
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: { callbacks: { label: item => ` ${(item.raw as number).toFixed(2)} over ${byMetric.counts[item.dataIndex]} scores` } },
+                    },
+                    scales: {
+                      x: { min: 0, max: 1, grid: { color: 'rgba(58, 64, 82, 0.5)' }, border: { display: false }, ticks: { color: '#6b7586' } },
+                      y: { grid: { display: false }, ticks: { color: '#a8b2c1' }, border: { color: '#3a4052' } },
+                    },
+                  }}
+                />
+              </div>
+            )}
+          </section>
+
+          <section css={cardStyle}>
+            <h2 css={cardTitleStyle}>Judge agreement, last 7 days</h2>
+            {agreementChart.labels.length === 0 ? (
+              <p css={emptyStyle}>No labels in the last 7 days. Agree or disagree with a score on a session's card.</p>
+            ) : (
+              <div css={[chartBoxStyle, shortChartStyle]}>
+                <Bar
+                  data={agreementChart}
+                  options={{
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: { callbacks: { label: item => ` ${agreementChart.notes[item.dataIndex]}` } },
+                    },
+                    scales: {
+                      x: { min: 0, max: 100, grid: { color: 'rgba(58, 64, 82, 0.5)' }, border: { display: false }, ticks: { color: '#6b7586', callback: v => `${v}%` } },
+                      y: { grid: { display: false }, ticks: { color: '#a8b2c1' }, border: { color: '#3a4052' } },
+                    },
+                  }}
+                />
+              </div>
+            )}
+          </section>
           </div>
 
           <section css={cardStyle}>
@@ -284,89 +496,6 @@ export const QualityView: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
-          </section>
-
-          <section css={cardStyle}>
-            <h2 css={cardTitleStyle}>Judge agreement</h2>
-            {agreement.length === 0 ? (
-              <p css={emptyStyle}>No labels in the last 7 days. Agree or disagree with a score on a session's card.</p>
-            ) : (
-              <div css={[tilesStyle, agreementTilesStyle]}>
-                {agreement.map(([metric, m]) => (
-                  <Tile key={metric} label={metric}
-                    value={m.agreement === null ? '–' : `${Math.round(m.agreement * 100)}%`}
-                    sub={`${m.agree} agree · ${m.disagree} disagree${m.drift !== undefined ? ` · drift ${m.drift.toFixed(2)} (n=${m.driftN ?? 0})` : ''}`}
-                    badge={m.gated ? 'gated' : undefined} />
-                ))}
-              </div>
-            )}
-          </section>
-
-          <div css={filterRowStyle}>
-            <div css={segmentStyle} role="group" aria-label="Time range">
-              {RANGES.map(r => (
-                <button key={r.hours} css={[segBtnStyle, hours === r.hours && segActiveStyle]} onClick={() => setHours(r.hours)}>
-                  {r.label}
-                </button>
-              ))}
-            </div>
-            {scopes.length > 0 && (
-              <div css={segmentStyle} role="group" aria-label="Call kind">
-                {scopes.map(s => (
-                  <button key={s} css={[segBtnStyle, active === s && segActiveStyle]} onClick={() => setScope(s)}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <section css={cardStyle}>
-            <h2 css={cardTitleStyle}>Mean score per hour{active ? `, ${active}` : ''}</h2>
-            {!chart ? (
-              <p css={emptyStyle}>No scored sessions in this window.</p>
-            ) : (
-              <div css={chartBoxStyle}>
-                <Line
-                  data={chart}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    animation: false,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: {
-                      legend: {
-                        position: 'top',
-                        align: 'start',
-                        labels: { color: '#a8b2c1', boxWidth: 12, boxHeight: 12, useBorderRadius: true, borderRadius: 2 },
-                      },
-                      tooltip: {
-                        callbacks: {
-                          label: item => {
-                            const n = (item.dataset as unknown as { counts: number[] }).counts[item.dataIndex];
-                            return ` ${item.dataset.label}: ${(item.raw as number)?.toFixed(2)} (n=${n})`;
-                          },
-                        },
-                      },
-                    },
-                    scales: {
-                      x: {
-                        grid: { display: false },
-                        ticks: { color: '#6b7586', maxRotation: 0, autoSkipPadding: 16 },
-                        border: { color: '#3a4052' },
-                      },
-                      y: {
-                        min: 0,
-                        max: 1,
-                        grid: { color: 'rgba(58, 64, 82, 0.5)' },
-                        border: { display: false },
-                        ticks: { color: '#6b7586' },
-                      },
-                    },
-                  }}
-                />
               </div>
             )}
           </section>
@@ -502,11 +631,6 @@ const sessionLinkStyle = css`
 `;
 
 // The agreement tiles sit inside their card, which already has the border.
-const agreementTilesStyle = css`
-  border: none;
-  margin-bottom: 0;
-`;
-
 const runsLinkStyle = css`
   color: var(--accent-primary);
   white-space: nowrap;
@@ -598,4 +722,25 @@ const evidenceListStyle = css`
   flex-direction: column;
   gap: 2px;
   margin-top: 4px;
+`;
+
+// Two charts side by side, as on the runs page; the grid and its children may shrink with the window.
+const chartsGridStyle = css`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 12px;
+
+  > * {
+    min-width: 0;
+    margin-bottom: 0;
+  }
+
+  @media (max-width: 1100px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+`;
+
+const shortChartStyle = css`
+  height: 200px;
 `;
