@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { css } from '@emotion/react';
-import { getFailedCallSessions, getFailedSessions, getOnlineAlerts, getUsageLimits, getUsageSessions, listRuns } from '../../api/client';
+import { getFailedCallSessions, getFailedSessions, getOnlineAlerts, getOnlineFindings, getUsageLimits, getUsageSessions, listRuns } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
 import { tenantName, useSelectedTenant, useTenantNames } from '../../lib/tenant';
 import { formatStarted } from '../../lib/trace-helpers';
@@ -48,11 +48,11 @@ export const SidebarFailed: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
   // The lists are of the tenant picked in the account menu, so they are read again when it changes.
   const picked = useSelectedTenant();
   const load = useCallback(async () => {
-    const [calls, limits, bursts, runs, evals, alerts] = await Promise.allSettled([
-      getFailedCallSessions(1), getUsageLimits(), getUsageSessions(24, 25), listRuns({ limit: 100 }), getFailedSessions(1), getOnlineAlerts('open'),
+    const [calls, limits, bursts, runs, evals, alerts, findings] = await Promise.allSettled([
+      getFailedCallSessions(1), getUsageLimits(), getUsageSessions(24, 25), listRuns({ limit: 100 }), getFailedSessions(1), getOnlineAlerts('open'), getOnlineFindings(),
     ]);
     // Each source can be missing (not configured, or not for this role); with all of them missing there is nothing to flag.
-    if ([calls, limits, bursts, runs, evals, alerts].every((r) => r.status === 'rejected')) {
+    if ([calls, limits, bursts, runs, evals, alerts, findings].every((r) => r.status === 'rejected')) {
       setEntries(null);
       return;
     }
@@ -97,11 +97,17 @@ export const SidebarFailed: React.FC<{ collapsed: boolean }> = ({ collapsed }) =
 
     const failedEval = evals.status === 'fulfilled' ? evals.value[0] : undefined;
     const alert = alerts.status === 'fulfilled' ? [...alerts.value].sort((a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt))[0] : undefined;
+    const openFindings = findings.status === 'fulfilled' ? findings.value.filter((f) => f.state === 'open') : [];
     if (failedEval && (!alert || failedEval.lastAt >= Date.parse(alert.openedAt))) {
+      // A click goes to the ego page, to what ego made of it: the finding of the same scope, else its alert, else
+      // the page itself. The session is in the tooltip and on the page's own lists.
+      const finding = openFindings.find((f) => f.tenant === failedEval.tenant && f.kind === failedEval.kind);
+      const sameScope = alerts.status === 'fulfilled' ? alerts.value.find((a) => a.key.tenant === failedEval.tenant && a.key.kind === failedEval.kind) : undefined;
       out.push({
         category: 'ego', at: failedEval.lastAt, scope: [scopeOf(failedEval.tenant), failedEval.kind].filter(Boolean).join(' · '),
         text: metricsLabel(failedEval.metrics), value: `${Math.round(failedEval.lowest * 100)}%`,
-        title: `A session that failed an evaluation; lowest score ${Math.round(failedEval.lowest * 100)}%\n${failedEval.sessionId}`, hash: sessionLink(failedEval.sessionId),
+        title: `A session that failed an evaluation; lowest score ${Math.round(failedEval.lowest * 100)}%\n${failedEval.sessionId}`,
+        hash: finding ? `#ego?finding=${encodeURIComponent(finding.finding_id)}` : sameScope ? `#ego?alert=${encodeURIComponent(sameScope.id)}` : '#ego',
       });
     } else if (alert) {
       out.push({
