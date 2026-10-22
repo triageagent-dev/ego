@@ -6,63 +6,105 @@ import type { TenantOption } from '../../lib/tenant';
 interface Row {
   key: string;
   label: string;
-  // The sender, when tenants of more than one sender are listed.
-  hint?: string;
   title?: string;
+  // How many sessions the tenant has, shown beside its name.
+  sessions?: number;
+  // A group heading (the sender), not something to pick.
+  head?: boolean;
 }
 
 // Rows on screen at once. A longer list is not scrolled: the letter rail moves the window and typing narrows it.
 // A list that overflows by only a row or two is shown whole, a hint for one hidden row is worse than the row.
-const WINDOW = 8;
+const WINDOW = 10;
 const SLACK = 2;
 
-// Picks the tenant the views show: a search box over a fixed window of rows, the current pick checked, and a letter
-// rail that moves the window. '' is every tenant the role covers; "<sender>/*" is all of one sender's.
+const ALL: Row = { key: '', label: 'All tenants' };
+
+// Picks the tenant the views show. "All tenants" is always on top; below it the tenants, grouped under the sender
+// (the core or agent that reports them) when there is more than one, so two tenants of the same name read as what
+// they are: the same tenant on two senders. A fixed window of rows, the pick checked, a letter rail that moves the
+// window. "All of <sender>" is every tenant of one sender.
 export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; onPick: (key: string) => void }> = ({ options, picked, onPick }) => {
   const [query, setQuery] = useState('');
 
-  const { rows, tenantRows } = useMemo(() => {
-    const senders = Array.from(new Set(options.map((o) => o.sender ?? '').filter(Boolean))).sort();
+  const rows = useMemo(() => {
     const named = (o: TenantOption) => o.name || o.label;
-    const tenants: Row[] = [...options]
-      .sort((a, b) => named(a).localeCompare(named(b), undefined, { sensitivity: 'base' }))
-      .map((o) => ({
-        key: o.key,
-        label: named(o),
-        hint: senders.length > 1 ? o.sender : undefined,
-        title: `${o.key} · ${o.sessions} session${o.sessions === 1 ? '' : 's'}`,
-      }));
-    const lead: Row[] = [
-      { key: '', label: 'all tenants' },
-      ...senders.map((s) => ({ key: `${s}/*`, label: `${s} · all` })),
-    ];
-    return { rows: [...lead, ...tenants], tenantRows: tenants };
+    // The groups: each sender, then the tenants reported without one (the shared ingest token), as "other".
+    const senders = Array.from(new Set(options.map((o) => o.sender ?? '').filter(Boolean))).sort();
+    const groups = options.some((o) => !o.sender) ? [...senders, ''] : senders;
+    const tenantsOf = (sender: string): Row[] =>
+      options
+        .filter((o) => (o.sender ?? '') === sender)
+        .sort((a, b) => named(a).localeCompare(named(b), undefined, { sensitivity: 'base' }))
+                .map((o) => ({ key: o.key, label: named(o), sessions: o.sessions, title: `${o.key} · ${o.sessions} session${o.sessions === 1 ? '' : 's'}` }));
+    if (groups.length <= 1) return tenantsOf(groups[0] ?? '');
+    return groups.flatMap((sender): Row[] => [
+      { key: `head:${sender}`, label: sender || 'other', head: true },
+      ...(sender ? [{ key: `${sender}/*`, label: `All of ${sender}` }] : []),
+      ...tenantsOf(sender),
+    ]);
   }, [options]);
 
-  // The window opens on the current pick, so it is never out of sight.
+  const q = query.trim().toLowerCase();
+  // A search keeps the tenants that match, each under its sender's heading; the "All of" rows are for browsing.
+  const shown = useMemo(() => {
+    if (!q) return rows;
+    const out: Row[] = [];
+    let head: Row | null = null;
+    for (const r of rows) {
+      if (r.head) {
+        head = r;
+        continue;
+      }
+      if (r.key.endsWith('/*')) continue;
+      if (`${r.label} ${r.key}`.toLowerCase().includes(q)) {
+        if (head) {
+          out.push(head);
+          head = null;
+        }
+        out.push(r);
+      }
+    }
+    return out;
+  }, [rows, q]);
+
+  // The window opens so that the current pick is in it.
   const [start, setStart] = useState(() => Math.max(0, rows.findIndex((r) => r.key === picked) - WINDOW + 1));
 
-  const q = query.trim().toLowerCase();
-  const shown = q ? rows.filter((r) => `${r.label} ${r.hint ?? ''} ${r.key}`.toLowerCase().includes(q)) : rows;
-
+  const isTenant = (r: Row) => !r.head && !r.key.endsWith('/*');
   const letterOf = (r: Row) => {
     const c = r.label.charAt(0).toUpperCase();
     return /[A-Z]/.test(c) ? c : '#';
   };
-  const letters = Array.from(new Set(tenantRows.map(letterOf)));
+  const letters = Array.from(new Set(rows.filter(isTenant).map(letterOf))).sort();
   const size = shown.length <= WINDOW + SLACK ? shown.length : WINDOW;
   const maxStart = Math.max(0, shown.length - size);
   const from = Math.min(start, maxStart);
   const visible = shown.slice(from, from + size);
   const below = shown.length - (from + visible.length);
   const jump = (l: string) => {
-    const i = shown.findIndex((r) => r.key !== '' && !r.key.endsWith('/*') && letterOf(r) === l);
+    const i = shown.findIndex((r) => isTenant(r) && letterOf(r) === l);
     if (i >= 0) setStart(Math.min(i, maxStart));
   };
 
+  const pickable = (r: Row) => (
+    <button
+      key={r.key}
+      css={[rowStyle, r.key === picked && pickedStyle]}
+      role="option"
+      aria-selected={r.key === picked}
+      title={r.title}
+      onClick={() => onPick(r.key)}
+    >
+      <span css={checkStyle}>{r.key === picked && <Check size={13} />}</span>
+      <span css={labelStyle}>{r.label}</span>
+      {r.sessions !== undefined && <span css={countStyle}>{r.sessions > 0 ? r.sessions.toLocaleString() : '–'}</span>}
+    </button>
+  );
+
   return (
     <div css={wrapStyle}>
-      <div css={headingStyle}>Tenant ({options.length})</div>
+      <div css={headingStyle}>Tenants ({options.length})</div>
       <label css={searchStyle}>
         <Search size={13} />
         <input
@@ -73,28 +115,17 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
             setStart(0);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && shown[0]) onPick(shown[0].key);
+            const first = shown.find((r) => !r.head);
+            if (e.key === 'Enter' && first) onPick(first.key);
           }}
           placeholder={`Search ${options.length} tenants`}
           aria-label="Search tenants"
         />
       </label>
+      <div css={pinnedStyle}>{pickable(ALL)}</div>
       <div css={bodyStyle}>
         <div css={listStyle} role="listbox">
-          {visible.map((r) => (
-            <button
-              key={r.key || 'all'}
-              css={[rowStyle, r.key === picked && pickedStyle]}
-              role="option"
-              aria-selected={r.key === picked}
-              title={r.title}
-              onClick={() => onPick(r.key)}
-            >
-              <span css={checkStyle}>{r.key === picked && <Check size={13} />}</span>
-              <span css={labelStyle}>{r.label}</span>
-              {r.hint && <span css={hintStyle}>{r.hint}</span>}
-            </button>
-          ))}
+          {visible.map((r) => (r.head ? <div key={r.key} css={groupStyle}>{r.label}</div> : pickable(r)))}
           {shown.length === 0 && <div css={emptyStyle}>no tenant matches</div>}
         </div>
         {!q && letters.length > 1 && (
@@ -193,11 +224,6 @@ const labelStyle = css`
   white-space: nowrap;
 `;
 
-const hintStyle = css`
-  color: var(--text-tertiary);
-  font-size: 0.68rem;
-`;
-
 const emptyStyle = css`
   padding: 6px;
   color: var(--text-tertiary);
@@ -231,5 +257,29 @@ const letterStyle = css`
 const moreStyle = css`
   padding: 5px 6px 2px;
   color: var(--text-tertiary);
+  font-size: 0.68rem;
+`;
+
+// "All tenants" stays on top however the list below is moved or narrowed.
+const pinnedStyle = css`
+  margin-top: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-default);
+`;
+
+// The sender a group of tenants belongs to.
+const groupStyle = css`
+  padding: 6px 6px 2px;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+`;
+
+// Sessions of the tenant, at the end of its row.
+const countStyle = css`
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
   font-size: 0.68rem;
 `;
