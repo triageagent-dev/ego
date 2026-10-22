@@ -24,7 +24,7 @@ func claudeCodeTrace() *tracepkg.Trace {
 }
 
 func TestBuildSessionSpansFindsTheFailedCallAndItsTool(t *testing.T) {
-	got := BuildSessionSpans("s", []*tracepkg.Trace{claudeCodeTrace()}, true, 0)
+	got := BuildSessionSpans("s", []*tracepkg.Trace{claudeCodeTrace()}, SpanQuery{ErrorsOnly: true})
 	if got.NumSpans != 4 || got.NumErrors != 1 || got.Returned != 1 || len(got.Spans) != 1 {
 		t.Fatalf("counts = %+v", got)
 	}
@@ -41,13 +41,37 @@ func TestBuildSessionSpansFindsTheFailedCallAndItsTool(t *testing.T) {
 	if _, noisy := sp.Attributes["host.arch"]; noisy {
 		t.Error("noise attributes were not left out")
 	}
-	if sp.DurationMs != 244 {
-		t.Errorf("duration = %v ms", sp.DurationMs)
+	if sp.DurationMs != 244 || sp.Depth != 2 || sp.AtMs != 2500 || sp.SpanID != "run" {
+		t.Errorf("duration %v ms, depth %d, at %d ms, id %q", sp.DurationMs, sp.Depth, sp.AtMs, sp.SpanID)
+	}
+	if got.Started != "1970-01-01T00:00:00.500Z" {
+		t.Errorf("started = %s", got.Started)
+	}
+}
+
+func TestBuildSessionSpansTimelineHasNoAttributesUnlessAsked(t *testing.T) {
+	traces := []*tracepkg.Trace{claudeCodeTrace()}
+	timeline := BuildSessionSpans("s", traces, SpanQuery{})
+	for _, sp := range timeline.Spans {
+		if sp.Error {
+			if sp.Attributes == nil || sp.Message == "" {
+				t.Errorf("failed span lost its cause: %+v", sp)
+			}
+		} else if sp.Attributes != nil || sp.Path != nil || sp.SpanID != "" {
+			t.Errorf("a span that did not fail carries detail: %+v", sp)
+		}
+	}
+	tools := BuildSessionSpans("s", traces, SpanQuery{Operation: "tool", Attributes: true})
+	if tools.NumSpans != 4 || len(tools.Spans) != 2 {
+		t.Fatalf("operation filter: %d of %d spans", len(tools.Spans), tools.NumSpans)
+	}
+	if tools.Spans[0].Attributes["tool_name"] != "Bash" {
+		t.Errorf("attributes = %v", tools.Spans[0].Attributes)
 	}
 }
 
 func TestBuildSessionSpansOrdersByStartClipsAndLimits(t *testing.T) {
-	got := BuildSessionSpans("s", []*tracepkg.Trace{claudeCodeTrace()}, false, 3)
+	got := BuildSessionSpans("s", []*tracepkg.Trace{claudeCodeTrace()}, SpanQuery{Limit: 3, Attributes: true})
 	var ops []string
 	for _, sp := range got.Spans {
 		ops = append(ops, sp.Operation)
@@ -60,6 +84,9 @@ func TestBuildSessionSpansOrdersByStartClipsAndLimits(t *testing.T) {
 		t.Errorf("counts = %+v", got)
 	}
 	prompt, _ := got.Spans[1].Attributes["user_prompt"].(string)
+	if len(got.Spans[1].Attributes) == 0 {
+		t.Fatal("attributes were asked for and not returned")
+	}
 	if !strings.Contains(prompt, "1000 chars") || len(prompt) > maxAttrChars+30 {
 		t.Errorf("long value not clipped: %d chars", len(prompt))
 	}
