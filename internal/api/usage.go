@@ -109,3 +109,32 @@ func usageCallsHandler(store *SQLiteStore) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{"data": calls, "error": nil})
 	}
 }
+
+// usageFailedHandler implements GET /api/usage/failed?hours=24&limit=5: the sessions with failed LLM calls in the
+// window, the one that failed last first. The sidebar's alert flag reads it, so it is small and cheap.
+func usageFailedHandler(store *SQLiteStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if denyAgentScoped(w, r) {
+			return
+		}
+		if store == nil {
+			writeStorageUnavailable(w)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		from, to, _ := usageWindow(r)
+		limit := 5
+		if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 {
+			limit = min(v, 50)
+		}
+		failed, err := store.FailedUsageSessions(from, to, limit, narrowTenants(roleInfoOrOpen(r.Context()).Tenants, r.URL.Query().Get("tenant")))
+		if err != nil {
+			writeEvaluateError(w, http.StatusInternalServerError, "failed to read failed sessions: "+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": failed, "error": nil})
+	}
+}

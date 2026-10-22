@@ -406,6 +406,22 @@ export async function getFailedSessions(limit = 5): Promise<FailedSession[]> {
   return unwrap<FailedSession[]>(response);
 }
 
+export interface FailedCallSession {
+  sessionId: string;
+  lastAt: number;
+  failed: number;
+  calls: number;
+  kinds: string;
+  tenants: string;
+}
+
+/** The sessions with failed LLM calls in the last 24 hours, the one that failed last first. */
+export async function getFailedCallSessions(limit = 5): Promise<FailedCallSession[]> {
+  const response = await fetch(withTenant(`${config.api.endpoints.usage}/failed?hours=24&limit=${limit}`));
+  if (!response.ok) throw new Error(`Failed to load failed sessions: ${httpStatusLabel(response)}`);
+  return unwrap<FailedCallSession[]>(response);
+}
+
 export async function getUsageSessions(hours: number, limit = 25): Promise<UsageSession[]> {
   const response = await fetch(withTenant(`${config.api.endpoints.usage}/calls?hours=${hours}&limit=${limit}&group=session`));
   if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();

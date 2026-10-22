@@ -17,6 +17,7 @@ import { tenantNames, useSelectedTenant, useTenantNames } from '../../lib/tenant
 import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
 import type { UsageBucket, UsageSeries, UsageSession } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
+import { isBurst } from '../../lib/usageAlerts';
 import { store, stored } from '../../lib/stored';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
@@ -111,17 +112,6 @@ function memberList(members: string[]): string {
 
 function formatMs(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
-}
-
-// A burst is a session that makes many model calls in a short span: a run
-// that does not stop, each turn re-sending its growing context. Its tokens
-// are one session's, so it ranks first in "Largest sessions" - but a daily
-// total hides it.
-const BURST_CALLS = 20;
-const BURST_WINDOW_MS = 10 * 60 * 1000;
-
-function isBurst(r: UsageSession): boolean {
-  return r.calls >= BURST_CALLS && r.end - r.start <= BURST_WINDOW_MS;
 }
 
 function formatSpan(ms: number): string {
