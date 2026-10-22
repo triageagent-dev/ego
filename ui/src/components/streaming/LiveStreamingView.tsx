@@ -245,6 +245,8 @@ export function LiveStreamingView() {
       llmCalls?: number;
       errors?: number;
       turns?: number;
+      inputTokens?: number;
+      outputTokens?: number;
       durationMs?: number;
       scored?: boolean;
     };
@@ -257,6 +259,15 @@ export function LiveStreamingView() {
         for (const s of sessions) {
           let existing = newMap.get(s.sessionId);
           if (existing) {
+            // The live counters only hear what arrives while the page is open; the server's totals cover the whole
+            // session, so they are the floor the counters never fall under.
+            const live = existing.liveStats;
+            const inTokens = Math.max(live?.totalInputTokens ?? 0, s.inputTokens ?? 0);
+            const outTokens = Math.max(live?.totalOutputTokens ?? 0, s.outputTokens ?? 0);
+            if (live && (inTokens !== live.totalInputTokens || outTokens !== live.totalOutputTokens)) {
+              existing = { ...existing, liveStats: { ...live, totalInputTokens: inTokens, totalOutputTokens: outTokens } };
+              newMap.set(s.sessionId, existing);
+            }
             if (s.scored && !existing.scored) {
               existing = { ...existing, scored: true };
               newMap.set(s.sessionId, existing);
@@ -298,7 +309,7 @@ export function LiveStreamingView() {
             liveElements: s.invocations?.length
               ? invocationsToElements(s.invocations)
               : [],
-            liveStats: { totalInputTokens: 0, totalOutputTokens: 0 },
+            liveStats: { totalInputTokens: s.inputTokens ?? 0, totalOutputTokens: s.outputTokens ?? 0 },
             startedAt: s.startedAt,
             completedAt: s.completedAt,
             rootSpanName: s.rootSpanName,

@@ -91,6 +91,10 @@ type SessionSummary struct {
 	// TotalTokens sums the input and output tokens of the session's LLM spans: the same spans, and so the same
 	// total, as its rows in the usage ledger.
 	TotalTokens int64 `json:"totalTokens,omitempty"`
+	// InputTokens and OutputTokens are the two parts of TotalTokens; the card starts its live counters from them,
+	// so a session that was already running when the page opened is not counted from zero.
+	InputTokens  int64 `json:"inputTokens,omitempty"`
+	OutputTokens int64 `json:"outputTokens,omitempty"`
 	// DurationMs is the session's span window: earliest span start to
 	// latest span end, in milliseconds. Not CompletedAt - StartedAt, which
 	// is ingest wall-clock and includes the completion grace.
@@ -118,10 +122,12 @@ func summarize(s *Session) SessionSummary {
 	rootName, llmCalls, errs := spanOutline(s.Spans)
 	agents, models := spanIdentities(s.Spans)
 	tenants := sessionTenants(s)
-	service, tokens := spanServiceAndTokens(s.Spans)
+	service, inTokens, outTokens := spanServiceAndTokens(s.Spans)
 	return SessionSummary{
 		Service:      service,
-		TotalTokens:  tokens,
+		TotalTokens:  inTokens + outTokens,
+		InputTokens:  inTokens,
+		OutputTokens: outTokens,
 		Agents:       agents,
 		Tenants:      tenants,
 		Models:       models,
@@ -144,18 +150,20 @@ func summarize(s *Session) SessionSummary {
 
 const maxIdentities = 6
 
-// spanServiceAndTokens returns the first service.name on spans and the tokens their LLM spans reported.
-func spanServiceAndTokens(spans []*tracepkg.Span) (service string, tokens int64) {
+// spanServiceAndTokens returns the first service.name on spans and the input and output tokens their LLM spans
+// reported.
+func spanServiceAndTokens(spans []*tracepkg.Span) (service string, input, output int64) {
 	for _, sp := range spans {
 		if service == "" {
 			service = sp.TagString(adk.OtelServiceName)
 		}
 		if adk.IsLLMSpan(sp) {
 			in, out, _ := adk.ExtractTokenUsageFromAttrs(sp.Tags)
-			tokens += in + out
+			input += in
+			output += out
 		}
 	}
-	return service, tokens
+	return service, input, output
 }
 
 // spanIdentities returns the distinct agent names (gen_ai.agent.name) and model names on spans, in the order

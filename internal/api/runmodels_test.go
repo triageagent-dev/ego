@@ -155,3 +155,15 @@ func TestSessionSummaryCountsClaudeCodePrompts(t *testing.T) {
 		t.Fatalf("a session that is not Claude Code's has %d turns", got)
 	}
 }
+
+func TestSessionSummaryGivesTheTokenSplit(t *testing.T) {
+	llm := func(in, out int64) *tracepkg.Span {
+		return &tracepkg.Span{OperationName: "chat", Tags: map[string]any{
+			"gen_ai.request.model": "m", "gen_ai.usage.input_tokens": in, "gen_ai.usage.output_tokens": out,
+		}}
+	}
+	sum := summarize(&Session{ID: "s", Spans: []*tracepkg.Span{llm(1000, 10), llm(3000, 20)}})
+	if sum.InputTokens != 4000 || sum.OutputTokens != 30 || sum.TotalTokens != 4030 {
+		t.Fatalf("tokens = in %d out %d total %d", sum.InputTokens, sum.OutputTokens, sum.TotalTokens)
+	}
+}

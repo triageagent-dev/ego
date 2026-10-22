@@ -101,7 +101,7 @@ func splitIndexList(s string) []string {
 func indexRowOf(s *Session) sessionIndexRow {
 	agents, models := spanIdentities(s.Spans)
 	root, llm, _ := spanOutline(s.Spans)
-	service, _ := spanServiceAndTokens(s.Spans)
+	service, _, _ := spanServiceAndTokens(s.Spans)
 	tenants := sessionTenants(s)
 	text := []string{s.ID, s.PrimaryTraceID, service, root}
 	text = append(text, agents...)
