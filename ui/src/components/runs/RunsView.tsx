@@ -6,6 +6,7 @@ import { History, AlertCircle } from 'lucide-react';
 import type { Run } from '../../lib/types';
 import { listRuns, StorageUnavailableError } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
+import { useSelectedTenant } from '../../lib/tenant';
 import {
   groupRuns,
   metricNamesAcross,
@@ -56,6 +57,8 @@ export const RunsView: React.FC = () => {
     setSelectedGroup(ALL_GROUPS);
   };
 
+  // The picked tenant limits the list; a new pick loads it again.
+  const tenant = useSelectedTenant();
   const load = useCallback(async () => {
     setError(null);
     setStorageUnavailable(false);
@@ -71,7 +74,7 @@ export const RunsView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tenant]);
 
   useLiveData('runs', load);
 

@@ -243,7 +243,7 @@ export async function listRuns(options?: {
   if (options?.before) params.set('before', options.before);
   const query = params.toString();
 
-  const response = await fetch(`${config.api.endpoints.runs}${query ? `?${query}` : ''}`);
+  const response = await fetch(withTenant(`${config.api.endpoints.runs}${query ? `?${query}` : ''}`));
 
   if (await serverSaysUnavailable(response)) {
     throw new StorageUnavailableError();
