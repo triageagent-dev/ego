@@ -61,7 +61,8 @@ export const SidebarPopover: React.FC<Props> = ({ collapsed, icon, label, badge,
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <span css={iconWrapStyle}>
+        {/* In the rail the flag and its badge are centred together: the badge hangs off the flag's right. */}
+        <span css={iconWrapStyle} style={collapsed && badge !== null ? { transform: 'translateX(-4px)' } : undefined}>
           {icon}
           {badge !== null && <span css={badgeStyle} style={{ background: badgeColor }}>{badge > 9 ? '9+' : badge}</span>}
         </span>

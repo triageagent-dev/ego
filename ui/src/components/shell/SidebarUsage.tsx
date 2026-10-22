@@ -1,8 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { css } from '@emotion/react';
-import { getOnlineSeries, getOnlineStatus, getUsage, listRuns } from '../../api/client';
-import { passRate } from '../runs/runHistory';
-import type { OnlineSeriesPoint, Run, UsageSeries } from '../../lib/types';
+import { getOnlineSeries, getOnlineStatus, getUsage } from '../../api/client';
+import type { OnlineSeriesPoint, UsageSeries } from '../../lib/types';
 import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
 import { useLiveData } from '../../lib/connection';
 import { useSelectedTenant } from '../../lib/tenant';
@@ -17,8 +16,6 @@ interface Usage {
 interface Figures {
   usage?: Usage;
   scored?: number;
-  // The average pass rate of the latest runs; null when none has a decided result.
-  pass?: number | null;
   // The ego score: the mean online score of the last 24 hours, weighted by how many scores each hour had.
   ego?: number | null;
 }
@@ -59,35 +56,28 @@ function egoScore(series: OnlineSeriesPoint[]): number | null {
   return n > 0 ? sum / n : null;
 }
 
-function averagePassRate(runs: Run[]): number | null {
-  const rates = runs.map(passRate).filter((r): r is number => r !== null);
-  return rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
-}
-
 type Row = [label: string, value: string, title: string];
 
-// The LLM usage of the last 24 hours, the sessions quality scored in that time, and the pass rate of the latest
-// runs, for the empty part of the sidebar. Each part is left out where the role cannot see it or the server does not
-// keep it. A click opens the view the numbers come from.
+// The ego score and the LLM usage of the last 24 hours, with the sessions scored in that time, for the empty part of
+// the sidebar. Each part is left out where the role cannot see it or the server does not keep it. A click opens the
+// view the numbers come from.
 export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) => {
   const { actions } = useTraceContext();
   const tenant = useSelectedTenant();
   const [figures, setFigures] = useState<Figures>({});
 
-  // The tenant is read by the requests (getUsage narrows by it); the runs list takes no tenant, so the pass rate
-  // stays across everything the role may see.
+  // The tenant is read by the requests, which narrow by it.
   const load = useCallback(async (current: () => boolean) => {
-    const [u, o, r, e] = await Promise.allSettled([getUsage(24), getOnlineStatus(), listRuns({ limit: 200 }), getOnlineSeries(24)]);
+    const [u, o, e] = await Promise.allSettled([getUsage(24), getOnlineStatus(), getOnlineSeries(24)]);
     if (!current()) return;
     setFigures({
       usage: u.status === 'fulfilled' ? usageTotals(u.value) : undefined,
       scored: o.status === 'fulfilled' ? o.value.sessionsScored24h : undefined,
-      pass: r.status === 'fulfilled' ? averagePassRate(r.value) : undefined,
       ego: e.status === 'fulfilled' ? egoScore(e.value) : undefined,
     });
   }, [tenant]);
 
-  useLiveData(['usage', 'quality', 'runs'], load);
+  useLiveData(['usage', 'quality'], load);
 
   const day: Row[] = [];
   if (figures.usage) {
@@ -98,9 +88,7 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
   if (figures.scored != null) day.push(['scored', short(figures.scored), 'sessions scored by online evaluation (quality)']);
   const ego: Row[] = [];
   if (figures.ego != null) ego.push(['score', `${Math.round(figures.ego * 100)}%`, 'mean online score of the last 24 hours, over every metric']);
-  const runs: Row[] = [];
-  if (figures.pass != null) runs.push(['pass', `${Math.round(figures.pass * 100)}%`, 'average pass rate of the latest runs']);
-  if (ego.length === 0 && day.length === 0 && runs.length === 0) return null;
+  if (ego.length === 0 && day.length === 0) return null;
 
   const rowsOf = (list: Row[]) =>
     list.map(([label, value, title]) => (
@@ -122,12 +110,6 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
         <button css={sectionStyle} onClick={() => actions.setCurrentView(figures.usage ? 'usage' : 'quality')} title="Last 24 hours. Open usage.">
           <span css={headingStyle}>24h</span>
           {rowsOf(day)}
-        </button>
-      )}
-      {runs.length > 0 && (
-        <button css={sectionStyle} onClick={() => actions.setCurrentView('runs')} title="Open runs.">
-          <span css={headingStyle}>runs</span>
-          {rowsOf(runs)}
         </button>
       )}
     </div>
