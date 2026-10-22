@@ -100,7 +100,8 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		server.ServerTool{Tool: mcp.NewTool("list_sessions",
 			mcp.WithDescription("List recent streaming trace sessions, ordered most recent first, with the agent, tenant, "+
 				"service, error span count and total tokens of each. Use this to discover session IDs for "+
-				"summarize_session. All filters are optional and combine; they only narrow what you may see. `query` "+
+				"summarize_session and get_session_spans (a session with error spans: get_session_spans with errors_only "+
+				"says which spans failed and why). All filters are optional and combine; they only narrow what you may see. `query` "+
 				"matches the session id, the agent names and the service, and the first user message of sessions that "+
 				"have completed (a session still open has no user message yet). Requires the ego server to be running "+
 				"(ego serve)."),
@@ -124,7 +125,9 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		server.ServerTool{Tool: mcp.NewTool("summarize_session",
 			mcp.WithDescription("Get a structured summary of a session showing its invocations, tool calls, and messages "+
 				"in human-readable form. Use this to understand what an agent did during a session before running "+
-				"evaluation. Requires the ego server to be running."),
+				"evaluation. It reads messages: a session whose spans carry none (a Claude Code session, whose spans hold "+
+				"the model requests and tool calls but not the text) comes back with no invocations; read it with "+
+				"get_session_spans. Requires the ego server to be running."),
 			mcp.WithString("session_id", mcp.Required(),
 				mcp.Description("Session ID obtained from list_sessions.")),
 		), Handler: summarizeSessionHandler(b)},
@@ -204,7 +207,9 @@ func Tools(b Backend, o Options) []server.ServerTool {
 
 		server.ServerTool{Tool: mcp.NewTool("explain_session",
 			mcp.WithDescription("The judge's evidence for one scored session: the score of every metric and why, in the "+
-				"same shape as the sessions of explain_regression. Use it to look at a session you pick yourself."),
+				"same shape as the sessions of explain_regression. Use it to look at a session you pick yourself. Only a "+
+				"session online evaluation has scored has evidence (list_sessions with scored: true); for any other, or for "+
+				"the cause of an error, use get_session_spans."),
 			mcp.WithString("session_id", mcp.Required(),
 				mcp.Description("Session ID of an online-scored session, e.g. from list_sessions.")),
 		), Handler: explainSessionHandler(b)},
@@ -429,6 +434,10 @@ func summarizeSessionHandler(b Backend) server.ToolHandlerFunc {
 			}
 		}
 		out.NumInvocations = len(out.Invocations)
+		if out.NumInvocations == 0 {
+			out.Note = "No invocations: this session's spans carry no messages to read. get_session_spans lists its spans, " +
+				"and with errors_only the failed ones with their message."
+		}
 		return mcp.NewToolResultStructuredOnly(out), nil
 	}
 }

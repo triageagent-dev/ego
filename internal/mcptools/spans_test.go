@@ -93,3 +93,23 @@ func TestGetSessionSpansToolIsRegistered(t *testing.T) {
 	}
 	t.Fatal("get_session_spans is not in the registry")
 }
+
+func TestSummarizeSessionWithoutInvocationsPointsToTheSpans(t *testing.T) {
+	var req mcp.CallToolRequest
+	req.Params.Arguments = map[string]any{"session_id": "s"}
+	for _, tool := range Tools(spansBackend{traces: []*tracepkg.Trace{claudeCodeTrace()}}, Options{}) {
+		if tool.Tool.Name != "summarize_session" {
+			continue
+		}
+		res, err := tool.Handler(context.Background(), req)
+		if err != nil || res.IsError {
+			t.Fatalf("handler: %v %+v", err, res)
+		}
+		out, _ := res.StructuredContent.(SessionSummary)
+		if out.NumInvocations != 0 || !strings.Contains(out.Note, "get_session_spans") {
+			t.Fatalf("summary = %+v", out)
+		}
+		return
+	}
+	t.Fatal("summarize_session is not in the registry")
+}

@@ -187,6 +187,8 @@ type SessionSummary struct {
 	NumSpans       int                 `json:"num_spans"`
 	NumInvocations int                 `json:"num_invocations"`
 	Invocations    []InvocationSummary `json:"invocations"`
+	// Note says where to look when there is nothing to summarize.
+	Note string `json:"note,omitempty"`
 }
 
 // RunResultCounts counts a run's results by outcome.
