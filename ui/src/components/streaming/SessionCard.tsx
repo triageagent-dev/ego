@@ -102,6 +102,13 @@ function RoundBadge({ n, title, color, background }: { n: number; title: string;
   );
 }
 
+// 3,960,702 -> 3.9M, 132,391 -> 132.3k: cut, not rounded, to one decimal; the full count is in the badge's title.
+function shortTokens(n: number): string {
+  if (n >= 1e6) return `${(Math.floor(n / 1e5) / 10).toFixed(1)}M`;
+  if (n >= 1e3) return `${(Math.floor(n / 100) / 10).toFixed(1)}k`;
+  return String(n);
+}
+
 // The date badge and the text after the badges have colours of their own, none shared with another badge.
 const WHEN_COLOR = '#d6c28f';
 const KIND_COLOR = '#5eead4';
@@ -288,7 +295,7 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
                 padding: '1px 7px',
                 borderRadius: 'var(--radius)',
               }}>
-                {totalTokens.toLocaleString()} t
+                {shortTokens(totalTokens)} t
               </span>
             )}
 
