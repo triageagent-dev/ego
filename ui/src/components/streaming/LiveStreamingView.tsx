@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTraceContext } from '../../context/TraceContext';
 import { SessionCard } from './SessionCard';
 import { SessionDetails } from './SessionDetails';
+import { getThreads } from '../../api/client';
 import { config } from '../../config';
 import { onFeedMessage, onFeedOpen } from '../../lib/connection';
 import { parseHash, sessionLink } from '../shell/routes';
@@ -83,7 +84,17 @@ export function LiveStreamingView() {
   // The thread whose id was put in the search box by a click on a part chip.
   const [threadSearch, setThreadSearch] = useState('');
   // The sessions, or the activity (turns over time) of one thread.
-  const [listMode, setListMode] = useState<'sessions' | 'activity'>('sessions');
+  const [pickedMode, setListMode] = useState<'sessions' | 'activity'>('sessions');
+  // Activity is for the agents that declare a thread (always-on agents, such as a spot): the switch is there only when
+  // the server holds one the caller may see, and a plain trace has no activity to show.
+  const [hasThreads, setHasThreads] = useState(false);
+  useEffect(() => {
+    let live = true;
+    getThreads(1).then((rows) => live && setHasThreads(rows.length > 0)).catch(() => live && setHasThreads(false));
+    return () => { live = false; };
+    // The picked tenant narrows the threads: ask again when it changes.
+  }, [pickedTenant]);
+  const listMode = hasThreads ? pickedMode : 'sessions';
   const searchThread = (thread: string) => {
     setThreadSearch(thread);
     setSearchQuery(thread);
@@ -869,7 +880,7 @@ export function LiveStreamingView() {
   );
 
   // The sessions, or the activity of an always-on agent.
-  const listSwitch = (
+  const listSwitch = !hasThreads ? null : (
     <span style={{ display: 'inline-flex', gap: '2px', padding: '1px', borderRadius: 'var(--radius)', border: '1px solid var(--border-default)' }}>
       {(['sessions', 'activity'] as const).map((label) => (
         <button

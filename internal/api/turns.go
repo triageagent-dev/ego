@@ -240,7 +240,8 @@ func (s *SessionStore) turnRows(sessionID string, part int) ([]TurnRow, bool) {
 	return out, true
 }
 
-// Turns lists the turns of a thread that began in the last hours, oldest first, with the segments they belong to.
+// Turns lists the turns of a declared thread that began in the last hours, oldest first, with the segments they belong
+// to; a session of a sender that declared no thread has none.
 func (s *SessionStore) Turns(thread string, hours int, info RoleInfo) TurnsResult {
 	now := time.Now()
 	res := TurnsResult{Thread: thread, FromMs: now.Add(-time.Duration(hours) * time.Hour).UnixMilli(), ToMs: now.UnixMilli(), Segments: []TurnSegment{}, Turns: []TurnRow{}}
@@ -250,6 +251,10 @@ func (s *SessionStore) Turns(thread string, hours int, info RoleInfo) TurnsResul
 		segs, res.Truncated = segs[:maxTurnSegments], true
 	}
 	for _, seg := range segs {
+		// Turns over time are for agents that declare a thread (always-on agents); a plain session is not one.
+		if !seg.Segmented {
+			continue
+		}
 		rows, ok := s.turnRows(seg.SessionID, seg.Part)
 		if !ok {
 			continue
