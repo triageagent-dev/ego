@@ -19,7 +19,7 @@
     "d3-selection": "^3.0.0",
     "d3-transition": "^3.0.1",
     "d3-zoom": "^3.0.0",
-    "framer-motion": "^13.2.0",
+    "framer-motion": "^14.4.0",
     "lucide-react": "^1.44.0",
     "react": "^19.3.0",
     "react-chartjs-2": "^5.3.1",
