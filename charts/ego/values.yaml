@@ -146,6 +146,7 @@ httpRoute:
     - /api/convert
     - /api/evaluate
     - /api/evalsets
+    - /api/activity
     - /api/admin
     - /api/health
     - /api/metrics
