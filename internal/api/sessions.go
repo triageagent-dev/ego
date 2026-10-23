@@ -218,6 +218,17 @@ func spanCacheTokens(spans []*tracepkg.Span) (read, write int64) {
 
 // spanIdentities returns the distinct agent names (gen_ai.agent.name) and model names on spans, in the order
 // first seen, at most maxIdentities of each.
+// traceTenantName is the display name a sender gave its tenant on the trace's spans: the first non-empty
+// TenantNameAttr.
+func traceTenantName(spans []*tracepkg.Span) string {
+	for _, sp := range spans {
+		if v := strings.TrimSpace(sp.TagString(TenantNameAttr)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // traceTenantLabel is the tenant label of a trace: the first non-empty value of attr on its spans.
 func traceTenantLabel(spans []*tracepkg.Span, attr string) string {
 	if attr == "" {
@@ -427,7 +438,12 @@ type SessionStore struct {
 	// onComplete, when set, is called with a segment's ID once it is closed for good (not when it merely goes quiet),
 	// outside s.mu (online evaluation's hook). It must not block.
 	onComplete func(sessionID string)
+	// tenantNamer receives the display name a named sender gives its tenant (TenantNameAttr).
+	tenantNamer func(key, name string)
 }
+
+// SetTenantNamer registers the hook that keeps a sender's own name for its tenant. Call before serving.
+func (s *SessionStore) SetTenantNamer(fn func(key, name string)) { s.tenantNamer = fn }
 
 // SetOnComplete registers the segment-closed hook. Call before serving.
 func (s *SessionStore) SetOnComplete(fn func(sessionID string)) {
@@ -1031,6 +1047,21 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 		parsed = append(parsed, p)
 	}
 
+	// The names a named sender gives its tenants; an anonymous push (no sender) cannot name anyone's tenant.
+	var tenantNames map[string]string
+	if s.tenantNamer != nil && sender != "" {
+		for _, p := range parsed {
+			for _, tr := range p.traces {
+				if n := traceTenantName(tr.AllSpans); n != "" {
+					if tenantNames == nil {
+						tenantNames = map[string]string{}
+					}
+					tenantNames[tenantKey(sender, traceTenantLabel(tr.AllSpans, s.usageTenantAttr))] = n
+				}
+			}
+		}
+	}
+
 	var out closings
 	s.mu.Lock()
 	ingested := 0
@@ -1159,6 +1190,9 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 	}
 	s.mu.Unlock()
 	s.finish(out)
+	for key, name := range tenantNames {
+		s.tenantNamer(key, name)
+	}
 	return ingested
 }
 

@@ -80,3 +80,47 @@ func TestTenantNamesAdminAPIAndSwitcher(t *testing.T) {
 		t.Errorf("switcher options = %+v", out.Data)
 	}
 }
+
+// namedTenantBody labels its spans through the resource, as an OTel config would: ego.tenant and ego.tenant.name.
+func namedTenantBody(session, traceID, spanID, label, name string) map[string]any {
+	body := labelledTracesBody(session, traceID, spanID, "")
+	res := body["resourceSpans"].([]any)[0].(map[string]any)["resource"].(map[string]any)
+	attrs := res["attributes"].([]any)
+	attrs = append(attrs, map[string]any{"key": DefaultTenantAttr, "value": map[string]any{"stringValue": label}})
+	if name != "" {
+		attrs = append(attrs, map[string]any{"key": TenantNameAttr, "value": map[string]any{"stringValue": name}})
+	}
+	res["attributes"] = attrs
+	return body
+}
+
+// A named sender says what its tenant is called with ego.tenant.name; ego keeps it unless a person already named the
+// tenant, and an anonymous push names nobody's tenant.
+func TestSenderNamesItsTenant(t *testing.T) {
+	store := NewSessionStore(nil)
+	names, err := NewTenantNames(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.SetTenantNamer(names.Fill)
+
+	store.IngestFor("core", namedTenantBody("a", "aaaa", "s1", "ws-1", "Billing"))
+	if got := names.Name("core/ws-1"); got != "Billing" {
+		t.Errorf("name = %q, want the sender's", got)
+	}
+	if err := names.Set("core/ws-2", "By hand"); err != nil {
+		t.Fatal(err)
+	}
+	store.IngestFor("core", namedTenantBody("b", "bbbb", "s2", "ws-2", "From sender"))
+	if got := names.Name("core/ws-2"); got != "By hand" {
+		t.Errorf("name = %q, a name set by hand must win", got)
+	}
+	store.IngestFor("core", namedTenantBody("c", "cccc", "s3", "ws-3", "bad\x00name"))
+	if got := names.Name("core/ws-3"); got != "" {
+		t.Errorf("name = %q, an unacceptable name is ignored", got)
+	}
+	store.Ingest(namedTenantBody("d", "dddd", "s4", "ws-4", "Anon"))
+	if got := names.Name("ws-4"); got != "" {
+		t.Errorf("name = %q, an anonymous push names no tenant", got)
+	}
+}

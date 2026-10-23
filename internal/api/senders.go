@@ -16,6 +16,10 @@ import (
 // other. A sender labels its spans; ego never trusts a label beyond the sender's own namespace.
 const DefaultTenantAttr = "ego.tenant"
 
+// TenantNameAttr is the span (or resource) attribute a sender uses to say what its tenant is called; ego keeps it as the
+// tenant's display name when nobody has named the tenant yet.
+const TenantNameAttr = "ego.tenant.name"
+
 // defaultTenantLabel names the tenant of a sender's spans that carry no label.
 const defaultTenantLabel = "default"
 

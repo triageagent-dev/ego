@@ -108,6 +108,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	if err != nil {
 		return err
 	}
+	store.SetTenantNamer(tenantNames.Fill)
 
 	var revoked *revocations
 	if sessionSecret != "" {

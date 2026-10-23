@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+
+	"github.com/triageagent-dev/ego/internal/logx"
 )
 
 const (
@@ -72,6 +74,17 @@ func (t *TenantNames) Set(key, name string) error {
 		t.names[key] = name
 	}
 	return nil
+}
+
+// Fill names a tenant the way its sender called it, when nobody has named it: a name set by hand always wins, and a
+// name that is not acceptable is ignored.
+func (t *TenantNames) Fill(key, name string) {
+	if t == nil || t.Name(key) != "" {
+		return
+	}
+	if err := t.Set(key, name); err != nil {
+		logx.Debugf("tenant name from %q ignored: %v", key, err)
+	}
 }
 
 func (t *TenantNames) Name(key string) string {
