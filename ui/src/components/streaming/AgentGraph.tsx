@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { drag } from 'd3-drag';
-import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type Simulation } from 'd3-force';
+import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type ForceLink, type Simulation } from 'd3-force';
 import { select, type Selection } from 'd3-selection';
 import { zoom, zoomIdentity } from 'd3-zoom';
 import 'd3-transition';
@@ -78,72 +78,66 @@ export function AgentGraph({
     handlers.current = { onSelectNode, onPickTurn };
   }, [onSelectNode, onPickTurn]);
 
-  const dataRef = useRef<GNode[]>([]);
-  const nodesSel = useRef<Selection<SVGGElement, GNode, SVGGElement, unknown> | null>(null);
+  // The simulation writes x, y and the velocity into its nodes.
+  type SimNode = GNode & { vx?: number; vy?: number };
+  const dataRef = useRef<SimNode[]>([]);
+  const nodesSel = useRef<Selection<SVGGElement, SimNode, SVGGElement, unknown> | null>(null);
   const linksSel = useRef<Selection<SVGLineElement, GLink, SVGGElement, unknown> | null>(null);
   const badgeLayer = useRef<Selection<SVGGElement, unknown, null, undefined> | null>(null);
+  // What outlives an update of the graph: the simulation and the groups the nodes and links are drawn in. An update
+  // joins new data into them, so what is on screen keeps its place and the view keeps its zoom.
+  const sim = useRef<Simulation<SimNode, GLink> | null>(null);
+  const parts = useRef<{ linkG: Selection<SVGGElement, unknown, null, undefined>; nodeG: Selection<SVGGElement, unknown, null, undefined> } | null>(null);
+  // Fit the view to the graph once it has settled: on the first draw, and when the graph is another one.
+  const needFit = useRef(true);
 
   const { w: W, h: H } = size;
+  // The scaffold: the layers, the forces and the zoom. It is built again only when the box changes size.
   useEffect(() => {
     if (W === 0 || H === 0) return;
     const svg = select(svgRef.current!);
     svg.selectAll('*').remove();
-    // The simulation writes positions into its nodes and replaces the ends of its links with them: it gets copies.
-    const nodes: GNode[] = graph.nodes.map((n) => ({ ...n }));
-    const links: GLink[] = graph.links.map((l) => ({ ...l }));
-    dataRef.current = nodes;
 
     svg.append('defs').append('style').text(`
       .ego-path { stroke-dasharray: 5 3; }
     `);
     const layer = svg.append('g');
-    const link = layer.append('g').attr('stroke-linecap', 'round')
-      .selectAll<SVGLineElement, GLink>('line').data(links, (d) => d.id).join('line')
-      .attr('stroke', LINK).attr('stroke-opacity', 0.5).attr('stroke-width', linkWidth);
-    linksSel.current = link;
-
-    const node = layer.append('g').selectAll<SVGGElement, GNode>('g').data(nodes, (d) => d.id).join('g').attr('cursor', 'pointer');
-    node.append('circle').attr('r', radius).attr('fill', health).attr('stroke', NODE_STROKE).attr('stroke-width', 1);
-    node.append('title').text(titleOf);
-    node.filter((d) => d.kind !== 'turn').append('text')
-      .text((d) => shorten(d.label))
-      .attr('dy', (d) => -radius(d) - 4)
-      .attr('text-anchor', 'middle')
-      .attr('font-family', 'var(--font-body)')
-      .attr('font-size', 10)
-      .attr('fill', '#d1d5db')
-      .attr('pointer-events', 'none');
-    nodesSel.current = node;
+    const linkG = layer.append('g').attr('stroke-linecap', 'round');
+    const nodeG = layer.append('g');
     badgeLayer.current = layer.append('g').attr('pointer-events', 'none');
+    parts.current = { linkG, nodeG };
+    linksSel.current = linkG.selectAll<SVGLineElement, GLink>('line');
+    nodesSel.current = nodeG.selectAll<SVGGElement, SimNode>('g');
 
     const placeBadges = () => {
       badgeLayer.current?.selectAll<SVGGElement, unknown>('g.ego-badge').attr('transform', function () {
-        const n = nodes.find((x) => x.id === (this as SVGGElement).dataset.node);
+        const n = dataRef.current.find((x) => x.id === (this as SVGGElement).dataset.node);
         const r = n ? radius(n) : 0;
         return `translate(${(n?.x ?? 0) + r * 0.8},${(n?.y ?? 0) - r * 0.8})`;
       });
     };
     const ticked = () => {
-      link
-        .attr('x1', (d) => (d.source as GNode).x ?? 0).attr('y1', (d) => (d.source as GNode).y ?? 0)
+      linksSel.current
+        ?.attr('x1', (d) => (d.source as GNode).x ?? 0).attr('y1', (d) => (d.source as GNode).y ?? 0)
         .attr('x2', (d) => (d.target as GNode).x ?? 0).attr('y2', (d) => (d.target as GNode).y ?? 0);
-      node.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
+      nodesSel.current?.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
       placeBadges();
     };
 
-    const sim: Simulation<GNode, GLink> = forceSimulation<GNode>(nodes)
-      .force('link', forceLink<GNode, GLink>(links).id((d) => d.id).distance(60))
+    const s: Simulation<SimNode, GLink> = forceSimulation<SimNode>(dataRef.current)
+      .force('link', forceLink<SimNode, GLink>([]).id((d) => d.id).distance(60))
       // The service graph's charge of -120; a turn is one of hundreds, so each pushes less.
-      .force('charge', forceManyBody<GNode>().strength((d) => (d.kind === 'turn' ? -25 : -120)))
-      .force('collide', forceCollide<GNode>((d) => radius(d) + 3))
+      .force('charge', forceManyBody<SimNode>().strength((d) => (d.kind === 'turn' ? -25 : -120)))
+      .force('collide', forceCollide<SimNode>((d) => radius(d) + 3))
       .force('center', forceCenter())
       .on('tick', ticked);
+    sim.current = s;
 
     // The official example has no zoom; this one is zoomable, and shows the whole graph once it has settled.
     const z = zoom<SVGSVGElement, unknown>().scaleExtent([0.1, 4]).on('zoom', (event) => layer.attr('transform', event.transform.toString()));
     const fit = () => {
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (const n of nodes) {
+      for (const n of dataRef.current) {
         const r = radius(n);
         const half = n.kind === 'turn' ? r : Math.max(r, shorten(n.label).length * 3.4);
         x0 = Math.min(x0, (n.x ?? 0) - half); x1 = Math.max(x1, (n.x ?? 0) + half);
@@ -153,43 +147,108 @@ export function AgentGraph({
       const k = Math.min(2, (W - 2 * pad) / Math.max(1, x1 - x0), (H - 2 * pad) / Math.max(1, y1 - y0));
       return zoomIdentity.translate(-((x0 + x1) / 2) * k, -((y0 + y1) / 2) * k).scale(k);
     };
-    let fitted = false;
-    sim.on('end', () => {
-      if (fitted) return;
-      fitted = true;
+    needFit.current = true;
+    s.on('end', () => {
+      if (!needFit.current || dataRef.current.length === 0) return;
+      needFit.current = false;
       svg.transition().duration(400).call(z.transform, fit());
     });
     svg.call(z).on('dblclick.zoom', null);
     svg.on('dblclick', () => svg.transition().duration(250).call(z.transform, fit()));
     svg.on('click', () => handlers.current.onSelectNode?.(null));
 
-    // The drag of the example: the node follows the pointer and lets go when it is dropped.
-    node.call(
-      drag<SVGGElement, GNode>()
-        .on('start', (event) => {
-          if (!event.active) sim.alphaTarget(0.3).restart();
-          event.subject.fx = event.subject.x;
-          event.subject.fy = event.subject.y;
-        })
-        .on('drag', (event) => {
-          event.subject.fx = event.x;
-          event.subject.fy = event.y;
-        })
-        .on('end', (event) => {
-          if (!event.active) sim.alphaTarget(0);
-          event.subject.fx = null;
-          event.subject.fy = null;
-        }),
-    );
-    node.on('click', (event: MouseEvent, d) => {
-      event.stopPropagation();
-      if (d.kind === 'turn' && d.row) handlers.current.onPickTurn?.(d.row);
-      else handlers.current.onSelectNode?.(d.id);
-    });
-
     return () => {
-      sim.stop();
+      s.stop();
+      sim.current = null;
+      parts.current = null;
     };
+  }, [W, H]);
+
+  // A new graph is joined into the scaffold. Nodes that were there keep their place and a new one starts beside the
+  // nodes it links to, so a new turn settles in, not the whole graph flying about; a graph that shares few nodes with
+  // the one on show is another agent or window, and is laid out afresh and fitted.
+  useEffect(() => {
+    const s = sim.current;
+    const p = parts.current;
+    if (!s || !p) return;
+    const prev = new Map(dataRef.current.map((n) => [n.id, n]));
+    const kept = graph.nodes.filter((n) => prev.has(n.id)).length;
+    const fresh = kept === 0 || kept < 0.5 * Math.min(prev.size, graph.nodes.length);
+    // The simulation writes positions into its nodes and replaces the ends of its links with them: it gets copies.
+    const nodes: SimNode[] = graph.nodes.map((n) => {
+      const old = fresh ? undefined : prev.get(n.id);
+      return old ? { ...n, x: old.x, y: old.y, vx: old.vx, vy: old.vy } : { ...n };
+    });
+    const links: GLink[] = graph.links.map((l) => ({ ...l }));
+    if (!fresh) {
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const jitter = (id: string, k: number) => {
+        let h = k;
+        for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+        return (Math.abs(h) % 21) - 10;
+      };
+      for (const l of links) {
+        const a = byId.get(endId(l.source));
+        const b = byId.get(endId(l.target));
+        if (!a || !b) continue;
+        const [lone, anchor] = a.x == null && b.x != null ? [a, b] : b.x == null && a.x != null ? [b, a] : [undefined, undefined];
+        if (lone && anchor) {
+          lone.x = (anchor.x ?? 0) + jitter(lone.id, 1);
+          lone.y = (anchor.y ?? 0) + jitter(lone.id, 2);
+        }
+      }
+    }
+    dataRef.current = nodes;
+
+    const link = p.linkG.selectAll<SVGLineElement, GLink>('line').data(links, (d) => d.id).join('line')
+      .attr('stroke', LINK).attr('stroke-opacity', 0.5).attr('stroke-width', linkWidth);
+    linksSel.current = link;
+
+    const node = p.nodeG.selectAll<SVGGElement, SimNode>('g').data(nodes, (d) => d.id).join((enter) => {
+      const g = enter.append('g').attr('cursor', 'pointer');
+      g.append('circle').attr('stroke', NODE_STROKE).attr('stroke-width', 1);
+      g.append('title');
+      g.filter((d) => d.kind !== 'turn').append('text')
+        .attr('text-anchor', 'middle')
+        .attr('font-family', 'var(--font-body)')
+        .attr('font-size', 10)
+        .attr('fill', '#d1d5db')
+        .attr('pointer-events', 'none');
+      // The drag of the example: the node follows the pointer and lets go when it is dropped.
+      g.call(
+        drag<SVGGElement, SimNode>()
+          .on('start', (event) => {
+            if (!event.active) s.alphaTarget(0.3).restart();
+            event.subject.fx = event.subject.x;
+            event.subject.fy = event.subject.y;
+          })
+          .on('drag', (event) => {
+            event.subject.fx = event.x;
+            event.subject.fy = event.y;
+          })
+          .on('end', (event) => {
+            if (!event.active) s.alphaTarget(0);
+            event.subject.fx = null;
+            event.subject.fy = null;
+          }),
+      );
+      g.on('click', (event: MouseEvent, d) => {
+        event.stopPropagation();
+        if (d.kind === 'turn' && d.row) handlers.current.onPickTurn?.(d.row);
+        else handlers.current.onSelectNode?.(d.id);
+      });
+      return g;
+    });
+    node.select('circle').attr('r', radius).attr('fill', health);
+    node.select('title').text(titleOf);
+    node.select<SVGTextElement>('text').text((d) => shorten(d.label)).attr('dy', (d) => -radius(d) - 4);
+    nodesSel.current = node;
+
+    // Nodes first: the link force finds the ends of the new links among them.
+    s.nodes(nodes);
+    (s.force('link') as ForceLink<SimNode, GLink>).links(links);
+    needFit.current = needFit.current || fresh;
+    s.alpha(fresh ? 1 : 0.15).restart();
   }, [graph, W, H]);
 
   // Light the path of the turn on show, and ring its node.
