@@ -46,7 +46,7 @@ function usageTotals(series: UsageSeries): Usage {
   for (const b of series.buckets) {
     t.tokens += b.inputTokens + b.outputTokens;
     t.calls += b.calls;
-    const cost = estimateCostUsd(b.model, b.inputTokens, b.outputTokens);
+    const cost = estimateCostUsd(b.model, b.inputTokens, b.outputTokens, b.cacheReadTokens, b.cacheWriteTokens);
     if (cost != null) {
       t.cost += cost;
       t.priced = true;

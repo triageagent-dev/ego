@@ -9,6 +9,9 @@ interface SessionMetadataProps {
     startedAt: string;
     completedAt?: string | null;
     status: 'active' | 'complete';
+    // The parts of the session's input tokens read from and written to the prompt cache, when the server says.
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
     invocations?: Array<{
       modelInfo?: {
         provider?: string;
@@ -82,7 +85,10 @@ export function SessionMetadata({ session, liveStats, modelName }: SessionMetada
   // header chip; wall-clock here would add the 3s completion grace.
   const duration = useDuration(session.startedAt, session.completedAt, session.status === 'active');
   const estimatedCost = totalTokens > 0
-    ? estimateCostUsd(modelName, liveStats.totalInputTokens, liveStats.totalOutputTokens)
+    ? estimateCostUsd(
+        modelName, liveStats.totalInputTokens, liveStats.totalOutputTokens,
+        session.cacheReadTokens ?? totalCacheRead, session.cacheWriteTokens ?? totalCacheCreation,
+      )
     : null;
 
   return (

@@ -270,6 +270,8 @@ export function LiveStreamingView() {
       turns?: number;
       inputTokens?: number;
       outputTokens?: number;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
       durationMs?: number;
       scored?: boolean;
       thread?: string;
@@ -322,6 +324,8 @@ export function LiveStreamingView() {
                 llmCalls: s.llmCalls,
                 errors: s.errors,
                 turns: s.turns,
+                cacheReadTokens: s.cacheReadTokens,
+                cacheWriteTokens: s.cacheWriteTokens,
                 durationMs: s.durationMs,
               });
             }
@@ -348,6 +352,8 @@ export function LiveStreamingView() {
             llmCalls: s.llmCalls,
             errors: s.errors,
             turns: s.turns,
+            cacheReadTokens: s.cacheReadTokens,
+            cacheWriteTokens: s.cacheWriteTokens,
             durationMs: s.durationMs,
             scored: s.scored,
             thread: s.thread,

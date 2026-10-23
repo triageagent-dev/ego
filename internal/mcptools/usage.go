@@ -48,7 +48,10 @@ type UsageCell struct {
 	Errors       int64  `json:"errors"`
 	InputTokens  int64  `json:"inputTokens"`
 	OutputTokens int64  `json:"outputTokens"`
-	DurationMs   int64  `json:"durationMs"`
+	// CacheReadTokens and CacheWriteTokens are the parts of InputTokens served from and written to the prompt cache.
+	CacheReadTokens  int64 `json:"cacheReadTokens"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens"`
+	DurationMs       int64 `json:"durationMs"`
 }
 
 // UsageSessionRow is one row of GET /api/usage/calls?group=session: a session's calls on one model, summed. Kinds
@@ -66,6 +69,9 @@ type UsageSessionRow struct {
 	OutputTokens int64  `json:"outputTokens"`
 	PeakTokens   int64  `json:"peakTokens"`
 	DurationMs   int64  `json:"durationMs"`
+	// CacheReadTokens and CacheWriteTokens are the parts of InputTokens served from and written to the prompt cache.
+	CacheReadTokens  int64 `json:"cacheReadTokens"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens"`
 }
 
 // Usage is the result of get_usage.

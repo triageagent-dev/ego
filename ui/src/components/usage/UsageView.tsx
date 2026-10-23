@@ -81,7 +81,7 @@ function addBucket(t: Totals, b: UsageBucket) {
   t.input += b.inputTokens;
   t.output += b.outputTokens;
   t.durationMs += b.durationMs;
-  const cost = estimateCostUsd(b.model, b.inputTokens, b.outputTokens);
+  const cost = estimateCostUsd(b.model, b.inputTokens, b.outputTokens, b.cacheReadTokens, b.cacheWriteTokens);
   if (cost == null) t.unpricedTokens += b.inputTokens + b.outputTokens;
   else t.cost += cost;
 }
@@ -424,7 +424,7 @@ export const UsageView: React.FC = () => {
                   </thead>
                   <tbody>
                     {sessions.map(r => {
-                      const cost = estimateCostUsd(r.model, r.inputTokens, r.outputTokens);
+                      const cost = estimateCostUsd(r.model, r.inputTokens, r.outputTokens, r.cacheReadTokens, r.cacheWriteTokens);
                       return (
                         <tr key={`${r.sessionId}|${r.model}`}>
                           <td css={monoStyle}>{new Date(r.end).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</td>

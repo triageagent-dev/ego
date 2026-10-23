@@ -63,6 +63,8 @@ export interface SessionCardProps {
     llmCalls?: number;
     errors?: number;
     turns?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
     durationMs?: number;
     thread?: string;
     part?: number;

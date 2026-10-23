@@ -123,6 +123,10 @@ type SessionSummary struct {
 	// so a session that was already running when the page opened is not counted from zero.
 	InputTokens  int64 `json:"inputTokens,omitempty"`
 	OutputTokens int64 `json:"outputTokens,omitempty"`
+	// CacheReadTokens and CacheWriteTokens are the parts of InputTokens served from and written to the prompt cache,
+	// which the cost estimate prices apart.
+	CacheReadTokens  int64 `json:"cacheReadTokens,omitempty"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens,omitempty"`
 	// DurationMs is the session's span window: earliest span start to
 	// latest span end, in milliseconds. Not CompletedAt - StartedAt, which
 	// is ingest wall-clock and includes the completion grace.
@@ -151,32 +155,35 @@ func summarize(s *Session) SessionSummary {
 	agents, models := spanIdentities(s.Spans)
 	tenants := sessionTenants(s)
 	service, inTokens, outTokens := spanServiceAndTokens(s.Spans)
+	cacheRead, cacheWrite := spanCacheTokens(s.Spans)
 	return SessionSummary{
-		Service:      service,
-		TotalTokens:  inTokens + outTokens,
-		InputTokens:  inTokens,
-		OutputTokens: outTokens,
-		Agents:       agents,
-		Tenants:      tenants,
-		Models:       models,
-		RootSpanName: rootName,
-		LLMCalls:     llmCalls,
-		Errors:       errs,
-		Turns:        claudeCodeTurns(s.Spans),
-		DurationMs:   spanWindowMs(s.Spans),
-		SessionID:    s.ID,
-		Thread:       s.threadKey(),
-		Part:         s.partNo(),
-		Closed:       s.Closed,
-		Segmented:    s.Segmented,
-		TraceID:      s.PrimaryTraceID,
-		EvalSetID:    evalSetID,
-		SpanCount:    len(s.Spans),
-		IsComplete:   s.IsComplete,
-		StartedAt:    s.StartedAt.Format(time.RFC3339),
-		CompletedAt:  completedAt,
-		Metadata:     metadata,
-		Invocations:  invocations,
+		CacheReadTokens:  cacheRead,
+		CacheWriteTokens: cacheWrite,
+		Service:          service,
+		TotalTokens:      inTokens + outTokens,
+		InputTokens:      inTokens,
+		OutputTokens:     outTokens,
+		Agents:           agents,
+		Tenants:          tenants,
+		Models:           models,
+		RootSpanName:     rootName,
+		LLMCalls:         llmCalls,
+		Errors:           errs,
+		Turns:            claudeCodeTurns(s.Spans),
+		DurationMs:       spanWindowMs(s.Spans),
+		SessionID:        s.ID,
+		Thread:           s.threadKey(),
+		Part:             s.partNo(),
+		Closed:           s.Closed,
+		Segmented:        s.Segmented,
+		TraceID:          s.PrimaryTraceID,
+		EvalSetID:        evalSetID,
+		SpanCount:        len(s.Spans),
+		IsComplete:       s.IsComplete,
+		StartedAt:        s.StartedAt.Format(time.RFC3339),
+		CompletedAt:      completedAt,
+		Metadata:         metadata,
+		Invocations:      invocations,
 	}
 }
 
@@ -196,6 +203,17 @@ func spanServiceAndTokens(spans []*tracepkg.Span) (service string, input, output
 		}
 	}
 	return service, input, output
+}
+
+// spanCacheTokens sums the prompt-cache parts of the input tokens of the LLM spans.
+func spanCacheTokens(spans []*tracepkg.Span) (read, write int64) {
+	for _, sp := range spans {
+		if adk.IsLLMSpan(sp) {
+			read += tagInt(sp, "gen_ai.usage.cache_read.input_tokens")
+			write += cacheWriteTokens(sp)
+		}
+	}
+	return read, write
 }
 
 // spanIdentities returns the distinct agent names (gen_ai.agent.name) and model names on spans, in the order
@@ -527,6 +545,24 @@ func (s *SessionStore) LoadPersisted() error {
 		}
 		if err := s.store.InsertUsage(backfill); err != nil {
 			return fmt.Errorf("backfilling usage ledger: %w", err)
+		}
+	}
+	// Split the input of rows written before the ledger kept the cache parts, from the archived spans.
+	if unknown, err := s.store.UsageCacheUnknown(); err != nil {
+		return fmt.Errorf("checking usage ledger cache split: %w", err)
+	} else if unknown {
+		splits := map[string]cacheSplit{}
+		if err := s.store.ForEachSnapshot(func(snap sessionSnapshot) {
+			for _, span := range snap.Spans {
+				if row, ok := usageRowFromSpan(span, snap.SessionID, s.usageTenantAttr, snap.Sender, ""); ok {
+					splits[row.SpanID] = cacheSplit{row.CacheReadTokens, row.CacheWriteTokens}
+				}
+			}
+		}); err != nil {
+			return fmt.Errorf("reading session archive for the usage cache split: %w", err)
+		}
+		if err := s.store.FillUsageCache(splits); err != nil {
+			return fmt.Errorf("filling usage cache split: %w", err)
 		}
 	}
 	// Name kindless rows after their trace's root span, for rows written

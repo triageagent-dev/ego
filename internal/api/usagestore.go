@@ -38,7 +38,11 @@ type usageRow struct {
 	Name         string
 	InputTokens  int64
 	OutputTokens int64
-	IsError      bool
+	// CacheReadTokens and CacheWriteTokens are the parts of InputTokens the model read from its prompt cache and
+	// wrote to it, which are priced differently from the rest of the input.
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+	IsError          bool
 }
 
 func ensureUsageSchema(db *sql.DB) error {
@@ -64,6 +68,12 @@ func ensureUsageSchema(db *sql.DB) error {
 	// what every such session was.
 	if err := addColumn(db, "llm_calls", "thread", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
+	}
+	// NULL on a row written before the cache split; FillUsageCache reads those spans again at start.
+	for _, c := range []string{"cache_read_tokens", "cache_write_tokens"} {
+		if err := addColumn(db, "llm_calls", c, "INTEGER"); err != nil {
+			return err
+		}
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_llm_calls_thread ON llm_calls(thread)`); err != nil {
 		return fmt.Errorf("creating llm_calls.thread index: %w", err)
@@ -100,20 +110,30 @@ func usageRowFromSpan(span *tracepkg.Span, sessionID, tenantAttr, sender, fallba
 		return usageRow{}, false
 	}
 	return usageRow{
-		SpanID:       span.SpanID,
-		TraceID:      span.TraceID,
-		SessionID:    sessionID,
-		StartMs:      span.StartTime / 1000,
-		DurationMs:   span.Duration / 1000,
-		Service:      span.TagString(adk.OtelServiceName),
-		Tenant:       tenantKey(sender, cmp.Or(tenantOf(span, tenantAttr), fallbackLabel)),
-		Kind:         span.TagString(adk.GenAIAgentName),
-		Model:        model,
-		Name:         span.OperationName,
-		InputTokens:  in,
-		OutputTokens: out,
-		IsError:      span.TagString("otel.status_code") == "ERROR",
+		SpanID:           span.SpanID,
+		TraceID:          span.TraceID,
+		SessionID:        sessionID,
+		StartMs:          span.StartTime / 1000,
+		DurationMs:       span.Duration / 1000,
+		Service:          span.TagString(adk.OtelServiceName),
+		Tenant:           tenantKey(sender, cmp.Or(tenantOf(span, tenantAttr), fallbackLabel)),
+		Kind:             span.TagString(adk.GenAIAgentName),
+		Model:            model,
+		Name:             span.OperationName,
+		InputTokens:      in,
+		OutputTokens:     out,
+		CacheReadTokens:  tagInt(span, "gen_ai.usage.cache_read.input_tokens"),
+		CacheWriteTokens: cacheWriteTokens(span),
+		IsError:          span.TagString("otel.status_code") == "ERROR",
 	}, true
+}
+
+// cacheWriteTokens reads the tokens written to the prompt cache; the convention's name for them changed between versions.
+func cacheWriteTokens(span *tracepkg.Span) int64 {
+	if n := tagInt(span, "gen_ai.usage.cache_creation.input_tokens"); n > 0 {
+		return n
+	}
+	return tagInt(span, "gen_ai.usage.cache_write.input_tokens")
 }
 
 func tenantOf(span *tracepkg.Span, attr string) string {
@@ -158,6 +178,46 @@ func (s *SQLiteStore) UsageKindless() (bool, error) {
 	return err == nil, err
 }
 
+// UsageCacheUnknown reports whether any row was written before the cache split.
+func (s *SQLiteStore) UsageCacheUnknown() (bool, error) {
+	var one int
+	err := s.db.QueryRow("SELECT 1 FROM llm_calls WHERE cache_read_tokens IS NULL LIMIT 1").Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// cacheSplit is the cache part of one LLM call's input tokens.
+type cacheSplit struct{ read, write int64 }
+
+// FillUsageCache sets the cache split of the rows that predate it (span id -> split). A span with no cache attribute
+// gets zero, so a row is filled once and never read again.
+func (s *SQLiteStore) FillUsageCache(splits map[string]cacheSplit) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`UPDATE llm_calls SET cache_read_tokens = ?, cache_write_tokens = ? WHERE span_id = ? AND cache_read_tokens IS NULL`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	for id, c := range splits {
+		if _, err := stmt.Exec(c.read, c.write, id); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	// Rows whose session left the archive have nothing to read: their input is priced as it always was.
+	if _, err := tx.Exec(`UPDATE llm_calls SET cache_read_tokens = 0, cache_write_tokens = 0 WHERE cache_read_tokens IS NULL`); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return s.announce(topicUsage, tx.Commit())
+}
+
 // InsertUsage writes rows in one transaction, ignoring spans already
 // recorded.
 func (s *SQLiteStore) InsertUsage(rows []usageRow) error {
@@ -169,8 +229,9 @@ func (s *SQLiteStore) InsertUsage(rows []usageRow) error {
 		return err
 	}
 	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO llm_calls
-		(span_id, trace_id, session_id, start_ms, duration_ms, service, tenant, kind, model, name, input_tokens, output_tokens, is_error, thread)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		(span_id, trace_id, session_id, start_ms, duration_ms, service, tenant, kind, model, name, input_tokens, output_tokens, is_error, thread,
+			cache_read_tokens, cache_write_tokens)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -178,7 +239,7 @@ func (s *SQLiteStore) InsertUsage(rows []usageRow) error {
 	defer stmt.Close()
 	for _, r := range rows {
 		if _, err := stmt.Exec(r.SpanID, r.TraceID, r.SessionID, r.StartMs, r.DurationMs, r.Service, r.Tenant,
-			r.Kind, r.Model, r.Name, r.InputTokens, r.OutputTokens, r.IsError, cmp.Or(r.Thread, r.SessionID)); err != nil {
+			r.Kind, r.Model, r.Name, r.InputTokens, r.OutputTokens, r.IsError, cmp.Or(r.Thread, r.SessionID), r.CacheReadTokens, r.CacheWriteTokens); err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -208,7 +269,10 @@ type usageBucketDTO struct {
 	Errors       int64  `json:"errors"`
 	InputTokens  int64  `json:"inputTokens"`
 	OutputTokens int64  `json:"outputTokens"`
-	DurationMs   int64  `json:"durationMs"`
+	// CacheReadTokens and CacheWriteTokens are the parts of InputTokens served from and written to the prompt cache.
+	CacheReadTokens  int64 `json:"cacheReadTokens"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens"`
+	DurationMs       int64 `json:"durationMs"`
 }
 
 // tenantClause limits a query on llm_calls to the given tenant grants (keys, "<sender>/*" or "*"); nil means no limit
@@ -246,7 +310,8 @@ func likeEscape(s string) string {
 func (s *SQLiteStore) UsageSeries(from, to time.Time, bucketMs int64, tenants []string) ([]usageBucketDTO, error) {
 	tc, targs := tenantClause(tenants)
 	rows, err := s.db.Query(`SELECT (start_ms / ?) * ? AS bucket, service, tenant, kind, model,
-			COUNT(*), SUM(is_error), SUM(input_tokens), SUM(output_tokens), SUM(duration_ms)
+			COUNT(*), SUM(is_error), SUM(input_tokens), SUM(output_tokens), SUM(duration_ms),
+			SUM(COALESCE(cache_read_tokens, 0)), SUM(COALESCE(cache_write_tokens, 0))
 		FROM llm_calls WHERE start_ms >= ? AND start_ms < ?`+tc+`
 		GROUP BY bucket, service, tenant, kind, model ORDER BY bucket`,
 		append([]any{bucketMs, bucketMs, from.UnixMilli(), to.UnixMilli()}, targs...)...)
@@ -258,7 +323,7 @@ func (s *SQLiteStore) UsageSeries(from, to time.Time, bucketMs int64, tenants []
 	for rows.Next() {
 		var b usageBucketDTO
 		if err := rows.Scan(&b.Start, &b.Service, &b.Tenant, &b.Kind, &b.Model,
-			&b.Calls, &b.Errors, &b.InputTokens, &b.OutputTokens, &b.DurationMs); err != nil {
+			&b.Calls, &b.Errors, &b.InputTokens, &b.OutputTokens, &b.DurationMs, &b.CacheReadTokens, &b.CacheWriteTokens); err != nil {
 			return nil, err
 		}
 		out = append(out, b)
@@ -301,6 +366,9 @@ type usageSessionDTO struct {
 	OutputTokens int64  `json:"outputTokens"`
 	PeakTokens   int64  `json:"peakTokens"`
 	DurationMs   int64  `json:"durationMs"`
+	// CacheReadTokens and CacheWriteTokens are the parts of InputTokens served from and written to the prompt cache.
+	CacheReadTokens  int64 `json:"cacheReadTokens"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens"`
 }
 
 // TopUsageSessions returns the sessions (per model) that used the most
@@ -309,7 +377,8 @@ func (s *SQLiteStore) TopUsageSessions(from, to time.Time, limit int, tenants []
 	tc, targs := tenantClause(tenants)
 	rows, err := s.db.Query(`SELECT session_id, MIN(start_ms), MAX(start_ms), COUNT(*), SUM(is_error),
 			COALESCE(GROUP_CONCAT(DISTINCT NULLIF(kind, '')), ''), COALESCE(GROUP_CONCAT(DISTINCT NULLIF(tenant, '')), ''),
-			model, SUM(input_tokens), SUM(output_tokens), MAX(input_tokens + output_tokens), SUM(duration_ms)
+			model, SUM(input_tokens), SUM(output_tokens), MAX(input_tokens + output_tokens), SUM(duration_ms),
+			SUM(COALESCE(cache_read_tokens, 0)), SUM(COALESCE(cache_write_tokens, 0))
 		FROM llm_calls WHERE start_ms >= ? AND start_ms < ?`+tc+`
 		GROUP BY session_id, model
 		ORDER BY SUM(input_tokens + output_tokens) DESC LIMIT ?`,
@@ -322,7 +391,7 @@ func (s *SQLiteStore) TopUsageSessions(from, to time.Time, limit int, tenants []
 	for rows.Next() {
 		var r usageSessionDTO
 		if err := rows.Scan(&r.SessionID, &r.Start, &r.End, &r.Calls, &r.Errors, &r.Kinds, &r.Tenants,
-			&r.Model, &r.InputTokens, &r.OutputTokens, &r.PeakTokens, &r.DurationMs); err != nil {
+			&r.Model, &r.InputTokens, &r.OutputTokens, &r.PeakTokens, &r.DurationMs, &r.CacheReadTokens, &r.CacheWriteTokens); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

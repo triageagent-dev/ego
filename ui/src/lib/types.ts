@@ -604,6 +604,9 @@ export interface LiveSession {
   errors?: number;
   // The prompts of a Claude Code session, which has no invocations to count.
   turns?: number;
+  // The parts of the session's input tokens read from and written to the prompt cache.
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   // Distinct gen_ai.agent.name and model values on the session's spans, in the order first seen.
   agents?: string[];
   // Tenants of the session: the sender's tenant, or the tenant attribute values on its spans.
@@ -745,6 +748,9 @@ export interface UsageBucket {
   errors: number;
   inputTokens: number;
   outputTokens: number;
+  // The parts of inputTokens read from and written to the prompt cache.
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   durationMs: number;
 }
 
@@ -770,6 +776,8 @@ export interface UsageSession {
   outputTokens: number;
   peakTokens: number;
   durationMs: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 }
 
 export interface UsageCall {

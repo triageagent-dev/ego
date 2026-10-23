@@ -22,6 +22,8 @@ export function SessionDetails({ session }: { session: SessionCardProps['session
             startedAt: session.startedAt,
             completedAt: session.completedAt,
             status: session.status,
+            cacheReadTokens: session.cacheReadTokens,
+            cacheWriteTokens: session.cacheWriteTokens,
             invocations: session.invocations,
           }}
           liveStats={liveStats}
