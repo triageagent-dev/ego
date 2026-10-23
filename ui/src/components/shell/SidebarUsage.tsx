@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { css } from '@emotion/react';
 import { getOnlineSeries, getOnlineStatus, getUsage } from '../../api/client';
 import type { OnlineSeriesPoint, UsageSeries } from '../../lib/types';
-import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
+import { estimateCostUsd } from '../../lib/pricing';
 import { useLiveData } from '../../lib/connection';
 import { useSelectedTenant } from '../../lib/tenant';
 import { useTraceContext } from '../../context/TraceContext';
@@ -28,11 +28,14 @@ function short(n: number): string {
   return String(n);
 }
 
-// $0.0123, $12.34, $345, $1.2k: the cost in as few characters as keep it readable.
+// $0, <1¢, $1.23, $12.3, $345, $1.2k: at most five characters, which is what the narrow rail holds.
 function shortCost(usd: number): string {
+  if (usd <= 0) return '$0';
+  if (usd < 0.01) return '<1¢';
   if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}k`;
   if (usd >= 100) return `$${Math.round(usd)}`;
-  return formatCostUsd(usd);
+  if (usd >= 10) return `$${usd.toFixed(1)}`;
+  return `$${usd.toFixed(2)}`;
 }
 
 function usageTotals(series: UsageSeries): Usage {
