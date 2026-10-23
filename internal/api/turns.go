@@ -29,10 +29,13 @@ const (
 	opToolWait = "claude_code.tool.blocked_on_user"
 )
 
-// ToolCount is how often a tool was called in a turn and how often the call failed.
+// ToolCount is how often a tool (or a model) was called in a turn, how often the call failed and how long the calls
+// took. Server names the MCP server a tool belongs to; it is empty for a built-in tool and for a model.
 type ToolCount struct {
-	Calls  int `json:"calls"`
-	Failed int `json:"failed,omitempty"`
+	Calls  int    `json:"calls"`
+	Failed int    `json:"failed,omitempty"`
+	Ms     int64  `json:"ms,omitempty"`
+	Server string `json:"server,omitempty"`
 }
 
 // TurnRow is one turn of GET /api/threads/turns.
@@ -63,6 +66,8 @@ type TurnRow struct {
 	// PromptChars is the length of the prompt, when the sender says.
 	PromptChars int                  `json:"promptChars,omitempty"`
 	ToolCalls   map[string]ToolCount `json:"toolCalls,omitempty"`
+	// ModelCalls counts the model requests by model.
+	ModelCalls map[string]ToolCount `json:"modelCalls,omitempty"`
 }
 
 // TurnSegment places one segment of the thread on the same time axis as the turns.
@@ -117,13 +122,33 @@ func subtreeErrored(sp *tracepkg.Span) bool {
 	return false
 }
 
-func toolName(sp *tracepkg.Span) string {
+// toolName is the tool's own name and the MCP server it belongs to: a tool of an MCP server is named
+// mcp__<server>__<tool>, and the sender may also say the server in an attribute.
+func toolName(sp *tracepkg.Span) (name, server string) {
 	for _, k := range []string{"gen_ai.tool.name", "tool_name"} {
 		if n := sp.TagString(k); n != "" {
-			return n
+			name = n
+			break
 		}
 	}
-	return sp.OperationName
+	if name == "" {
+		name = sp.OperationName
+	}
+	if rest, ok := strings.CutPrefix(name, "mcp__"); ok {
+		if i := strings.Index(rest, "__"); i > 0 {
+			return rest[i+2:], rest[:i]
+		}
+	}
+	return name, sp.TagString("anthropic.mcp.server.name")
+}
+
+func modelName(sp *tracepkg.Span) string {
+	for _, k := range []string{"gen_ai.request.model", "model", "gen_ai.response.model"} {
+		if m := sp.TagString(k); m != "" && m != "unknown" {
+			return m
+		}
+	}
+	return "model"
 }
 
 // turnOf summarizes the turn that root starts, or reports false for a root that is no turn: a stray span with no
@@ -145,16 +170,29 @@ func turnOf(session string, part int, root *tracepkg.Span) (TurnRow, bool) {
 			row.InputTokens += in
 			row.OutputTokens += out
 			row.CacheReadTokens += tagInt(sp, "gen_ai.usage.cache_read.input_tokens")
+			if row.ModelCalls == nil {
+				row.ModelCalls = map[string]ToolCount{}
+			}
+			m := modelName(sp)
+			mc := row.ModelCalls[m]
+			mc.Calls++
+			mc.Ms += sp.Duration / 1000
+			if spanErrored(sp) {
+				mc.Failed++
+			}
+			row.ModelCalls[m] = mc
 		case isToolCallSpan(sp):
 			row.Tools++
 			toolUs += sp.Duration
-			name := toolName(sp)
+			name, server := toolName(sp)
 			bad := subtreeErrored(sp)
 			if row.ToolCalls == nil {
 				row.ToolCalls = map[string]ToolCount{}
 			}
 			c := row.ToolCalls[name]
 			c.Calls++
+			c.Ms += sp.Duration / 1000
+			c.Server = server
 			if bad {
 				c.Failed++
 				row.FailedTools++

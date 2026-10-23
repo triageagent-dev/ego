@@ -23,7 +23,7 @@ func TestTurnOfSumsHowTheTimeWentAndWhatFailed(t *testing.T) {
 	okTool := ccSpan("tool1", "claude_code.tool", 0, 800, map[string]any{"gen_ai.tool.name": "Bash"},
 		ccSpan("w1", opToolWait, 0, 700, map[string]any{"decision": "accept"}),
 		ccSpan("r1", "claude_code.tool.execution", 0, 100, nil))
-	badTool := ccSpan("tool2", "claude_code.tool", 0, 300, map[string]any{"gen_ai.tool.name": "say_in_workspace"},
+	badTool := ccSpan("tool2", "claude_code.tool", 0, 300, map[string]any{"gen_ai.tool.name": "mcp__core__say_in_workspace"},
 		ccSpan("w2", opToolWait, 0, 100, map[string]any{"decision": "accept"}),
 		ccSpan("r2", "claude_code.tool.execution", 0, 200, map[string]any{"otel.status_code": "ERROR"}))
 	root := ccSpan("root", "claude_code.interaction", 5000, 9000, map[string]any{"user_prompt_length": int64(245)},
@@ -42,8 +42,11 @@ func TestTurnOfSumsHowTheTimeWentAndWhatFailed(t *testing.T) {
 	if got.InputTokens != 3000 || got.OutputTokens != 110 || got.CacheReadTokens != 2700 || got.PromptChars != 245 {
 		t.Errorf("tokens = %+v", got)
 	}
-	if c := got.ToolCalls["say_in_workspace"]; c.Calls != 1 || c.Failed != 1 {
+	if c := got.ToolCalls["say_in_workspace"]; c.Calls != 1 || c.Failed != 1 || c.Server != "core" || c.Ms != 300 {
 		t.Errorf("tool counts = %+v", got.ToolCalls)
+	}
+	if c := got.ModelCalls["m"]; c.Calls != 2 || c.Ms != 6000 || c.Failed != 0 {
+		t.Errorf("model counts = %+v", got.ModelCalls)
 	}
 	if c := got.ToolCalls["Bash"]; c.Calls != 1 || c.Failed != 0 {
 		t.Errorf("tool counts = %+v", got.ToolCalls)

@@ -4,12 +4,14 @@ import { getThreads, getThreadTurns } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
 import { stored, store } from '../../lib/stored';
 import { useSelectedTenant } from '../../lib/tenant';
+import { buildGraph, pathOf, type Graph } from '../../lib/agentGraph';
 import { fmtDuration, shortCount, turnStats } from '../../lib/turns';
+import { useTurnDetail } from '../../lib/useTurnDetail';
 import type { ThreadRow, TurnRow, TurnsResult } from '../../lib/types';
 import { sessionLink } from '../shell/routes';
-import { cardStyle, cardTitleStyle, errorStyle, tileLabelStyle, tilesStyle, tileStyle, tileSubStyle, tileValueStyle } from '../ui/page';
+import { errorStyle } from '../ui/page';
+import { AgentGraph } from './AgentGraph';
 import { TurnTimeline } from './TurnTimeline';
-import { TurnWaterfall } from './TurnWaterfall';
 
 const WINDOWS = [
   { label: '6h', hours: 6 },
@@ -62,11 +64,19 @@ export function ActivityPanel({ initialThread }: { initialThread?: string }) {
   // New turns arrive with the usage of their model requests.
   useLiveData('usage', load);
 
-  // The picked turn belongs to the thread and window it was picked in.
-  useEffect(() => setSelected(null), [thread, hours]);
 
   const stats = useMemo(() => (data ? turnStats(data.turns, data.fromMs, data.toMs) : null), [data]);
   const picked = selected && data?.turns.find((t) => t.session === selected.session && t.rootSpanId === selected.rootSpanId) ? selected : null;
+  // Until one is picked, the newest turn is the one shown.
+  const shown = picked ?? (data && data.turns.length > 0 ? data.turns[data.turns.length - 1] : null);
+
+  // New turns arrive all the time; the graph only starts its layout again when what it draws has changed.
+  const built = useMemo(() => (data ? buildGraph(data.turns, thread) : null), [data, thread]);
+  const [graph, setGraph] = useState<Graph | null>(null);
+  if (built && (!graph || JSON.stringify(graph) !== JSON.stringify(built))) setGraph(built);
+
+  const { detail, error: detailError } = useTurnDetail(shown);
+  const path = useMemo(() => (detail && graph ? pathOf(detail, graph) : null), [detail, graph]);
 
   if (threads && threads.length === 0) return <p css={noteStyle}>no threads yet: an agent shows here once it has sent spans</p>;
 
@@ -75,7 +85,7 @@ export function ActivityPanel({ initialThread }: { initialThread?: string }) {
       <div css={barStyle}>
         <label css={fieldStyle}>
           thread
-          <select value={thread} onChange={(e) => setThread(e.target.value)} css={selectStyle}>
+          <select value={thread} onChange={(e) => { setThread(e.target.value); setSelected(null); }} css={selectStyle}>
             {threads === null && <option>loading…</option>}
             {threads?.map((t) => (
               <option key={t.thread} value={t.thread}>{t.thread}{t.open ? ' · open' : ''}</option>
@@ -84,101 +94,72 @@ export function ActivityPanel({ initialThread }: { initialThread?: string }) {
         </label>
         <span css={segStyle}>
           {WINDOWS.map((w) => (
-            <button key={w.hours} onClick={() => setHours(w.hours)} aria-pressed={hours === w.hours} css={[segBtnStyle, hours === w.hours && segOnStyle]}>{w.label}</button>
+            <button key={w.hours} onClick={() => { setHours(w.hours); setSelected(null); }} aria-pressed={hours === w.hours} css={[segBtnStyle, hours === w.hours && segOnStyle]}>{w.label}</button>
           ))}
         </span>
-        {data?.truncated && <span css={noteInlineStyle}>showing the newest turns only</span>}
+        {stats && (
+          <span css={noteInlineStyle}>
+            {stats.turns.toLocaleString()} turn{stats.turns === 1 ? '' : 's'} · awake {pct(stats.awake)}
+            {stats.failedTurns > 0 && <span css={failedStyle}> · {stats.failedTurns} with a failure</span>}
+            {stats.tokens > 0 && <> · {shortCount(stats.tokens)} tokens, {pct(stats.cachedShare)} from cache</>}
+          </span>
+        )}
+        {data?.truncated && <span css={noteInlineStyle}>newest turns only</span>}
       </div>
 
       {error && <div css={errorStyle} role="alert">{error}</div>}
       {!error && !data && thread && <p css={noteStyle}>loading turns…</p>}
 
-      {data && stats && (
+      {data && graph && (
         <>
-          <div css={tilesStyle}>
-            <div css={tileStyle}>
-              <div css={tileLabelStyle}>turns</div>
-              <div css={tileValueStyle}>{stats.turns.toLocaleString()}</div>
-              <div css={tileSubStyle}>{stats.perHour >= 10 ? Math.round(stats.perHour) : stats.perHour.toFixed(1)} an hour</div>
-            </div>
-            <div css={tileStyle}>
-              <div css={tileLabelStyle}>turn time</div>
-              <div css={tileValueStyle}>{stats.turns ? fmtDuration(stats.medianMs) : '–'}</div>
-              <div css={tileSubStyle}>{stats.turns ? `p95 ${fmtDuration(stats.p95Ms)}` : 'median'}</div>
-            </div>
-            <div css={tileStyle} title="Share of the window with a turn running">
-              <div css={tileLabelStyle}>awake</div>
-              <div css={tileValueStyle}>{pct(stats.awake)}</div>
-              <div css={tileSubStyle}>asleep the other {pct(1 - stats.awake)}</div>
-            </div>
-            <div css={tileStyle}>
-              <div css={tileLabelStyle}>failed turns</div>
-              <div css={[tileValueStyle, stats.failedTurns > 0 && failedStyle]}>{stats.failedTurns}</div>
-              <div css={tileSubStyle}>{stats.turns ? `${pct(stats.failedTurns / stats.turns)} of turns` : 'none'}</div>
-            </div>
-            <div css={tileStyle}>
-              <div css={tileLabelStyle}>tool calls failed</div>
-              <div css={[tileValueStyle, stats.failedToolCalls > 0 && failedStyle]}>{stats.failedToolCalls}</div>
-              <div css={tileSubStyle}>of {stats.toolCalls.toLocaleString()}</div>
-            </div>
-            <div css={tileStyle} title={`${stats.tokens.toLocaleString()} tokens`}>
-              <div css={tileLabelStyle}>tokens</div>
-              <div css={tileValueStyle}>{shortCount(stats.tokens)}</div>
-              <div css={tileSubStyle}>{pct(stats.cachedShare)} read from cache</div>
-            </div>
-          </div>
-
-          <div css={cardStyle}>
-            <h3 css={cardTitleStyle}>turns over time</h3>
-            {data.turns.length === 0 ? (
-              <p css={noteStyle}>no turns in this window</p>
-            ) : (
-              <>
-                <TurnTimeline turns={data.turns} segments={data.segments} fromMs={data.fromMs} toMs={data.toMs} selected={picked} onSelect={setSelected} />
-                <div css={legendStyle}>
-                  <span><i style={{ background: '#10b981' }} />turn, as tall as it was long</span>
-                  <span><i style={{ background: '#ef4444' }} />a failure in it</span>
-                  <span><i style={{ background: '#a79ff0' }} />tokens, <i style={{ background: 'rgba(167,159,240,0.35)' }} />the part from cache</span>
-                  <span>dotted: a new part of the thread</span>
-                </div>
-              </>
-            )}
-          </div>
-
-          {picked ? (
-            <div css={cardStyle}>
-              <div css={headStyle}>
-                <h3 css={cardTitleStyle} style={{ margin: 0 }}>
-                  turn {new Date(picked.startMs).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
-                  <span css={subStyle}> · {fmtDuration(picked.durationMs)}{(picked.part ?? 1) > 1 ? ` · part ${picked.part}` : ''}</span>
-                </h3>
-                <a href={sessionLink(picked.session)} css={linkStyle}>open session ›</a>
-              </div>
-              <TurnWaterfall turn={picked} />
-            </div>
+          {data.turns.length === 0 ? (
+            <p css={noteStyle}>no turns in this window</p>
           ) : (
-            data.turns.length > 0 && <p css={noteStyle}>click a turn, or move with the arrow keys, to see where its time went</p>
-          )}
+            <>
+              <div css={graphBoxStyle}>
+                <AgentGraph graph={graph} path={path} />
+                <div css={legendStyle}>
+                  <span><i style={{ background: '#a79ff0' }} />agent</span>
+                  <span><i style={{ background: '#10b981' }} />model</span>
+                  <span><i style={{ background: '#5eead4' }} />MCP server</span>
+                  <span><i style={{ background: '#b5abfc' }} />tool</span>
+                  <span>size and link width: calls · red: failures · drag, scroll to zoom, double-click to reset</span>
+                </div>
+              </div>
 
-          {stats.tools.length > 0 && (
-            <div css={cardStyle}>
-              <h3 css={cardTitleStyle}>tools</h3>
-              <table css={tableStyle}>
-                <thead>
-                  <tr><th>tool</th><th css={numStyle}>calls</th><th css={numStyle}>failed</th><th css={numStyle}>failure rate</th></tr>
-                </thead>
-                <tbody>
-                  {stats.tools.slice(0, 12).map((t) => (
-                    <tr key={t.name}>
-                      <td css={monoStyle}>{t.name}</td>
-                      <td css={numStyle}>{t.calls.toLocaleString()}</td>
-                      <td css={[numStyle, t.failed > 0 && failedStyle]}>{t.failed}</td>
-                      <td css={numStyle}>{pct(t.failed / t.calls)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              <div css={stripStyle}>
+                <TurnTimeline compact turns={data.turns} segments={data.segments} fromMs={data.fromMs} toMs={data.toMs} selected={shown} onSelect={setSelected} />
+              </div>
+
+              {shown && (
+                <div css={pathStyle}>
+                  <div css={headStyle}>
+                    <span css={subStyle}>
+                      {picked ? 'turn' : 'latest turn'} {new Date(shown.startMs).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                      {' · '}{fmtDuration(shown.durationMs)}{(shown.part ?? 1) > 1 ? ` · part ${shown.part}` : ''}
+                    </span>
+                    <a href={sessionLink(shown.session)} css={linkStyle}>open session ›</a>
+                  </div>
+                  {detailError && <div css={errorStyle}>{detailError}</div>}
+                  {!detailError && detail === undefined && <span css={noteInlineStyle}>loading the turn…</span>}
+                  {detail === null && <span css={noteInlineStyle}>the spans of this turn are no longer held</span>}
+                  {detail && (
+                    <ol css={stepsStyle}>
+                      {detail.steps.map((st, i) => (
+                        <li key={i} css={st.failed ? stepFailedStyle : undefined} title={st.message}>
+                          <b>{i + 1}</b>
+                          {st.kind === 'model' ? '◆' : '→'} {st.label}
+                          {st.server && <span css={stepDimStyle}> {st.server}</span>}
+                          {st.detail && <span css={stepDimStyle}> {st.detail}</span>}
+                          <span css={stepDimStyle}> {fmtDuration(st.durationUs / 1000)}{st.approvalUs ? ` (${fmtDuration(st.approvalUs / 1000)} to approve)` : ''}</span>
+                          {st.failed && st.message && <span> ✗ {st.message}</span>}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </>
       )}
@@ -288,33 +269,54 @@ const linkStyle = css`
   &:hover { text-decoration: underline; }
 `;
 
-const tableStyle = css`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.82rem;
-  th {
-    text-align: left;
+const graphBoxStyle = css`
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--card-surface);
+  padding: 6px 10px 8px;
+  margin-bottom: 10px;
+`;
+
+const stripStyle = css`
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--card-surface);
+  padding: 4px 10px 0;
+  margin-bottom: 10px;
+`;
+
+const pathStyle = css`
+  padding: 2px 4px;
+`;
+
+const stepsStyle = css`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+
+  li {
+    padding: 2px 8px;
+    border-radius: var(--radius);
+    background: var(--bg-elevated);
+  }
+  b {
+    margin-right: 6px;
+    color: var(--text-muted);
     font-weight: 600;
-    font-size: 0.72rem;
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--border-default);
   }
-  td {
-    padding: 6px 10px;
-    border-bottom: 1px solid rgba(58, 64, 82, 0.5);
-  }
-  tbody tr:last-child td { border-bottom: none; }
 `;
 
-const numStyle = css`
-  text-align: right !important;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+const stepFailedStyle = css`
+  color: var(--status-failure);
+  box-shadow: inset 0 0 0 1px var(--status-failure);
 `;
 
-const monoStyle = css`
-  font-family: var(--font-mono);
+const stepDimStyle = css`
+  color: var(--text-tertiary);
 `;

@@ -655,7 +655,17 @@ export interface TurnRow {
   cacheReadTokens?: number;
   outputTokens: number;
   promptChars?: number;
-  toolCalls?: Record<string, { calls: number; failed?: number }>;
+  toolCalls?: Record<string, TurnCount>;
+  modelCalls?: Record<string, TurnCount>;
+}
+
+// How often a tool or a model was called in a turn, how often it failed and how long the calls took; server names the
+// MCP server of a tool (empty for a built-in tool and for a model).
+export interface TurnCount {
+  calls: number;
+  failed?: number;
+  ms?: number;
+  server?: string;
 }
 
 export interface TurnSegment {

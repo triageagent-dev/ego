@@ -14,7 +14,6 @@ const LANE_H = 96;
 const GAP = 14;
 const TOKEN_H = 40;
 const AXIS = 22;
-const HEIGHT = TOP + LANE_H + GAP + TOKEN_H + AXIS;
 
 // Where the ticks go on the time axis, from fine to coarse; the finest step that leaves room is used.
 const STEPS_MS = [10, 30, 60, 180, 360, 720, 1440, 2880, 10080].map((m) => m * 60_000);
@@ -34,7 +33,7 @@ const bad = (t: TurnRow) => !!t.failed || !!t.failedTools;
 // turn, the part read from the cache dim. Empty stretches are the agent asleep. A dotted line is where a new part of
 // the thread (a segment ego scores) begins.
 export function TurnTimeline({
-  turns, segments, fromMs, toMs, selected, onSelect,
+  turns, segments, fromMs, toMs, selected, onSelect, compact = false,
 }: {
   turns: TurnRow[];
   segments: TurnSegment[];
@@ -42,7 +41,13 @@ export function TurnTimeline({
   toMs: number;
   selected: TurnRow | null;
   onSelect: (t: TurnRow) => void;
+  // Only the stems, a strip to pick a turn from: no lane of tokens.
+  compact?: boolean;
 }) {
+  const laneH = compact ? 34 : LANE_H;
+  const tokLaneH = compact ? 0 : TOKEN_H;
+  const gap = compact ? 0 : GAP;
+  const height = TOP + laneH + gap + tokLaneH + AXIS;
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -65,8 +70,8 @@ export function TurnTimeline({
     const maxTok = Math.max(1, ...turns.map((t) => t.inputTokens + t.outputTokens));
     return { maxDur, maxTok };
   }, [turns]);
-  const stemH = (ms: number) => (LANE_H * Math.log1p(Math.max(0, ms) / 1000)) / Math.log1p(scale.maxDur / 1000);
-  const tokenH = (n: number) => TOKEN_H * Math.sqrt(n / scale.maxTok);
+  const stemH = (ms: number) => (laneH * Math.log1p(Math.max(0, ms) / 1000)) / Math.log1p(scale.maxDur / 1000);
+  const tokenH = (n: number) => tokLaneH * Math.sqrt(n / scale.maxTok);
 
   const xs = useMemo(() => turns.map((t) => x(t.startMs)), [turns, fromMs, toMs, plotW]);
   // The pointer in the svg's own pixels: the page may be zoomed, which scales the client coordinates but not the svg's.
@@ -101,15 +106,15 @@ export function TurnTimeline({
 
   const h = hover != null ? turns[hover] : null;
   const tipLeft = h ? Math.min(Math.max(xs[hover!], 120), width - 120) : 0;
-  const base = TOP + LANE_H;
-  const tokBase = base + GAP + TOKEN_H;
+  const base = TOP + laneH;
+  const tokBase = base + gap + tokLaneH;
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', width: '100%' }} tabIndex={0} onKeyDown={onKey} aria-label="Turns over time; arrow keys move between turns">
       {width > 0 && (
         <svg
           width={width}
-          height={HEIGHT}
+          height={height}
           style={{ display: 'block', cursor: hover != null ? 'pointer' : 'default', outline: 'none' }}
           onMouseMove={(e) => setHover(nearest(localX(e)))}
           onMouseLeave={() => setHover(null)}
@@ -125,8 +130,12 @@ export function TurnTimeline({
             </g>
           ))}
           <line x1={LEFT} x2={LEFT + plotW} y1={base} y2={base} stroke="var(--border-default)" />
-          <line x1={LEFT} x2={LEFT + plotW} y1={tokBase} y2={tokBase} stroke="var(--border-default)" />
-          <text x={LEFT - 6} y={tokBase - 2} textAnchor="end" fontSize={10} fill="var(--text-muted)">tokens</text>
+          {!compact && (
+            <>
+              <line x1={LEFT} x2={LEFT + plotW} y1={tokBase} y2={tokBase} stroke="var(--border-default)" />
+              <text x={LEFT - 6} y={tokBase - 2} textAnchor="end" fontSize={10} fill="var(--text-muted)">tokens</text>
+            </>
+          )}
 
           {ticks.map((t) => (
             <g key={t}>
@@ -155,8 +164,8 @@ export function TurnTimeline({
             return (
               <g key={`${t.session}:${t.rootSpanId}`} opacity={hover != null && hover !== i && selectedIdx !== i ? 0.55 : 1}>
                 <line x1={tx} x2={tx} y1={base} y2={base - Math.max(2, stemH(t.durationMs))} stroke={color} strokeWidth={2} strokeLinecap="round" />
-                <line x1={tx} x2={tx} y1={tokBase} y2={tokBase - hCached} stroke={CACHED} strokeWidth={2} />
-                <line x1={tx} x2={tx} y1={tokBase - hCached} y2={tokBase - hTotal} stroke={FRESH} strokeWidth={2} />
+                {!compact && <line x1={tx} x2={tx} y1={tokBase} y2={tokBase - hCached} stroke={CACHED} strokeWidth={2} />}
+                {!compact && <line x1={tx} x2={tx} y1={tokBase - hCached} y2={tokBase - hTotal} stroke={FRESH} strokeWidth={2} />}
               </g>
             );
           })}

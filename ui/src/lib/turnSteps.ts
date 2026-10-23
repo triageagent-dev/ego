@@ -7,6 +7,8 @@ import type { SessionSpan } from '../api/client';
 export interface TurnStep {
   kind: 'model' | 'tool';
   label: string;
+  // The MCP server of a tool call, empty for a built-in tool.
+  server?: string;
   // What the sender says beyond the name: the MCP server, a shell command's class and program.
   detail?: string;
   // Microseconds after the turn began, and how long it took.
@@ -126,7 +128,8 @@ export function resolveTurn(spans: SessionSpan[], rootSpanId: string): TurnDetai
       ...base,
       kind: 'tool' as const,
       label: mcp ? mcp[2] : full,
-      detail: [server, command].filter(Boolean).join(' · ') || undefined,
+      server,
+      detail: command || undefined,
       approvalUs: wait ? wait.duration : undefined,
     };
   });
