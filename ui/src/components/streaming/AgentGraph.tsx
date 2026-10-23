@@ -88,8 +88,11 @@ export function AgentGraph({
   // joins new data into them, so what is on screen keeps its place and the view keeps its zoom.
   const sim = useRef<Simulation<SimNode, GLink> | null>(null);
   const parts = useRef<{ linkG: Selection<SVGGElement, unknown, null, undefined>; nodeG: Selection<SVGGElement, unknown, null, undefined> } | null>(null);
-  // Fit the view to the graph once it has settled: on the first draw, and when the graph is another one.
-  const needFit = useRef(true);
+  // Set by the scaffold: draw the nodes where they are and fit the view to them.
+  const redraw = useRef<(() => void) | null>(null);
+  const fitView = useRef<(() => void) | null>(null);
+  // A new scaffold has no zoom yet: the next graph joined into it is fitted.
+  const scaffoldNew = useRef(true);
 
   const { w: W, h: H } = size;
   // The scaffold: the layers, the forces and the zoom. It is built again only when the box changes size.
@@ -147,12 +150,11 @@ export function AgentGraph({
       const k = Math.min(2, (W - 2 * pad) / Math.max(1, x1 - x0), (H - 2 * pad) / Math.max(1, y1 - y0));
       return zoomIdentity.translate(-((x0 + x1) / 2) * k, -((y0 + y1) / 2) * k).scale(k);
     };
-    needFit.current = true;
-    s.on('end', () => {
-      if (!needFit.current || dataRef.current.length === 0) return;
-      needFit.current = false;
-      svg.transition().duration(400).call(z.transform, fit());
-    });
+    redraw.current = ticked;
+    fitView.current = () => {
+      if (dataRef.current.length > 0) svg.call(z.transform, fit());
+    };
+    scaffoldNew.current = true;
     svg.call(z).on('dblclick.zoom', null);
     svg.on('dblclick', () => svg.transition().duration(250).call(z.transform, fit()));
     svg.on('click', () => handlers.current.onSelectNode?.(null));
@@ -161,12 +163,14 @@ export function AgentGraph({
       s.stop();
       sim.current = null;
       parts.current = null;
+      redraw.current = null;
+      fitView.current = null;
     };
   }, [W, H]);
 
   // A new graph is joined into the scaffold. Nodes that were there keep their place and a new one starts beside the
   // nodes it links to, so a new turn settles in, not the whole graph flying about; a graph that shares few nodes with
-  // the one on show is another agent or window, and is laid out afresh and fitted.
+  // the one on show is another agent or window, and is laid out afresh and fitted, before it is drawn.
   useEffect(() => {
     const s = sim.current;
     const p = parts.current;
@@ -247,8 +251,21 @@ export function AgentGraph({
     // Nodes first: the link force finds the ends of the new links among them.
     s.nodes(nodes);
     (s.force('link') as ForceLink<SimNode, GLink>).links(links);
-    needFit.current = needFit.current || fresh;
-    s.alpha(fresh ? 1 : 0.15).restart();
+    if (fresh) {
+      // Lay the graph out before it is drawn, as the example's static layout does, so it appears settled and fitted
+      // and does not spread out in front of the reader and then zoom to the screen.
+      s.stop();
+      s.alpha(1);
+      s.tick(300);
+      s.alpha(0);
+    } else {
+      s.alpha(0.15).restart();
+    }
+    if (fresh || scaffoldNew.current) {
+      redraw.current?.();
+      fitView.current?.();
+      scaffoldNew.current = false;
+    }
   }, [graph, W, H]);
 
   // Light the path of the turn on show, and ring its node.
