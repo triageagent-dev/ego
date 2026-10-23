@@ -481,3 +481,40 @@ func TestSegments_MigratesAnArchiveWrittenBeforeThreads(t *testing.T) {
 		t.Errorf("open threads = %v err=%v, want none", open, err)
 	}
 }
+
+// A sender that starts declaring its thread under a name it already used as a plain session: the session is adopted
+// as part 1 (its id stays) and the new trace is kept, not dropped. An open one keeps collecting; a complete one stays
+// closed and the new trace opens part 2.
+func TestSegments_AdoptsAPlainSessionWhenTheSenderDeclaresItsThread(t *testing.T) {
+	s := newSegStore(t)
+	base := time.Now().Add(-2 * time.Hour).UnixMilli()
+	s.Ingest(segBody("", "pod-a", segSpan{trace: "t1", span: "a", startMs: base, durMs: 10}))
+	if s.byID(t, "pod-a").Segmented {
+		t.Fatal("a session without the thread attribute is not a segment")
+	}
+	s.Ingest(segBody("pod-a", "", segSpan{trace: "t2", span: "b", startMs: base + minute, durMs: 10}))
+	if got := fmt.Sprint(s.ids()); got != "[pod-a]" {
+		t.Fatalf("sessions = %s, want [pod-a]: the open session is adopted", got)
+	}
+	if sum := s.byID(t, "pod-a"); !sum.Segmented || sum.Thread != "pod-a" || sum.Part != 1 || sum.SpanCount != 2 {
+		t.Fatalf("adopted = segmented %v thread %q part %d spans %d", sum.Segmented, sum.Thread, sum.Part, sum.SpanCount)
+	}
+
+	// A complete plain session (one archived before segments existed, for instance) stays closed when adopted.
+	c := newSegStore(t)
+	c.Ingest(segBody("", "pod-b", segSpan{trace: "t1", span: "a", startMs: base, durMs: 10}))
+	c.completeSession("pod-b")
+	c.Ingest(segBody("pod-b", "", segSpan{trace: "t2", span: "b", startMs: base + minute, durMs: 10}))
+	if got := fmt.Sprint(c.ids()); got != "[pod-b pod-b~2]" {
+		t.Fatalf("sessions = %s, want [pod-b pod-b~2]", got)
+	}
+	if sum := c.byID(t, "pod-b"); !sum.Segmented || sum.Part != 1 || !sum.Closed {
+		t.Errorf("part 1 = segmented %v part %d closed %v, want an adopted, closed part 1", sum.Segmented, sum.Part, sum.Closed)
+	}
+	if sum := c.byID(t, "pod-b~2"); sum.Thread != "pod-b" || sum.Part != 2 || sum.SpanCount != 1 {
+		t.Errorf("part 2 = thread %q part %d spans %d", sum.Thread, sum.Part, sum.SpanCount)
+	}
+	if got := fmt.Sprint(c.queuedIDs()); got != "[pod-b]" {
+		t.Errorf("queued = %s, want only the plain completion of pod-b", got)
+	}
+}

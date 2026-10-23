@@ -344,6 +344,34 @@ func (s *SessionStore) threadStateLocked(key string) *threadState {
 	return ts
 }
 
+// adoptAsSegmentLocked turns a session that was not a segment into part 1 of thread key and seeds the thread's
+// routing from it. A complete session stays closed, so the next trace opens part 2; an open one keeps collecting.
+// Must be called with s.mu held.
+func (s *SessionStore) adoptAsSegmentLocked(old *Session, key string, ts *threadState) {
+	now := s.now()
+	old.Segmented = true
+	old.Thread = key
+	old.Part = 1
+	if old.IsComplete {
+		old.Closed = true
+		if old.ClosedAt == nil {
+			old.ClosedAt = old.CompletedAt
+		}
+	} else {
+		old.Closed, old.ClosedAt = false, nil
+	}
+	s.markChangedLocked(old)
+	ts.parts = 1
+	ts.sender, ts.known = old.Sender, true
+	for tid := range old.TraceIDs {
+		ts.traces[tid] = traceRef{seg: old.ID, at: now}
+	}
+	if !old.Closed {
+		ts.open = old.ID
+	}
+	ts.touched = now
+}
+
 // reviveLocked returns a session from memory, or reads it back from the archive into memory, so a late span for an
 // evicted session does not start a second one under the same id. Must be called with s.mu held.
 func (s *SessionStore) reviveLocked(id string) (*Session, bool) {
@@ -369,9 +397,14 @@ func (s *SessionStore) placeTraceLocked(key string, tr *tracepkg.Trace, evalSetI
 		return nil, false, false
 	}
 	if ts.parts == 0 {
-		// The name is taken by a session that is not a segment: the two kinds of sender do not share a name.
 		if old, ok := s.reviveLocked(key); ok && !old.Segmented {
-			return nil, false, false
+			// The name is held by a session that was not a segment: the sender declared its thread later, or the
+			// session was archived before segments existed. The same sender adopts it as part 1 (its id stays), so
+			// the thread's traces are never dropped; another sender's name is refused.
+			if old.Sender != sender {
+				return nil, false, false
+			}
+			s.adoptAsSegmentLocked(old, key, ts)
 		}
 	}
 	now := s.now()

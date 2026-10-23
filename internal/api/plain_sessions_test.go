@@ -196,13 +196,8 @@ func TestThreads_ExcludePlainSessions(t *testing.T) {
 func TestSegments_ANameIsNotBothAThreadAndAPlainSession(t *testing.T) {
 	s := newSegStore(t)
 	now := time.Now().UnixMilli()
-	s.Ingest(segBody("", "same", segSpan{trace: "t1", span: "a", startMs: now, durMs: 10}))
-	if n := s.Ingest(segBody("same", "", segSpan{trace: "t2", span: "b", startMs: now, durMs: 10})); n != 0 {
-		t.Errorf("a declared thread took the name of a plain session (%d spans)", n)
-	}
-	if sum := summaryOf(t, s.SessionStore, "same"); sum.SpanCount != 1 {
-		t.Errorf("plain session = %+v, want untouched", sum)
-	}
+	// A sender declaring a thread under its own plain session's name adopts it (TestSegments_AdoptsAPlainSession...);
+	// the other way round, a plain span never joins a declared thread.
 	s.Ingest(segBody("other", "", segSpan{trace: "t3", span: "c", startMs: now, durMs: 10}))
 	if n := s.Ingest(segBody("", "other", segSpan{trace: "t4", span: "d", startMs: now, durMs: 10})); n != 0 {
 		t.Errorf("a plain session took the name of a declared thread (%d spans)", n)
