@@ -8,30 +8,31 @@ import type { GLink, GNode, Graph, PathStep } from '../../lib/agentGraph';
 import { fmtDuration, shortCount } from '../../lib/turns';
 import type { TurnRow } from '../../lib/types';
 
-// The force-directed graph of d3's own example (observablehq.com/@d3/force-directed-graph-component): links, a
-// many-body charge and a centre, a viewBox centred on the origin, circles you can drag, a title on each. What is added
-// is what an agent needs: a colour for health, a label for the nodes that matter, zoom, the click of a node or turn,
+// The force-directed graph of d3's own example (observablehq.com/@d3/force-directed-graph-component), drawn the way the
+// service graph of the triage UI is: hairline links, grey nodes that turn orange and red with failures, a label only
+// on the nodes that matter, a dark ring. What is added is what an agent needs: zoom, the click of a node or a turn,
 // and the path of a turn lit over the links.
 
-const NEUTRAL = '#7b8294';
+const NEUTRAL = '#6b7280';
 const WARN = '#f59e0b';
 const FAILED = '#ef4444';
 const AGENT = '#a79ff0';
 const RING = '#f97316';
-const LINK = '#8b93a7';
+const LINK = '#374151';
+const NODE_STROKE = '#1f2937';
 
 const failShare = (n: { calls: number; failed: number }) => (n.calls > 0 ? n.failed / n.calls : 0);
 const health = (n: GNode) => (n.failed === 0 ? (n.kind === 'agent' ? AGENT : NEUTRAL) : failShare(n) >= 0.3 ? FAILED : WARN);
 const radius = (n: GNode) => {
   switch (n.kind) {
-    case 'agent': return 15;
-    case 'server': case 'model': return 9;
-    case 'tool': return Math.min(13, 4 + 1.7 * Math.sqrt(Math.max(1, n.calls)));
-    default: return n.failed ? 4.5 : 3.5;
+    case 'agent': return 17;
+    case 'server': case 'model': return 10;
+    case 'tool': return Math.min(16, 6 + 1.5 * Math.sqrt(Math.max(1, n.calls)));
+    default: return n.failed ? 6 : 5;
   }
 };
 const endId = (v: string | GNode) => (typeof v === 'string' ? v : v.id);
-const linkWidth = (l: GLink) => (endId(l.source).startsWith('turn:') ? 0.8 : Math.min(2.4, 0.9 + 0.7 * Math.log10(1 + l.calls)));
+const linkWidth = (l: GLink) => (endId(l.source).startsWith('turn:') ? 1 : Math.min(2.4, 1 + 0.6 * Math.log10(1 + l.calls)));
 
 const MAX_LABEL = 26;
 const shorten = (label: string) => (label.length <= MAX_LABEL ? label : `${label.slice(0, 15)}…${label.slice(-10)}`);
@@ -99,20 +100,19 @@ export function AgentGraph({
     const layer = svg.append('g');
     const link = layer.append('g').attr('stroke-linecap', 'round')
       .selectAll<SVGLineElement, GLink>('line').data(links, (d) => d.id).join('line')
-      .attr('stroke', LINK).attr('stroke-opacity', 0.32).attr('stroke-width', linkWidth);
+      .attr('stroke', LINK).attr('stroke-opacity', 0.5).attr('stroke-width', linkWidth);
     linksSel.current = link;
 
     const node = layer.append('g').selectAll<SVGGElement, GNode>('g').data(nodes, (d) => d.id).join('g').attr('cursor', 'pointer');
-    node.append('circle').attr('r', radius).attr('fill', health);
+    node.append('circle').attr('r', radius).attr('fill', health).attr('stroke', NODE_STROKE).attr('stroke-width', 1);
     node.append('title').text(titleOf);
     node.filter((d) => d.kind !== 'turn').append('text')
       .text((d) => shorten(d.label))
-      .attr('dy', (d) => -radius(d) - 5)
+      .attr('dy', (d) => -radius(d) - 4)
       .attr('text-anchor', 'middle')
       .attr('font-family', 'var(--font-body)')
-      .attr('font-size', (d) => (d.kind === 'tool' ? 11 : 12))
-      .attr('font-weight', (d) => (d.kind === 'agent' || d.kind === 'server' ? 600 : 400))
-      .attr('fill', 'var(--text-secondary)')
+      .attr('font-size', 10)
+      .attr('fill', '#d1d5db')
       .attr('pointer-events', 'none');
     nodesSel.current = node;
     badgeLayer.current = layer.append('g').attr('pointer-events', 'none');
@@ -133,18 +133,15 @@ export function AgentGraph({
     };
 
     const sim: Simulation<GNode, GLink> = forceSimulation<GNode>(nodes)
-      .force('link', forceLink<GNode, GLink>(links).id((d) => d.id).distance((l) => {
-        const s = l.source as GNode;
-        const t = l.target as GNode;
-        return s.kind === 'turn' ? 34 : t.kind === 'tool' ? 70 : 110;
-      }))
-      .force('charge', forceManyBody<GNode>().strength((d) => (d.kind === 'turn' ? -14 : d.kind === 'tool' ? -60 : -220)))
-      .force('collide', forceCollide<GNode>((d) => radius(d) + 2))
+      .force('link', forceLink<GNode, GLink>(links).id((d) => d.id).distance(60))
+      // The service graph's charge of -120; a turn is one of hundreds, so each pushes less.
+      .force('charge', forceManyBody<GNode>().strength((d) => (d.kind === 'turn' ? -25 : -120)))
+      .force('collide', forceCollide<GNode>((d) => radius(d) + 3))
       .force('center', forceCenter())
       .on('tick', ticked);
 
     // The official example has no zoom; this one is zoomable, and shows the whole graph once it has settled.
-    const z = zoom<SVGSVGElement, unknown>().scaleExtent([0.2, 6]).on('zoom', (event) => layer.attr('transform', event.transform.toString()));
+    const z = zoom<SVGSVGElement, unknown>().scaleExtent([0.1, 4]).on('zoom', (event) => layer.attr('transform', event.transform.toString()));
     const fit = () => {
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const n of nodes) {
@@ -204,10 +201,10 @@ export function AgentGraph({
     if (!links || !nodes || !badges) return;
     badges.selectAll('*').remove();
     nodes.select('circle')
-      .attr('stroke', (d) => (d.id === turnNode ? RING : d.id === selectedId ? '#ffffff' : 'none'))
-      .attr('stroke-width', (d) => (d.id === turnNode || d.id === selectedId ? 2.5 : 0));
+      .attr('stroke', (d) => (d.id === turnNode ? RING : d.id === selectedId ? '#ffffff' : NODE_STROKE))
+      .attr('stroke-width', (d) => (d.id === turnNode || d.id === selectedId ? 2.5 : 1));
     if (!path || path.length === 0) {
-      links.classed('ego-path', false).attr('stroke', LINK).attr('stroke-opacity', 0.32);
+      links.classed('ego-path', false).attr('stroke', LINK).attr('stroke-opacity', 0.5);
       nodes.attr('opacity', 1);
       return;
     }
@@ -217,7 +214,7 @@ export function AgentGraph({
     links
       .classed('ego-path', (d) => onLinks.has(d.id))
       .attr('stroke', (d) => (failedLinks.has(d.id) ? FAILED : onLinks.has(d.id) ? '#f5f3ff' : LINK))
-      .attr('stroke-opacity', (d) => (onLinks.has(d.id) ? 1 : 0.1));
+      .attr('stroke-opacity', (d) => (onLinks.has(d.id) ? 1 : 0.2));
     // The other turns fade most; the models, servers and tools off the path only a little.
     nodes.attr('opacity', (d) => (onNodes.has(d.id) ? 1 : d.kind === 'turn' ? 0.25 : 0.4));
 

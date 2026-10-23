@@ -123,7 +123,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
               </div>
               <div css={legendStyle}>
                 <span><i style={{ background: '#a79ff0' }} />agent</span>
-                <span><i style={{ background: '#7b8294' }} />model, MCP server, tool and, small, a turn</span>
+                <span><i style={{ background: '#6b7280' }} />model, MCP server, tool and, small, a turn</span>
                 <span><i style={{ background: '#f59e0b' }} />some failures</span>
                 <span><i style={{ background: '#ef4444' }} />many</span>
                 <span><i style={{ background: 'transparent', boxShadow: '0 0 0 2px #f97316' }} />the turn on show</span>
