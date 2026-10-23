@@ -180,7 +180,7 @@ export function TurnTimeline({
       )}
       {h && (
         <div style={{
-          position: 'absolute', top: 0, left: tipLeft, transform: 'translateX(-50%)', pointerEvents: 'none', zIndex: 3,
+          position: 'absolute', bottom: '100%', marginBottom: 8, left: tipLeft, transform: 'translateX(-50%)', pointerEvents: 'none', zIndex: 3,
           background: 'rgba(0, 0, 0, 0.92)', color: '#fff', padding: '8px 10px', borderRadius: 6, fontSize: 12, lineHeight: 1.5, whiteSpace: 'nowrap',
         }}>
           <div style={{ fontWeight: 600 }}>
