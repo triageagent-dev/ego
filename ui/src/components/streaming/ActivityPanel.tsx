@@ -23,10 +23,10 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 // How an always-on agent works, turn by turn: how often it wakes and how long it stays up, what it costs, what fails,
 // and, for any one turn, where the time went. A thread is the agent's own id, however many weeks it has run.
-export function ActivityPanel({ initialThread, onOpenSession }: { initialThread?: string; onOpenSession: (session: string) => void }) {
+export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: string) => void }) {
   const tenant = useSelectedTenant();
   const [threads, setThreads] = useState<ThreadRow[] | null>(null);
-  const [thread, setThread] = useState(() => initialThread || stored('ego.activity.thread') || '');
+  const [thread, setThread] = useState(() => stored('ego.activity.thread') || '');
   const [hours, setHours] = useState(() => Number(stored('ego.activity.hours')) || 24);
   const [data, setData] = useState<TurnsResult | null>(null);
   const [error, setError] = useState<string | null>(null);

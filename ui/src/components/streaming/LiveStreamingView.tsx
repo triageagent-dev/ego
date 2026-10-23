@@ -10,7 +10,6 @@ import { useSelectedTenant } from '../../lib/tenant';
 import { store, stored } from '../../lib/stored';
 import { SessionEvalSetFile, SessionTraceFile } from '../../lib/sessionFiles';
 import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
-import { ThreadsPanel } from './ThreadsPanel';
 import { ActivityPanel } from './ActivityPanel';
 import { PageTitle } from '../shell/PageTitle';
 import { subtitleStyle, titleStyle } from '../ui/page';
@@ -81,13 +80,10 @@ export function LiveStreamingView() {
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('1h');
   const pickedTenant = useSelectedTenant();
   const [searchQuery, setSearchQuery] = useState(() => stored('ego.search') ?? '');
-  // The thread whose id was put in the search box by a click (a part chip, the threads list), and the list on show:
-  // sessions, or the threads they are parts of.
+  // The thread whose id was put in the search box by a click on a part chip.
   const [threadSearch, setThreadSearch] = useState('');
-  // Sessions, the threads they are parts of, or the activity (turns over time) of one thread.
-  const [listMode, setListMode] = useState<'sessions' | 'threads' | 'activity'>('sessions');
-  const [activityThread, setActivityThread] = useState('');
-  const showThreads = listMode === 'threads';
+  // The sessions, or the activity (turns over time) of one thread.
+  const [listMode, setListMode] = useState<'sessions' | 'activity'>('sessions');
   const searchThread = (thread: string) => {
     setThreadSearch(thread);
     setSearchQuery(thread);
@@ -180,7 +176,7 @@ export function LiveStreamingView() {
   // What the server is asked for. A change of any of these starts again at the newest page.
   // A search for a session id (one long word) looks everywhere: a session that began days ago, has no LLM call or is
   // not scored is still the one asked for, so the range and those filters do not apply to it.
-  // So is the search a part chip or the threads list started: the parts of one thread span days.
+  // So is the search a part chip started: the parts of one thread span days.
   const byId = /^\S{16,}$/.test(debouncedQuery) || (debouncedQuery !== '' && debouncedQuery === threadSearch);
   const listParams = (() => {
     const p = new URLSearchParams({ limit: String(SESSIONS_PAGE) });
@@ -872,11 +868,10 @@ export function LiveStreamingView() {
     </div>
   );
 
-  // Sessions or threads: a thread is the id an agent keeps (for weeks, if it is always on), and its sessions are the
-  // parts ego scores.
+  // The sessions, or the activity of an always-on agent.
   const listSwitch = (
     <span style={{ display: 'inline-flex', gap: '2px', padding: '1px', borderRadius: 'var(--radius)', border: '1px solid var(--border-default)' }}>
-      {(['sessions', 'threads', 'activity'] as const).map((label) => (
+      {(['sessions', 'activity'] as const).map((label) => (
         <button
           key={label}
           onClick={() => setListMode(label)}
@@ -906,7 +901,6 @@ export function LiveStreamingView() {
           {listSwitch}
         </PageTitle>
         <ActivityPanel
-          initialThread={activityThread || undefined}
           onOpenSession={(id) => {
             // The sessions list shows a linked session alone: leave the activity page for it, and say which.
             setListMode('sessions');
@@ -914,19 +908,6 @@ export function LiveStreamingView() {
             location.hash = sessionLink(id);
           }}
         />
-      </div>
-    );
-  }
-
-  if (showThreads) {
-    return (
-      <div style={{ padding: '12px 18px 28px' }}>
-        <PageTitle style={{ display: 'flex', alignItems: 'baseline', gap: '14px', flexWrap: 'wrap', marginBottom: '8px' }}>
-          <h1 css={titleStyle}>threads</h1>
-          <p css={subtitleStyle}>the ids your agents keep; each is cut into the sessions that get scored</p>
-          {listSwitch}
-        </PageTitle>
-        <ThreadsPanel onPick={searchThread} onActivity={(thread) => { setActivityThread(thread); setListMode('activity'); }} />
       </div>
     );
   }
