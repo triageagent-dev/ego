@@ -94,8 +94,7 @@ export function AgentGraph({
     dataRef.current = nodes;
 
     svg.append('defs').append('style').text(`
-      @keyframes ego-flow { to { stroke-dashoffset: -14; } }
-      .ego-path { stroke-dasharray: 5 3; animation: ego-flow 0.7s linear infinite; }
+      .ego-path { stroke-dasharray: 5 3; }
     `);
     const layer = svg.append('g');
     const link = layer.append('g').attr('stroke-linecap', 'round')
