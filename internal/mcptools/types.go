@@ -33,6 +33,19 @@ type LabelInput struct {
 
 // ParseSince reads the `since` argument of get_findings and GET /api/online/findings: an RFC 3339 time, or a
 // duration such as "24h" counted back from now. Empty means no limit.
+// Clock is optionally implemented by a Backend that keeps its own time (the server's online engine, a test
+// fixture with a fixed clock); a relative since window is then measured from it instead of the wall clock.
+type Clock interface {
+	Now() time.Time
+}
+
+func nowOf(b Backend) time.Time {
+	if c, ok := b.(Clock); ok {
+		return c.Now()
+	}
+	return time.Now()
+}
+
 func ParseSince(s string, now time.Time) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {

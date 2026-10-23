@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -369,7 +368,7 @@ func listMetricsHandler(b Backend) server.ToolHandlerFunc {
 func listSessionsHandler(b Backend) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		limit := req.GetInt("limit", 20)
-		since, err := ParseSince(req.GetString("since", ""), time.Now())
+		since, err := ParseSince(req.GetString("since", ""), nowOf(b))
 		if err != nil {
 			return toolError(err)
 		}
@@ -411,7 +410,7 @@ func listThreadsHandler(b Backend) server.ToolHandlerFunc {
 		if limit < 1 || limit > 200 {
 			return toolError(fmt.Errorf("limit must be between 1 and 200"))
 		}
-		since, err := ParseSince(req.GetString("since", ""), time.Now())
+		since, err := ParseSince(req.GetString("since", ""), nowOf(b))
 		if err != nil {
 			return toolError(err)
 		}
@@ -590,7 +589,7 @@ func explainSessionHandler(b Backend) server.ToolHandlerFunc {
 
 func getFindingsHandler(b Backend) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		since, err := ParseSince(req.GetString("since", ""), time.Now())
+		since, err := ParseSince(req.GetString("since", ""), nowOf(b))
 		if err != nil {
 			return toolError(err)
 		}

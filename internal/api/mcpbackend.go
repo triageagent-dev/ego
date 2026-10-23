@@ -30,6 +30,15 @@ func newMCPBackend(sessions *SessionStore, archive *SQLiteStore, onlineEngine *O
 
 var _ mcptools.Backend = (*mcpBackend)(nil)
 
+// Now is the clock the tools measure relative since windows from: the online engine's, so a tool and the
+// engine's own windows agree (and a fixture's fixed clock reaches the tools).
+func (b *mcpBackend) Now() time.Time {
+	if b.online != nil && b.online.now != nil {
+		return b.online.now()
+	}
+	return time.Now()
+}
+
 var errRunsUnavailable = errors.New("Run history storage is not configured (start with --session-db to enable /api/runs)")
 
 func (b *mcpBackend) Metrics(ctx context.Context) ([]mcptools.MetricInfo, error) {
