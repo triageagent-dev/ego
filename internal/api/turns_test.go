@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
@@ -68,5 +70,27 @@ func TestTurnOfCountsARejectedToolAsFailed(t *testing.T) {
 	got, _ := turnOf("s", 1, ccSpan("root", "claude_code.interaction", 0, 100, nil, tool))
 	if got.FailedTools != 1 {
 		t.Fatalf("failed tools = %d, want 1", got.FailedTools)
+	}
+}
+
+func TestTurnsHandlerWindowIsInMinutes(t *testing.T) {
+	h := turnsHandler(NewSessionStore(nil))
+	get := func(query string) int {
+		rec := httptest.NewRecorder()
+		h(rec, httptest.NewRequest(http.MethodGet, "/api/activity/turns?"+query, nil))
+		return rec.Code
+	}
+	for query, want := range map[string]int{
+		"agent=a&minutes=5":     http.StatusOK,
+		"agent=a":               http.StatusOK,
+		"agent=a&minutes=43200": http.StatusOK,
+		"agent=a&minutes=0":     http.StatusBadRequest,
+		"agent=a&minutes=43201": http.StatusBadRequest,
+		"agent=a&minutes=x":     http.StatusBadRequest,
+		"minutes=5":             http.StatusBadRequest,
+	} {
+		if got := get(query); got != want {
+			t.Errorf("%s = %d, want %d", query, got, want)
+		}
 	}
 }

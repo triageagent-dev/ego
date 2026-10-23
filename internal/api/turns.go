@@ -19,8 +19,8 @@ import (
 // and not the spans themselves: the spans of the one turn on show are read when it is picked.
 
 const (
-	defaultTurnHours = 24
-	maxTurnHours     = 24 * 30
+	defaultTurnMinutes = 24 * 60
+	maxTurnMinutes     = 30 * 24 * 60
 	// maxTurnSegments bounds the segments read for one answer, newest first; maxTurnRows the turns returned.
 	maxTurnSegments = 80
 	maxTurnRows     = 3000
@@ -240,11 +240,11 @@ func (s *SessionStore) turnRows(sessionID string, part int) ([]TurnRow, bool) {
 	return out, true
 }
 
-// Turns lists the turns of one subject (an agent in a tenant) that began in the last hours, oldest first, with the
+// Turns lists the turns of one subject (an agent in a tenant) that began in the last window, oldest first, with the
 // sessions they belong to.
-func (s *SessionStore) Turns(sel subjectKey, hours int, info RoleInfo) TurnsResult {
+func (s *SessionStore) Turns(sel subjectKey, window time.Duration, info RoleInfo) TurnsResult {
 	now := time.Now()
-	res := TurnsResult{Agent: sel.agent, Tenant: sel.tenant, FromMs: now.Add(-time.Duration(hours) * time.Hour).UnixMilli(), ToMs: now.UnixMilli(),
+	res := TurnsResult{Agent: sel.agent, Tenant: sel.tenant, FromMs: now.Add(-window).UnixMilli(), ToMs: now.UnixMilli(),
 		Segments: []TurnSegment{}, Turns: []TurnRow{}}
 	var segs []activityRow
 	for _, r := range s.activityRows(time.UnixMilli(res.FromMs), info) {
@@ -279,7 +279,7 @@ func (s *SessionStore) Turns(sel subjectKey, hours int, info RoleInfo) TurnsResu
 	return res
 }
 
-// turnsHandler implements GET /api/activity/turns?agent=&tenant=&hours=.
+// turnsHandler implements GET /api/activity/turns?agent=&tenant=&minutes=.
 func turnsHandler(store *SessionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -292,16 +292,16 @@ func turnsHandler(store *SessionStore) http.HandlerFunc {
 			writeEvaluateError(w, http.StatusBadRequest, "agent is required")
 			return
 		}
-		hours := defaultTurnHours
-		if v := q.Get("hours"); v != "" {
+		minutes := defaultTurnMinutes
+		if v := q.Get("minutes"); v != "" {
 			n, err := strconv.Atoi(v)
-			if err != nil || n < 1 || n > maxTurnHours {
-				writeEvaluateError(w, http.StatusBadRequest, "hours must be between 1 and "+strconv.Itoa(maxTurnHours))
+			if err != nil || n < 1 || n > maxTurnMinutes {
+				writeEvaluateError(w, http.StatusBadRequest, "minutes must be between 1 and "+strconv.Itoa(maxTurnMinutes))
 				return
 			}
-			hours = n
+			minutes = n
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": store.Turns(subjectKey{agent, strings.TrimSpace(q.Get("tenant"))}, hours, roleInfoOrOpen(r.Context())), "error": nil})
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": store.Turns(subjectKey{agent, strings.TrimSpace(q.Get("tenant"))}, time.Duration(minutes)*time.Minute, roleInfoOrOpen(r.Context())), "error": nil})
 	}
 }

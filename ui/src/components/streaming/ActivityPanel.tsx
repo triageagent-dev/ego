@@ -13,10 +13,13 @@ import { AgentGraph } from './AgentGraph';
 import { TurnTimeline } from './TurnTimeline';
 
 const WINDOWS = [
-  { label: '6h', hours: 6 },
-  { label: '24h', hours: 24 },
-  { label: '7d', hours: 168 },
-  { label: '30d', hours: 720 },
+  { label: '5m', minutes: 5 },
+  { label: '15m', minutes: 15 },
+  { label: '1h', minutes: 60 },
+  { label: '6h', minutes: 360 },
+  { label: '24h', minutes: 1440 },
+  { label: '7d', minutes: 10080 },
+  { label: '30d', minutes: 43200 },
 ];
 
 const keyOf = (s: ActivitySubject) => `${s.agent}\n${s.tenant ?? ''}`;
@@ -28,7 +31,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
   const tenant = useSelectedTenant();
   const [subjects, setSubjects] = useState<ActivitySubject[] | null>(null);
   const [subjectKey, setSubjectKey] = useState(() => stored('ego.activity.agent') || '');
-  const [hours, setHours] = useState(() => Number(stored('ego.activity.hours')) || 24);
+  const [minutes, setMinutes] = useState(() => Number(stored('ego.activity.minutes')) || 1440);
   const [data, setData] = useState<TurnsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<TurnRow | null>(null);
@@ -50,19 +53,19 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
 
   useEffect(() => store('ego.activity.agent', subjectKey), [subjectKey]);
   const subject = subjects?.find((r) => keyOf(r) === subjectKey) ?? null;
-  useEffect(() => store('ego.activity.hours', String(hours)), [hours]);
+  useEffect(() => store('ego.activity.minutes', String(minutes)), [minutes]);
 
   const load = useCallback(async (current: () => boolean) => {
     if (!subject) return;
     try {
-      const res = await getActivityTurns(subject.agent, subject.tenant, hours);
+      const res = await getActivityTurns(subject.agent, subject.tenant, minutes);
       if (!current()) return;
       setData(res);
       setError(null);
     } catch (e) {
       if (current()) setError(e instanceof Error ? e.message : String(e));
     }
-  }, [subject, hours]);
+  }, [subject, minutes]);
   // New turns arrive with the usage of their model requests.
   useLiveData('usage', load);
 
@@ -98,7 +101,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
         </label>
         <span css={segStyle}>
           {WINDOWS.map((w) => (
-            <button key={w.hours} onClick={() => { setHours(w.hours); setSelected(null); }} aria-pressed={hours === w.hours} css={[segBtnStyle, hours === w.hours && segOnStyle]}>{w.label}</button>
+            <button key={w.minutes} onClick={() => { setMinutes(w.minutes); setSelected(null); }} aria-pressed={minutes === w.minutes} css={[segBtnStyle, minutes === w.minutes && segOnStyle]}>{w.label}</button>
           ))}
         </span>
         {stats && (

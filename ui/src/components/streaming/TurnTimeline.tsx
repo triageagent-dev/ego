@@ -79,9 +79,11 @@ export function TurnTimeline({
     const rect = e.currentTarget.getBoundingClientRect();
     return (e.clientX - rect.left) / (rect.width / Math.max(1, width));
   };
-  const nearest = (px: number): number | null => {
+  // The turn nearest to px, within reach: a hover needs the pointer close to a stem, a click or tap takes the nearest
+  // one wherever on the strip it lands, so a turn can be picked exactly without aiming at a few pixels.
+  const nearest = (px: number, reach = 6): number | null => {
     let best: number | null = null;
-    let bestD = 6;
+    let bestD = reach;
     for (let i = 0; i < xs.length; i++) {
       const d = Math.abs(xs[i] - px);
       if (d <= bestD) {
@@ -119,7 +121,7 @@ export function TurnTimeline({
           onMouseMove={(e) => setHover(nearest(localX(e)))}
           onMouseLeave={() => setHover(null)}
           onClick={(e) => {
-            const i = nearest(localX(e));
+            const i = nearest(localX(e), Infinity);
             if (i != null) onSelect(turns[i]);
           }}
         >

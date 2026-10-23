@@ -384,10 +384,10 @@ export async function getUsage(hours: number): Promise<UsageSeries> {
   return unwrap<UsageSeries>(response);
 }
 
-/** The turns of one agent in a tenant that began in the last `hours`, oldest first. */
-export async function getActivityTurns(agent: string, tenant: string | undefined, hours: number): Promise<TurnsResult> {
+/** The turns of one agent in a tenant that began in the last `minutes`, oldest first. */
+export async function getActivityTurns(agent: string, tenant: string | undefined, minutes: number): Promise<TurnsResult> {
   const response = await fetch(
-    `${config.api.endpoints.activityTurns}?agent=${encodeURIComponent(agent)}&tenant=${encodeURIComponent(tenant ?? '')}&hours=${hours}`,
+    `${config.api.endpoints.activityTurns}?agent=${encodeURIComponent(agent)}&tenant=${encodeURIComponent(tenant ?? '')}&minutes=${minutes}`,
   );
   if (!response.ok) throw new Error(`Failed to load turns: ${httpStatusLabel(response)}`);
   return unwrap<TurnsResult>(response);
