@@ -288,7 +288,7 @@ export const UsageView: React.FC = () => {
           <div css={tilesStyle}>
             <Tile label="Total tokens" value={formatTokens(total)}
               sub={`${formatTokens(view.totals.input)} in · ${formatTokens(view.totals.output)} out`} />
-            <Tile label="Estimated cost" value={formatCostUsd(view.totals.cost)}
+            <Tile label="Estimated cost" value={view.totals.cost === 0 && view.totals.unpricedTokens > 0 ? '–' : formatCostUsd(view.totals.cost)}
               sub={view.totals.unpricedTokens > 0 ? `${formatTokens(view.totals.unpricedTokens)} tokens unpriced` : 'all models priced'} />
             <Tile label="LLM calls" value={view.totals.calls.toLocaleString()}
               sub={view.totals.calls ? `${formatTokens(Math.round(total / view.totals.calls))} tokens per call` : '–'} />

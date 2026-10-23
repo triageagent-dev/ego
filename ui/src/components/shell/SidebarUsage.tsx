@@ -11,6 +11,8 @@ interface Usage {
   tokens: number;
   calls: number;
   cost: number;
+  // False while no model of the window has a list price: the cost is then unknown, not zero.
+  priced: boolean;
 }
 
 interface Figures {
@@ -28,8 +30,9 @@ function short(n: number): string {
   return String(n);
 }
 
-// $0, <1¢, $1.23, $12.3, $345, $1.2k: at most five characters, which is what the narrow rail holds.
-function shortCost(usd: number): string {
+// –, $0, <1¢, $1.23, $12.3, $345, $1.2k: at most five characters, which is what the narrow rail holds.
+function shortCost(usd: number, priced: boolean): string {
+  if (!priced) return '–';
   if (usd <= 0) return '$0';
   if (usd < 0.01) return '<1¢';
   if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}k`;
@@ -39,11 +42,15 @@ function shortCost(usd: number): string {
 }
 
 function usageTotals(series: UsageSeries): Usage {
-  const t: Usage = { tokens: 0, calls: 0, cost: 0 };
+  const t: Usage = { tokens: 0, calls: 0, cost: 0, priced: false };
   for (const b of series.buckets) {
     t.tokens += b.inputTokens + b.outputTokens;
     t.calls += b.calls;
-    t.cost += estimateCostUsd(b.model, b.inputTokens, b.outputTokens) ?? 0;
+    const cost = estimateCostUsd(b.model, b.inputTokens, b.outputTokens);
+    if (cost != null) {
+      t.cost += cost;
+      t.priced = true;
+    }
   }
   return t;
 }
@@ -86,7 +93,7 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
   if (figures.usage) {
     day.push(['tokens', short(figures.usage.tokens), `${figures.usage.tokens.toLocaleString()} tokens`]);
     day.push(['calls', short(figures.usage.calls), `${figures.usage.calls.toLocaleString()} LLM calls`]);
-    day.push(['cost', shortCost(figures.usage.cost), 'estimated from list prices, not billed']);
+    day.push(['cost', shortCost(figures.usage.cost, figures.usage.priced), 'estimated from list prices, not billed']);
   }
   if (figures.scored != null) day.push(['scored', short(figures.scored), 'sessions scored by online evaluation (quality)']);
   const ego: Row[] = [];

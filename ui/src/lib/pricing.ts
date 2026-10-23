@@ -28,6 +28,20 @@ const RATES: Record<string, ModelRate> = {
   'gemini-3.1-pro-preview': { inputPerMillion: 2.0, outputPerMillion: 12.0 },
   // The decision model, priced from its billed per-call costs; it reports no output tokens.
   'typesafe/jev-1.13': { inputPerMillion: 0.042, outputPerMillion: 0 },
+  // Anthropic list prices. The input rate is the plain one: an agent that reads most of its prompt from the cache
+  // (Claude Code does) is priced high, as the note above says. claude-haiku-5-5 is left out on purpose: its rate
+  // changes above 100K prompt tokens and the ledger holds no per-call prompt size.
+  'claude-fable-5-1': { inputPerMillion: 10.0, outputPerMillion: 50.0 },
+  'claude-fable-5': { inputPerMillion: 10.0, outputPerMillion: 50.0 },
+  'claude-opus-5-5': { inputPerMillion: 4.0, outputPerMillion: 20.0 },
+  'claude-opus-5': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+  'claude-opus-4-8': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+  'claude-opus-4-7': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+  'claude-opus-4-6': { inputPerMillion: 5.0, outputPerMillion: 25.0 },
+  'claude-sonnet-5-5': { inputPerMillion: 2.0, outputPerMillion: 10.0 },
+  'claude-sonnet-5': { inputPerMillion: 2.0, outputPerMillion: 10.0 },
+  'claude-sonnet-4-6': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
+  'claude-haiku-4-5': { inputPerMillion: 1.0, outputPerMillion: 5.0 },
   'gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10.0 },
   'gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
   // Gemini Live API native-audio model (Vertex AI id `gemini-live-2.5-flash-native-audio`;
