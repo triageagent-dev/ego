@@ -7,14 +7,11 @@ import 'd3-transition';
 import type { GLink, GNode, Graph, NodeKind, PathStep } from '../../lib/agentGraph';
 import { fmtDuration } from '../../lib/turns';
 
-const W = 1000;
-const H = 460;
-
 const COLOR: Record<NodeKind, string> = { agent: '#a79ff0', model: '#10b981', server: '#5eead4', tool: '#b5abfc' };
 const FAILED = '#ef4444';
 const EDGE = 'rgba(167, 159, 240, 0.38)';
 
-const radius = (n: GNode) => (n.kind === 'agent' ? 24 : Math.min(26, 5 + 3 * Math.sqrt(Math.max(1, n.calls))));
+const radius = (n: GNode) => (n.kind === 'agent' ? 30 : Math.min(36, 9 + 4 * Math.sqrt(Math.max(1, n.calls))));
 const strokeW = (l: GLink) => 1 + 1.8 * Math.log10(1 + l.calls);
 const failShare = (e: { calls: number; failed: number }) => (e.calls > 0 ? e.failed / e.calls : 0);
 
@@ -23,8 +20,25 @@ const failShare = (e: { calls: number; failed: number }) => (e.calls > 0 ? e.fai
 // it calls and the servers whose tools it uses around it, a server's tools beyond it. A node is as big as it was called
 // often and has a red ring as thick as its share of failures; a link is as thick as the calls it carried and turns red
 // with their failures. Pick a turn and its path lights up, step by step, in the order it ran.
-export function AgentGraph({ graph, path }: { graph: Graph; path: PathStep[] | null }) {
+export function AgentGraph({ graph, path, selectedId, onSelectNode }: { graph: Graph; path: PathStep[] | null; selectedId?: string | null; onSelectNode?: (id: string | null) => void }) {
+  const boxRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  // The graph fills the box it is in, so the box is measured and the drawing laid out in its own pixels.
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const measure = () => setSize((cur) => (cur.w === el.clientWidth && cur.h === el.clientHeight ? cur : { w: el.clientWidth, h: el.clientHeight }));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  // The click handler is read through a ref, so a new one does not redraw the graph.
+  const onSelectRef = useRef(onSelectNode);
+  useEffect(() => {
+    onSelectRef.current = onSelectNode;
+  }, [onSelectNode]);
   const simRef = useRef<Simulation<GNode, GLink> | null>(null);
   const nodesSel = useRef<Selection<SVGGElement, GNode, SVGGElement, unknown> | null>(null);
   const linksSel = useRef<Selection<SVGLineElement, GLink, SVGGElement, unknown> | null>(null);
@@ -32,7 +46,9 @@ export function AgentGraph({ graph, path }: { graph: Graph; path: PathStep[] | n
   const [tip, setTip] = useState<{ x: number; y: number; node: GNode } | null>(null);
 
   // Draw the graph, and run its layout.
+  const { w: W, h: H } = size;
   useEffect(() => {
+    if (W === 0 || H === 0) return;
     const svg = select(svgRef.current!);
     svg.selectAll('*').remove();
     // Copy: the layout writes positions into the nodes and replaces link ends with them.
@@ -68,10 +84,10 @@ export function AgentGraph({ graph, path }: { graph: Graph; path: PathStep[] | n
       .attr('stroke-width', (d) => (d.failed > 0 ? 1.5 + 4 * failShare(d) : 1));
     node.append('text')
       .text((d) => d.label)
-      .attr('dy', (d) => (d.kind === 'agent' ? 0 : radius(d) + 11))
+      .attr('dy', (d) => (d.kind === 'agent' ? 0 : radius(d) + 14))
       .attr('text-anchor', 'middle')
       .attr('alignment-baseline', (d) => (d.kind === 'agent' ? 'middle' : 'auto'))
-      .attr('font-size', (d) => (d.kind === 'agent' ? 11 : d.kind === 'tool' ? 9.5 : 11))
+      .attr('font-size', (d) => (d.kind === 'agent' ? 12 : d.kind === 'tool' ? 11 : 13))
       .attr('font-weight', (d) => (d.kind === 'server' || d.kind === 'agent' ? 600 : 400))
       .attr('fill', (d) => (d.kind === 'agent' ? '#14141f' : 'var(--text-secondary)'))
       .attr('paint-order', 'stroke')
@@ -80,29 +96,57 @@ export function AgentGraph({ graph, path }: { graph: Graph; path: PathStep[] | n
       .attr('pointer-events', 'none');
     nodesSel.current = node;
 
+    // The links and nodes at the places the layout gave them, and the badges numbering a path.
+    const place = () => {
+      link
+        .attr('x1', (d) => (d.source as GNode).x ?? 0).attr('y1', (d) => (d.source as GNode).y ?? 0)
+        .attr('x2', (d) => (d.target as GNode).x ?? 0).attr('y2', (d) => (d.target as GNode).y ?? 0);
+      node.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
+      badgeLayer.current?.selectAll<SVGGElement, unknown>('g.ego-badge').attr('transform', function () {
+        const id = (this as SVGGElement).dataset.node;
+        const n = nodes.find((x) => x.id === id);
+        return `translate(${(n?.x ?? 0) + (n ? radius(n) : 0) * 0.75},${(n?.y ?? 0) - (n ? radius(n) : 0) * 0.75})`;
+      });
+    };
+
     const sim = forceSimulation<GNode>(nodes)
       .force('link', forceLink<GNode, GLink>(links).id((d) => d.id).distance((l) => {
         const t = l.target as GNode;
-        return t.kind === 'tool' ? 62 : t.kind === 'server' ? 150 : 140;
+        return t.kind === 'tool' ? 95 : t.kind === 'server' ? 200 : 185;
       }).strength(0.7))
-      .force('charge', forceManyBody<GNode>().strength((d) => (d.kind === 'tool' ? -90 : -330)))
-      .force('collide', forceCollide<GNode>((d) => radius(d) + (d.kind === 'tool' ? 14 : 20)))
+      .force('charge', forceManyBody<GNode>().strength((d) => (d.kind === 'tool' ? -160 : -520)))
+      .force('collide', forceCollide<GNode>((d) => radius(d) + (d.kind === 'tool' ? 22 : 28)))
       .force('center', forceCenter(W / 2, H / 2))
       .force('x', forceX(W / 2).strength(0.04))
       .force('y', forceY(H / 2).strength(0.07))
-      .on('tick', () => {
-        link
-          .attr('x1', (d) => (d.source as GNode).x ?? 0).attr('y1', (d) => (d.source as GNode).y ?? 0)
-          .attr('x2', (d) => (d.target as GNode).x ?? 0).attr('y2', (d) => (d.target as GNode).y ?? 0);
-        node.attr('transform', (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
-        // Badges follow the nodes they number.
-        badgeLayer.current?.selectAll<SVGGElement, string>('g.ego-badge').attr('transform', function () {
-          const id = (this as SVGGElement).dataset.node;
-          const n = nodes.find((x) => x.id === id);
-          return `translate(${(n?.x ?? 0) + (n ? radius(n) : 0) * 0.75},${(n?.y ?? 0) - (n ? radius(n) : 0) * 0.75})`;
-        });
-      });
+      .on('tick', place);
     simRef.current = sim;
+
+    const z = zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.3, 4])
+      .on('zoom', (event) => layer.attr('transform', event.transform.toString()));
+    // The view that holds the whole graph: a small graph is blown up, a large one shrunk.
+    const fit = () => {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const n of nodes) {
+        const r = radius(n);
+        // A label sits under its node and is about as wide as its text.
+        const half = Math.max(r, n.label.length * 3.4);
+        x0 = Math.min(x0, (n.x ?? 0) - half); x1 = Math.max(x1, (n.x ?? 0) + half);
+        y0 = Math.min(y0, (n.y ?? 0) - r); y1 = Math.max(y1, (n.y ?? 0) + r + 22);
+      }
+      const pad = 36;
+      const k = Math.min(2.6, (W - 2 * pad) / Math.max(1, x1 - x0), (H - 2 * pad) / Math.max(1, y1 - y0));
+      return zoomIdentity.translate(W / 2 - ((x0 + x1) / 2) * k, H / 2 - ((y0 + y1) / 2) * k).scale(k);
+    };
+    // Lay it out before it is shown, so it does not drift into place.
+    sim.stop();
+    sim.tick(300);
+    place();
+    svg.call(z).on('dblclick.zoom', null);
+    svg.call(z.transform, fit());
+    svg.on('dblclick', () => svg.transition().duration(250).call(z.transform, fit()));
+    svg.on('click', () => onSelectRef.current?.(null));
 
     node.call(
       drag<SVGGElement, GNode>()
@@ -125,23 +169,24 @@ export function AgentGraph({ graph, path }: { graph: Graph; path: PathStep[] | n
         }),
     );
 
+    node.on('click', (event: MouseEvent, d) => {
+      event.stopPropagation();
+      onSelectRef.current?.(d.id);
+    });
     node.on('mousemove', (event: MouseEvent, d) => {
-      const box = svgRef.current!.parentElement!.getBoundingClientRect();
+      const box = boxRef.current!;
+      const rect = box.getBoundingClientRect();
       // Client pixels relative to the box, divided by the box's own scale: the page may be zoomed.
-      const scale = box.width / Math.max(1, (svgRef.current!.parentElement as HTMLElement).clientWidth);
-      setTip({ x: (event.clientX - box.left) / scale, y: (event.clientY - box.top) / scale, node: d });
+      const scale = rect.width / Math.max(1, box.clientWidth);
+      setTip({ x: (event.clientX - rect.left) / scale, y: (event.clientY - rect.top) / scale, node: d });
     }).on('mouseleave', () => setTip(null));
-
-    const z = zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.4, 3.5])
-      .on('zoom', (event) => layer.attr('transform', event.transform.toString()));
-    svg.call(z).on('dblclick.zoom', null).on('dblclick', () => svg.transition().duration(250).call(z.transform, zoomIdentity));
 
     return () => {
       sim.stop();
       simRef.current = null;
     };
-  }, [graph]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graph, W, H]);
 
   // Light the path of the picked turn.
   useEffect(() => {
@@ -177,12 +222,19 @@ export function AgentGraph({ graph, path }: { graph: Graph; path: PathStep[] | n
         .attr('fill', steps.some((s) => s.failed) ? '#fff' : '#14141f');
     }
     simRef.current?.alpha(0.001).restart();
-  }, [path, graph]);
+  }, [path, graph, W, H]);
+
+  // The node picked for the panel beside the graph has a white ring.
+  useEffect(() => {
+    nodesSel.current?.select('circle')
+      .attr('stroke', (d) => (d.id === selectedId ? '#ffffff' : d.failed > 0 ? FAILED : 'rgba(255,255,255,0.18)'))
+      .attr('stroke-width', (d) => (d.id === selectedId ? 3.5 : d.failed > 0 ? 1.5 + 4 * failShare(d) : 1));
+  }, [selectedId, graph, W, H]);
 
   const n = tip?.node;
   return (
-    <div style={{ position: 'relative', width: '100%' }}>
-      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', width: '100%', maxHeight: '64vh', cursor: 'default' }} role="img" aria-label="The agent and the models, servers and tools it uses" />
+    <div ref={boxRef} style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <svg ref={svgRef} width={W} height={H} style={{ display: 'block', cursor: 'default' }} role="img" aria-label="The agent and the models, servers and tools it uses" />
       {n && tip && (
         <div style={{
           position: 'absolute', left: tip.x + 14, top: tip.y + 14, pointerEvents: 'none', zIndex: 3, background: 'rgba(0,0,0,0.92)', color: '#fff',
