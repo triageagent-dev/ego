@@ -8,7 +8,6 @@ import { buildGraph, pathOf, type Graph } from '../../lib/agentGraph';
 import { fmtDuration, shortCount, turnStats } from '../../lib/turns';
 import { useTurnDetail } from '../../lib/useTurnDetail';
 import type { ThreadRow, TurnRow, TurnsResult } from '../../lib/types';
-import { sessionLink } from '../shell/routes';
 import { errorStyle } from '../ui/page';
 import { AgentGraph } from './AgentGraph';
 import { TurnTimeline } from './TurnTimeline';
@@ -24,7 +23,7 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 // How an always-on agent works, turn by turn: how often it wakes and how long it stays up, what it costs, what fails,
 // and, for any one turn, where the time went. A thread is the agent's own id, however many weeks it has run.
-export function ActivityPanel({ initialThread }: { initialThread?: string }) {
+export function ActivityPanel({ initialThread, onOpenSession }: { initialThread?: string; onOpenSession: (session: string) => void }) {
   const tenant = useSelectedTenant();
   const [threads, setThreads] = useState<ThreadRow[] | null>(null);
   const [thread, setThread] = useState(() => initialThread || stored('ego.activity.thread') || '');
@@ -158,7 +157,7 @@ export function ActivityPanel({ initialThread }: { initialThread?: string }) {
                       {picked ? 'turn' : 'latest turn'}
                       <span css={stepDimStyle}> · {new Date(shown.startMs).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} · {fmtDuration(shown.durationMs)}{(shown.part ?? 1) > 1 ? ` · part ${shown.part}` : ''}</span>
                     </span>
-                    <a href={sessionLink(shown.session)} css={linkStyle}>open ›</a>
+                    <button css={linkStyle} onClick={() => onOpenSession(shown.session)} title="Open the session this turn is part of: its conversation, scores and spans">session ›</button>
                   </div>
                   {detailError && <div css={errorStyle}>{detailError}</div>}
                   {!detailError && detail === undefined && <span css={noteInlineStyle}>loading the turn…</span>}
@@ -282,9 +281,14 @@ const headStyle = css`
 `;
 
 const linkStyle = css`
+  padding: 0;
+  border: none;
+  background: none;
   color: var(--accent-primary);
+  font: inherit;
   font-size: 12px;
-  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
   &:hover { text-decoration: underline; }
 `;
 

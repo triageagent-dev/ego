@@ -11,6 +11,10 @@ const COLOR: Record<NodeKind, string> = { agent: '#a79ff0', model: '#10b981', se
 const FAILED = '#ef4444';
 const EDGE = 'rgba(167, 159, 240, 0.38)';
 
+// A long name keeps its start and its end: ids differ at the end as often as at the start. The tooltip has it whole.
+const MAX_LABEL = 26;
+const shorten = (label: string) => (label.length <= MAX_LABEL ? label : `${label.slice(0, 15)}…${label.slice(-10)}`);
+
 const radius = (n: GNode) => (n.kind === 'agent' ? 30 : Math.min(36, 9 + 4 * Math.sqrt(Math.max(1, n.calls))));
 const strokeW = (l: GLink) => 1 + 1.8 * Math.log10(1 + l.calls);
 const failShare = (e: { calls: number; failed: number }) => (e.calls > 0 ? e.failed / e.calls : 0);
@@ -83,16 +87,18 @@ export function AgentGraph({ graph, path, selectedId, onSelectNode }: { graph: G
       .attr('stroke', (d) => (d.failed > 0 ? FAILED : 'rgba(255,255,255,0.18)'))
       .attr('stroke-width', (d) => (d.failed > 0 ? 1.5 + 4 * failShare(d) : 1));
     node.append('text')
-      .text((d) => d.label)
-      .attr('dy', (d) => (d.kind === 'agent' ? 0 : radius(d) + 14))
+      .text((d) => shorten(d.label))
+      .attr('dy', (d) => radius(d) + 15)
       .attr('text-anchor', 'middle')
-      .attr('alignment-baseline', (d) => (d.kind === 'agent' ? 'middle' : 'auto'))
-      .attr('font-size', (d) => (d.kind === 'agent' ? 12 : d.kind === 'tool' ? 11 : 13))
-      .attr('font-weight', (d) => (d.kind === 'server' || d.kind === 'agent' ? 600 : 400))
-      .attr('fill', (d) => (d.kind === 'agent' ? '#14141f' : 'var(--text-secondary)'))
+      .attr('font-family', 'var(--font-body)')
+      .attr('font-size', (d) => (d.kind === 'agent' ? 13 : d.kind === 'tool' ? 11.5 : 12.5))
+      .attr('font-weight', (d) => (d.kind === 'server' || d.kind === 'agent' ? 600 : 500))
+      .attr('fill', (d) => (d.kind === 'agent' ? 'var(--text-primary)' : d.kind === 'tool' ? 'var(--text-tertiary)' : 'var(--text-secondary)'))
+      // A halo in the colour of the box keeps a label readable where a link runs under it.
       .attr('paint-order', 'stroke')
-      .attr('stroke', (d) => (d.kind === 'agent' ? 'none' : 'var(--bg-primary)'))
+      .attr('stroke', 'var(--card-surface)')
       .attr('stroke-width', 3)
+      .attr('stroke-linejoin', 'round')
       .attr('pointer-events', 'none');
     nodesSel.current = node;
 
@@ -131,12 +137,12 @@ export function AgentGraph({ graph, path, selectedId, onSelectNode }: { graph: G
       for (const n of nodes) {
         const r = radius(n);
         // A label sits under its node and is about as wide as its text.
-        const half = Math.max(r, n.label.length * 3.4);
+        const half = Math.max(r, shorten(n.label).length * 3.6);
         x0 = Math.min(x0, (n.x ?? 0) - half); x1 = Math.max(x1, (n.x ?? 0) + half);
         y0 = Math.min(y0, (n.y ?? 0) - r); y1 = Math.max(y1, (n.y ?? 0) + r + 22);
       }
       const pad = 36;
-      const k = Math.min(2.6, (W - 2 * pad) / Math.max(1, x1 - x0), (H - 2 * pad) / Math.max(1, y1 - y0));
+      const k = Math.min(1.8, (W - 2 * pad) / Math.max(1, x1 - x0), (H - 2 * pad) / Math.max(1, y1 - y0));
       return zoomIdentity.translate(W / 2 - ((x0 + x1) / 2) * k, H / 2 - ((y0 + y1) / 2) * k).scale(k);
     };
     // Lay it out before it is shown, so it does not drift into place.

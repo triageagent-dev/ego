@@ -4,7 +4,7 @@ import { SessionCard } from './SessionCard';
 import { SessionDetails } from './SessionDetails';
 import { config } from '../../config';
 import { onFeedMessage, onFeedOpen } from '../../lib/connection';
-import { parseHash } from '../shell/routes';
+import { parseHash, sessionLink } from '../shell/routes';
 import { CursorPager } from '../ui/Pager';
 import { useSelectedTenant } from '../../lib/tenant';
 import { store, stored } from '../../lib/stored';
@@ -905,7 +905,15 @@ export function LiveStreamingView() {
           <p css={subtitleStyle}>how an always-on agent works, turn by turn</p>
           {listSwitch}
         </PageTitle>
-        <ActivityPanel initialThread={activityThread || undefined} />
+        <ActivityPanel
+          initialThread={activityThread || undefined}
+          onOpenSession={(id) => {
+            // The sessions list shows a linked session alone: leave the activity page for it, and say which.
+            setListMode('sessions');
+            setFocusId(id);
+            location.hash = sessionLink(id);
+          }}
+        />
       </div>
     );
   }
