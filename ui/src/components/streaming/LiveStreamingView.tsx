@@ -740,13 +740,11 @@ export function LiveStreamingView() {
   const focused = focusId ? Array.from(activeSessions.values()).filter(s => s.sessionId === focusId) : null;
   const openSession = openId && !removedIds.has(openId) ? activeSessions.get(openId) : undefined;
   const sessions = focused ?? pageSessions;
-  const activeLiveSessions = sessions
-    .filter(s => s.status === 'active')
+  // One list in time order: a session that finishes stays where it is and only its state changes, so the cards below
+  // do not move when sessions complete or reopen. "Hide done" drops the finished ones.
+  const listedSessions = sessions
+    .filter(s => s.status === 'active' || !hideDone || byId)
     .sort(byStartedAtDesc);
-  const completedSessions = sessions
-    .filter(s => s.status === 'complete' && (!hideDone || byId))
-    .sort(byStartedAtDesc);
-  const allSessions = [...activeLiveSessions, ...completedSessions];
   const renderPager = (inline: boolean) => !focused && !hideDone && (pageIdx > 0 || nextCursor) ? (
     <CursorPager
       inline={inline}
@@ -764,7 +762,7 @@ export function LiveStreamingView() {
   const pagerInRow = renderPager(true);
   const pager = renderPager(false);
 
-  const listBody = allSessions.length === 0 ? (
+  const listBody = listedSessions.length === 0 ? (
     <>
     <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
       {hideDone ? 'no live sessions, the finished ones are hidden' : debouncedQuery || pickedTenant
@@ -800,87 +798,38 @@ export function LiveStreamingView() {
     </>
   ) : (
     <div>
-      {activeLiveSessions.length > 0 && (
-        <div>
-          <h2 style={{
-            fontSize: '12.5px',
-            fontWeight: 400,
-            color: 'var(--accent-cyan)',
-            marginBottom: '6px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}>
-            live ({activeLiveSessions.length})
-          </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px', marginBottom: '14px' }}>
-            {activeLiveSessions.map(session => (
-              <SessionCard
-                key={session.sessionId}
-                isOpen={openId === session.sessionId}
-                onSearchThread={searchThread}
-                onOpen={() => toggleOpen(session.sessionId)}
-                session={session}
-                isSelected={selectedGoldenId === session.sessionId}
-                onSelect={() => setSelectedGoldenId(
-                  selectedGoldenId === session.sessionId ? null : session.sessionId
-                )}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {completedSessions.length > 0 && (
-        <div>
-          {/* The heading only tells finished sessions from live ones; alone, the list starts level with the side panel. */}
-          {activeLiveSessions.length > 0 && (
-            <h2 style={{
-              fontSize: '12.5px',
-              fontWeight: 400,
-              color: 'var(--accent-cyan)',
-              marginBottom: '6px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}>
-              done
-            </h2>
-          )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px' }}>
-            {completedSessions.map(session => (
-              <SessionCard
-                key={session.sessionId}
-                isOpen={openId === session.sessionId}
-                onSearchThread={searchThread}
-                onOpen={() => toggleOpen(session.sessionId)}
-                session={session}
-                isSelected={selectedGoldenId === session.sessionId}
-                onSelect={() => setSelectedGoldenId(
-                  selectedGoldenId === session.sessionId ? null : session.sessionId
-                )}
-                onRemove={() => {
-                  setRemovedIds(prev => new Set(prev).add(session.sessionId));
-                  actions.removeSession(session.sessionId);
-                  if (openId === session.sessionId) setOpenId(null);
-                  if (selectedGoldenId === session.sessionId) setSelectedGoldenId(null);
-                  setComparisonSessionIds(prev => {
-                    if (!prev.has(session.sessionId)) return prev;
-                    const next = new Set(prev);
-                    next.delete(session.sessionId);
-                    return next;
-                  });
-                }}
-                compareOption={
-                  selectedGoldenId && selectedGoldenId !== session.sessionId
-                    ? { checked: comparisonSessionIds.has(session.sessionId), onToggle: () => toggleComparisonSession(session.sessionId) }
-                    : undefined
-                }
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px' }}>
+        {listedSessions.map(session => (
+          <SessionCard
+            key={session.sessionId}
+            isOpen={openId === session.sessionId}
+            onSearchThread={searchThread}
+            onOpen={() => toggleOpen(session.sessionId)}
+            session={session}
+            isSelected={selectedGoldenId === session.sessionId}
+            onSelect={() => setSelectedGoldenId(
+              selectedGoldenId === session.sessionId ? null : session.sessionId
+            )}
+            onRemove={session.status === 'complete' ? () => {
+              setRemovedIds(prev => new Set(prev).add(session.sessionId));
+              actions.removeSession(session.sessionId);
+              if (openId === session.sessionId) setOpenId(null);
+              if (selectedGoldenId === session.sessionId) setSelectedGoldenId(null);
+              setComparisonSessionIds(prev => {
+                if (!prev.has(session.sessionId)) return prev;
+                const next = new Set(prev);
+                next.delete(session.sessionId);
+                return next;
+              });
+            } : undefined}
+            compareOption={
+              session.status === 'complete' && selectedGoldenId && selectedGoldenId !== session.sessionId
+                ? { checked: comparisonSessionIds.has(session.sessionId), onToggle: () => toggleComparisonSession(session.sessionId) }
+                : undefined
+            }
+          />
+        ))}
+      </div>
       {pager}
     </div>
   );
