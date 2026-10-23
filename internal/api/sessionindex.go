@@ -55,6 +55,9 @@ type sessionIndexRow struct {
 	FirstMs   int64
 	EndedMs   int64
 	TraceIDs  []string
+	// Turns counts the session's claude_code.interaction spans: a session with turns belongs to the Activity view
+	// whether or not its sender declared a thread.
+	Turns int
 	// Scored is true when online evaluation scored the session (read from online_scores, never stored here).
 	Scored bool
 }
@@ -148,6 +151,7 @@ func indexRowOf(s *Session) sessionIndexRow {
 		FirstMs:   first,
 		EndedMs:   ended,
 		TraceIDs:  traceIDs,
+		Turns:     claudeCodeTurns(s.Spans),
 	}
 }
 
@@ -178,6 +182,8 @@ func ensureSessionIndexSchema(db *sql.DB) error {
 		{"first_ms", "INTEGER NOT NULL DEFAULT 0"},
 		{"ended_ms", "INTEGER NOT NULL DEFAULT 0"},
 		{"trace_ids", "TEXT"},
+		// NULL on a row written before turns were counted; BackfillSessionIndex indexes those sessions again.
+		{"turns", "INTEGER"},
 	} {
 		if err := addColumn(db, "session_index", c.name, c.def); err != nil {
 			return err
@@ -195,20 +201,20 @@ func ensureSessionIndexSchema(db *sql.DB) error {
 }
 
 // writeIndexRows upserts index rows. With fillOnly, a row the index already has is rewritten only while it lacks its
-// trace ids (written before segments): the backfill read the session some moments ago, and must not overwrite what a
+// trace ids (written before segments) or its turn count: the backfill read the session some moments ago, and must not overwrite what a
 // flush has written since.
 func writeIndexRows(tx *sql.Tx, rows []sessionIndexRow, fillOnly bool) error {
 	guard := ""
 	if fillOnly {
-		guard = " WHERE session_index.trace_ids IS NULL"
+		guard = " WHERE (session_index.trace_ids IS NULL OR session_index.turns IS NULL)"
 	}
 	stmt, err := tx.Prepare(`INSERT INTO session_index (session_id, started_ms, complete, llm_calls, tenants, agents, search,
-			thread, part, closed, first_ms, ended_ms, trace_ids, segmented)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			thread, part, closed, first_ms, ended_ms, trace_ids, segmented, turns)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET started_ms = excluded.started_ms, complete = excluded.complete,
 			llm_calls = excluded.llm_calls, tenants = excluded.tenants, agents = excluded.agents, search = excluded.search,
 			thread = excluded.thread, part = excluded.part, closed = excluded.closed, first_ms = excluded.first_ms, ended_ms = excluded.ended_ms,
-			trace_ids = excluded.trace_ids, segmented = excluded.segmented` + guard)
+			trace_ids = excluded.trace_ids, segmented = excluded.segmented, turns = excluded.turns` + guard)
 	if err != nil {
 		return err
 	}
@@ -227,7 +233,7 @@ func writeIndexRows(tx *sql.Tx, rows []sessionIndexRow, fillOnly bool) error {
 			seg = 1
 		}
 		if _, err := stmt.Exec(r.ID, r.StartedMs, done, r.LLMCalls, joinIndexList(r.Tenants), joinIndexList(r.Agents), r.Search,
-			r.Thread, r.Part, closed, r.FirstMs, r.EndedMs, joinIndexList(r.TraceIDs), seg); err != nil {
+			r.Thread, r.Part, closed, r.FirstMs, r.EndedMs, joinIndexList(r.TraceIDs), seg, r.Turns); err != nil {
 			return err
 		}
 	}
@@ -243,7 +249,7 @@ func (s *SQLiteStore) BackfillSessionIndex(tenantAttr string) (int, error) {
 	for {
 		rows, err := s.db.Query(`SELECT s.session_id, s.data FROM sessions s
 			LEFT JOIN session_index i ON i.session_id = s.session_id
-			WHERE (i.session_id IS NULL OR i.trace_ids IS NULL) AND s.session_id > ? ORDER BY s.session_id LIMIT ?`, last, batch)
+			WHERE (i.session_id IS NULL OR i.trace_ids IS NULL OR i.turns IS NULL) AND s.session_id > ? ORDER BY s.session_id LIMIT ?`, last, batch)
 		if err != nil {
 			return added, err
 		}

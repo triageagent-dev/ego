@@ -620,19 +620,14 @@ export interface LiveSession {
   part?: number;
 }
 
-// One row of GET /api/threads.
-export interface ThreadRow {
-  thread: string;
+// One row of GET /api/activity: an agent in a tenant whose sessions are made of turns.
+export interface ActivitySubject {
+  agent: string;
+  tenant?: string;
+  sessions: number;
+  turns: number;
   firstSeen: string;
   lastSeen: string;
-  segments: number;
-  // The newest segment still takes new traces.
-  open: boolean;
-  totalTokens: number;
-  // Mean online score of the newest scored segment.
-  lastScore?: number;
-  tenants?: string[];
-  agents?: string[];
 }
 
 // One turn of GET /api/threads/turns: the work an agent did for one prompt or wake, summarized.
@@ -676,7 +671,8 @@ export interface TurnSegment {
 }
 
 export interface TurnsResult {
-  thread: string;
+  agent: string;
+  tenant?: string;
   fromMs: number;
   toMs: number;
   segments: TurnSegment[];

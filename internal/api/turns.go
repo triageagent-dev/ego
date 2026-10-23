@@ -9,14 +9,13 @@ import (
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/adk"
-	"github.com/triageagent-dev/ego/internal/mcptools"
 	"github.com/triageagent-dev/ego/internal/otlp"
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 )
 
 // Turns of an always-on agent. A turn is one trace of a session: the work an agent did for one prompt or one wake
-// (Claude Code makes a trace per prompt, a chat per message). The view of a thread over time needs a row per turn
-// across all its segments, with how the time went (model, tools, waiting for approval), what failed and what it cost,
+// (Claude Code makes a trace per prompt, a chat per message). The view of an agent over time needs a row per turn
+// across all its sessions, with how the time went (model, tools, waiting for approval), what failed and what it cost,
 // and not the spans themselves: the spans of the one turn on show are read when it is picked.
 
 const (
@@ -70,7 +69,7 @@ type TurnRow struct {
 	ModelCalls map[string]ToolCount `json:"modelCalls,omitempty"`
 }
 
-// TurnSegment places one segment of the thread on the same time axis as the turns.
+// TurnSegment places one session of the subject on the same time axis as the turns.
 type TurnSegment struct {
 	Session string `json:"session"`
 	Part    int    `json:"part,omitempty"`
@@ -80,7 +79,8 @@ type TurnSegment struct {
 
 // TurnsResult is the answer of GET /api/threads/turns.
 type TurnsResult struct {
-	Thread    string        `json:"thread"`
+	Agent     string        `json:"agent"`
+	Tenant    string        `json:"tenant,omitempty"`
 	FromMs    int64         `json:"fromMs"`
 	ToMs      int64         `json:"toMs"`
 	Segments  []TurnSegment `json:"segments"`
@@ -240,31 +240,31 @@ func (s *SessionStore) turnRows(sessionID string, part int) ([]TurnRow, bool) {
 	return out, true
 }
 
-// Turns lists the turns of a declared thread that began in the last hours, oldest first, with the segments they belong
-// to; a session of a sender that declared no thread has none.
-func (s *SessionStore) Turns(thread string, hours int, info RoleInfo) TurnsResult {
+// Turns lists the turns of one subject (an agent in a tenant) that began in the last hours, oldest first, with the
+// sessions they belong to.
+func (s *SessionStore) Turns(sel subjectKey, hours int, info RoleInfo) TurnsResult {
 	now := time.Now()
-	res := TurnsResult{Thread: thread, FromMs: now.Add(-time.Duration(hours) * time.Hour).UnixMilli(), ToMs: now.UnixMilli(), Segments: []TurnSegment{}, Turns: []TurnRow{}}
-	// Newest segment first: Find sorts by start, and the answer is bounded to the newest ones.
-	segs := s.Find(mcptools.SessionFilter{Thread: thread}, allowedBy(info))
+	res := TurnsResult{Agent: sel.agent, Tenant: sel.tenant, FromMs: now.Add(-time.Duration(hours) * time.Hour).UnixMilli(), ToMs: now.UnixMilli(),
+		Segments: []TurnSegment{}, Turns: []TurnRow{}}
+	var segs []activityRow
+	for _, r := range s.activityRows(time.UnixMilli(res.FromMs), info) {
+		for _, k := range r.keys() {
+			if k == sel || (sel.tenant == "" && k.agent == sel.agent) {
+				segs = append(segs, r)
+				break
+			}
+		}
+	}
+	sort.SliceStable(segs, func(i, j int) bool { return segs[i].endMs > segs[j].endMs })
 	if len(segs) > maxTurnSegments {
 		segs, res.Truncated = segs[:maxTurnSegments], true
 	}
 	for _, seg := range segs {
-		// Turns over time are for agents that declare a thread (always-on agents); a plain session is not one.
-		if !seg.Segmented {
-			continue
-		}
-		rows, ok := s.turnRows(seg.SessionID, seg.Part)
+		rows, ok := s.turnRows(seg.id, seg.part)
 		if !ok {
 			continue
 		}
-		start, _ := time.Parse(time.RFC3339, seg.StartedAt)
-		end := start.UnixMilli() + seg.DurationMs
-		if end < res.FromMs {
-			continue
-		}
-		res.Segments = append(res.Segments, TurnSegment{Session: seg.SessionID, Part: seg.Part, StartMs: start.UnixMilli(), EndMs: end})
+		res.Segments = append(res.Segments, TurnSegment{Session: seg.id, Part: seg.part, StartMs: seg.startMs, EndMs: seg.endMs})
 		for _, r := range rows {
 			if r.StartMs+r.DurationMs >= res.FromMs {
 				res.Turns = append(res.Turns, r)
@@ -279,7 +279,7 @@ func (s *SessionStore) Turns(thread string, hours int, info RoleInfo) TurnsResul
 	return res
 }
 
-// turnsHandler implements GET /api/threads/turns?thread=&hours=.
+// turnsHandler implements GET /api/threads/turns?agent=&tenant=&hours=.
 func turnsHandler(store *SessionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -287,9 +287,9 @@ func turnsHandler(store *SessionStore) http.HandlerFunc {
 			return
 		}
 		q := r.URL.Query()
-		thread := strings.TrimSpace(q.Get("thread"))
-		if thread == "" {
-			writeEvaluateError(w, http.StatusBadRequest, "thread is required")
+		agent := strings.TrimSpace(q.Get("agent"))
+		if agent == "" {
+			writeEvaluateError(w, http.StatusBadRequest, "agent is required")
 			return
 		}
 		hours := defaultTurnHours
@@ -302,6 +302,6 @@ func turnsHandler(store *SessionStore) http.HandlerFunc {
 			hours = n
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": store.Turns(thread, hours, roleInfoOrOpen(r.Context())), "error": nil})
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": store.Turns(subjectKey{agent, strings.TrimSpace(q.Get("tenant"))}, hours, roleInfoOrOpen(r.Context())), "error": nil})
 	}
 }

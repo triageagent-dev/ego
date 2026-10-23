@@ -11,7 +11,7 @@ import type {
   EvalSet,
   EvalSetSummary,
   UsageSeries,
-  ThreadRow,
+  ActivitySubject,
   TurnsResult,
   LimitItem,
   UsageCall,
@@ -384,18 +384,20 @@ export async function getUsage(hours: number): Promise<UsageSeries> {
   return unwrap<UsageSeries>(response);
 }
 
-/** The turns of one thread that began in the last `hours`, oldest first. */
-export async function getThreadTurns(thread: string, hours: number): Promise<TurnsResult> {
-  const response = await fetch(`${config.api.endpoints.threadTurns}?thread=${encodeURIComponent(thread)}&hours=${hours}`);
+/** The turns of one agent in a tenant that began in the last `hours`, oldest first. */
+export async function getThreadTurns(agent: string, tenant: string | undefined, hours: number): Promise<TurnsResult> {
+  const response = await fetch(
+    `${config.api.endpoints.threadTurns}?agent=${encodeURIComponent(agent)}&tenant=${encodeURIComponent(tenant ?? '')}&hours=${hours}`,
+  );
   if (!response.ok) throw new Error(`Failed to load turns: ${httpStatusLabel(response)}`);
   return unwrap<TurnsResult>(response);
 }
 
-/** The threads the caller may see, the one seen last first (the picked tenant narrows them). */
-export async function getThreads(limit = 100): Promise<ThreadRow[]> {
-  const response = await fetch(withTenant(`${config.api.endpoints.threads}?limit=${limit}`));
-  if (!response.ok) throw new Error(`Failed to load threads: ${httpStatusLabel(response)}`);
-  return unwrap<ThreadRow[]>(response);
+/** The agents that work in turns, the one seen last first (the picked tenant narrows them). */
+export async function getActivity(): Promise<ActivitySubject[]> {
+  const response = await fetch(withTenant(config.api.endpoints.activity));
+  if (!response.ok) throw new Error(`Failed to load activity: ${httpStatusLabel(response)}`);
+  return unwrap<ActivitySubject[]>(response);
 }
 
 export async function getUsageLimits(): Promise<LimitItem[]> {

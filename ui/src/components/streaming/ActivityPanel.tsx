@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
-import { getThreads, getThreadTurns } from '../../api/client';
+import { getActivity, getThreadTurns } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
 import { stored, store } from '../../lib/stored';
 import { useSelectedTenant } from '../../lib/tenant';
 import { buildGraph, pathOf, turnNodeId, type Graph } from '../../lib/agentGraph';
 import { fmtDuration, shortCount, turnStats } from '../../lib/turns';
 import { useTurnDetail } from '../../lib/useTurnDetail';
-import type { ThreadRow, TurnRow, TurnsResult } from '../../lib/types';
+import type { ActivitySubject, TurnRow, TurnsResult } from '../../lib/types';
 import { errorStyle } from '../ui/page';
 import { AgentGraph } from './AgentGraph';
 import { TurnTimeline } from './TurnTimeline';
@@ -19,14 +19,15 @@ const WINDOWS = [
   { label: '30d', hours: 720 },
 ];
 
+const keyOf = (s: ActivitySubject) => `${s.agent}\n${s.tenant ?? ''}`;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 // How an always-on agent works, turn by turn: how often it wakes and how long it stays up, what it costs, what fails,
-// and, for any one turn, where the time went. A thread is the agent's own id, however many weeks it has run.
+// and, for any one turn, where the time went. An agent is shown across all its sessions, however many weeks it has run.
 export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: string) => void }) {
   const tenant = useSelectedTenant();
-  const [threads, setThreads] = useState<ThreadRow[] | null>(null);
-  const [thread, setThread] = useState(() => stored('ego.activity.thread') || '');
+  const [subjects, setSubjects] = useState<ActivitySubject[] | null>(null);
+  const [subjectKey, setSubjectKey] = useState(() => stored('ego.activity.agent') || '');
   const [hours, setHours] = useState(() => Number(stored('ego.activity.hours')) || 24);
   const [data, setData] = useState<TurnsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,32 +36,33 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
 
   useEffect(() => {
     let live = true;
-    getThreads()
+    getActivity()
       .then((rows) => {
         if (!live) return;
-        setThreads(rows);
-        // The remembered thread may be gone, or never was (first visit): fall back to the one seen last.
-        setThread((cur) => (cur && rows.some((r) => r.thread === cur) ? cur : rows[0]?.thread ?? ''));
+        setSubjects(rows);
+        // The remembered agent may be gone, or never was (first visit): fall back to the one seen last.
+        setSubjectKey((cur) => (cur && rows.some((r) => keyOf(r) === cur) ? cur : rows[0] ? keyOf(rows[0]) : ''));
       })
       .catch((e: Error) => live && setError(e.message));
     return () => { live = false; };
-    // The picked tenant narrows the threads: load again when it changes.
+    // The picked tenant narrows the agents: load again when it changes.
   }, [tenant]);
 
-  useEffect(() => store('ego.activity.thread', thread), [thread]);
+  useEffect(() => store('ego.activity.agent', subjectKey), [subjectKey]);
+  const subject = subjects?.find((r) => keyOf(r) === subjectKey) ?? null;
   useEffect(() => store('ego.activity.hours', String(hours)), [hours]);
 
   const load = useCallback(async (current: () => boolean) => {
-    if (!thread) return;
+    if (!subject) return;
     try {
-      const res = await getThreadTurns(thread, hours);
+      const res = await getThreadTurns(subject.agent, subject.tenant, hours);
       if (!current()) return;
       setData(res);
       setError(null);
     } catch (e) {
       if (current()) setError(e instanceof Error ? e.message : String(e));
     }
-  }, [thread, hours]);
+  }, [subject, hours]);
   // New turns arrive with the usage of their model requests.
   useLiveData('usage', load);
 
@@ -71,7 +73,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
   const shown = picked ?? (data && data.turns.length > 0 ? data.turns[data.turns.length - 1] : null);
 
   // New turns arrive all the time; the graph only starts its layout again when what it draws has changed.
-  const built = useMemo(() => (data ? buildGraph(data.turns, thread) : null), [data, thread]);
+  const built = useMemo(() => (data ? buildGraph(data.turns, data.agent) : null), [data]);
   const [graph, setGraph] = useState<Graph | null>(null);
   if (built && (!graph || JSON.stringify(graph) !== JSON.stringify(built))) setGraph(built);
 
@@ -80,17 +82,17 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
   const shownNode = shown ? turnNodeId(shown) : null;
   const path = useMemo(() => (detail && graph ? pathOf(detail, graph, shownNode) : null), [detail, graph, shownNode]);
 
-  if (threads && threads.length === 0) return <p css={noteStyle}>no threads yet: an agent shows here once it has sent spans</p>;
+  if (subjects && subjects.length === 0) return <p css={noteStyle}>no agent with turns yet: an agent shows here once it has sent spans of its prompts</p>;
 
   return (
     <div>
       <div css={barStyle}>
         <label css={fieldStyle}>
-          thread
-          <select value={thread} onChange={(e) => { setThread(e.target.value); setSelected(null); }} css={selectStyle}>
-            {threads === null && <option>loading…</option>}
-            {threads?.map((t) => (
-              <option key={t.thread} value={t.thread}>{t.thread}{t.open ? ' · open' : ''}</option>
+          agent
+          <select value={subjectKey} onChange={(e) => { setSubjectKey(e.target.value); setSelected(null); }} css={selectStyle}>
+            {subjects === null && <option>loading…</option>}
+            {subjects?.map((t) => (
+              <option key={keyOf(t)} value={keyOf(t)}>{t.agent}{t.tenant ? ` · ${t.tenant}` : ''}</option>
             ))}
           </select>
         </label>
@@ -110,7 +112,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
       </div>
 
       {error && <div css={errorStyle} role="alert">{error}</div>}
-      {!error && !data && thread && <p css={noteStyle}>loading turns…</p>}
+      {!error && !data && subject && <p css={noteStyle}>loading turns…</p>}
 
       {data && graph && (
         data.turns.length === 0 ? (
