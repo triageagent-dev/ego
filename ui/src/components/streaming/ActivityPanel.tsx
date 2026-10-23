@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
-import { getActivity, getThreadTurns } from '../../api/client';
+import { getActivity, getActivityTurns } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
 import { stored, store } from '../../lib/stored';
 import { useSelectedTenant } from '../../lib/tenant';
@@ -55,7 +55,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
   const load = useCallback(async (current: () => boolean) => {
     if (!subject) return;
     try {
-      const res = await getThreadTurns(subject.agent, subject.tenant, hours);
+      const res = await getActivityTurns(subject.agent, subject.tenant, hours);
       if (!current()) return;
       setData(res);
       setError(null);

@@ -37,7 +37,7 @@ type ToolCount struct {
 	Server string `json:"server,omitempty"`
 }
 
-// TurnRow is one turn of GET /api/threads/turns.
+// TurnRow is one turn of GET /api/activity/turns.
 type TurnRow struct {
 	Session string `json:"session"`
 	Part    int    `json:"part,omitempty"`
@@ -77,7 +77,7 @@ type TurnSegment struct {
 	EndMs   int64  `json:"endMs"`
 }
 
-// TurnsResult is the answer of GET /api/threads/turns.
+// TurnsResult is the answer of GET /api/activity/turns.
 type TurnsResult struct {
 	Agent     string        `json:"agent"`
 	Tenant    string        `json:"tenant,omitempty"`
@@ -279,7 +279,7 @@ func (s *SessionStore) Turns(sel subjectKey, hours int, info RoleInfo) TurnsResu
 	return res
 }
 
-// turnsHandler implements GET /api/threads/turns?agent=&tenant=&hours=.
+// turnsHandler implements GET /api/activity/turns?agent=&tenant=&hours=.
 func turnsHandler(store *SessionStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

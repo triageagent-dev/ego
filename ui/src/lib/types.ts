@@ -633,7 +633,7 @@ export interface ActivitySubject {
   lastSeen: string;
 }
 
-// One turn of GET /api/threads/turns: the work an agent did for one prompt or wake, summarized.
+// One turn of GET /api/activity/turns: the work an agent did for one prompt or wake, summarized.
 export interface TurnRow {
   session: string;
   part?: number;
