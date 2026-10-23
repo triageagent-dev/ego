@@ -243,7 +243,7 @@ export const UsageView: React.FC = () => {
         <PageTitle>
           <h1 css={titleStyle}>usage</h1>
           <p css={subtitleStyle}>
-            from LLM spans · cost is estimated from list prices, not billed
+            from LLM spans · cost is computed from token counts and list prices: an approximation that will differ somewhat from the provider's bill
           </p>
         </PageTitle>
       </header>

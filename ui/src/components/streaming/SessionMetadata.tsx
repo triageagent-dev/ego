@@ -118,7 +118,7 @@ export function SessionMetadata({ session, liveStats, modelName }: SessionMetada
 
       {estimatedCost !== null ? (
         <MetadataItem label="Est. Cost">
-          <span style={{ color: '#10b981' }} title="Based on public list pricing for this model - not committed spend">
+          <span style={{ color: '#10b981' }} title="Computed from token counts and public list prices: approximate, it will differ somewhat from the provider's bill">
             {formatCostUsd(estimatedCost)}
           </span>
         </MetadataItem>

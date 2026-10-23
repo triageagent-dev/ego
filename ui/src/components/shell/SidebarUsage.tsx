@@ -93,7 +93,7 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
   if (figures.usage) {
     day.push(['tokens', short(figures.usage.tokens), `${figures.usage.tokens.toLocaleString()} tokens`]);
     day.push(['calls', short(figures.usage.calls), `${figures.usage.calls.toLocaleString()} LLM calls`]);
-    day.push(['cost', shortCost(figures.usage.cost, figures.usage.priced), 'estimated from list prices, not billed']);
+    day.push(['cost', shortCost(figures.usage.cost, figures.usage.priced), 'computed from token counts and list prices: approximate, not the provider\'s bill']);
   }
   if (figures.scored != null) day.push(['scored', short(figures.scored), 'sessions scored by online evaluation (quality)']);
   const ego: Row[] = [];
