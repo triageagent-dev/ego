@@ -635,6 +635,45 @@ export interface ThreadRow {
   agents?: string[];
 }
 
+// One turn of GET /api/threads/turns: the work an agent did for one prompt or wake, summarized.
+export interface TurnRow {
+  session: string;
+  part?: number;
+  traceId: string;
+  rootSpanId: string;
+  operation: string;
+  startMs: number;
+  durationMs: number;
+  failed?: boolean;
+  failedTools?: number;
+  requests: number;
+  tools: number;
+  modelMs: number;
+  toolMs: number;
+  approvalMs: number;
+  inputTokens: number;
+  cacheReadTokens?: number;
+  outputTokens: number;
+  promptChars?: number;
+  toolCalls?: Record<string, { calls: number; failed?: number }>;
+}
+
+export interface TurnSegment {
+  session: string;
+  part?: number;
+  startMs: number;
+  endMs: number;
+}
+
+export interface TurnsResult {
+  thread: string;
+  fromMs: number;
+  toMs: number;
+  segments: TurnSegment[];
+  turns: TurnRow[];
+  truncated?: boolean;
+}
+
 // Inspector-specific types
 export type ExtractionType = 'user_input' | 'tool_use' | 'tool_response' | 'final_response';
 

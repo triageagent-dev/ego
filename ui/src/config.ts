@@ -26,6 +26,7 @@ export const config = {
       runs: `${API_BASE_URL}/api/runs`,
       usage: `${API_BASE_URL}/api/usage`,
       threads: `${API_BASE_URL}/api/threads`,
+      threadTurns: `${API_BASE_URL}/api/threads/turns`,
       usageLimits: `${API_BASE_URL}/api/usage/limits`,
       online: `${API_BASE_URL}/api/online`,
       onlineFindings: `${API_BASE_URL}/api/online/findings`,

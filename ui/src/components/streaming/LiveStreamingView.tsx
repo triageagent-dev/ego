@@ -11,6 +11,7 @@ import { store, stored } from '../../lib/stored';
 import { SessionEvalSetFile, SessionTraceFile } from '../../lib/sessionFiles';
 import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
 import { ThreadsPanel } from './ThreadsPanel';
+import { ActivityPanel } from './ActivityPanel';
 import { PageTitle } from '../shell/PageTitle';
 import { subtitleStyle, titleStyle } from '../ui/page';
 
@@ -83,11 +84,14 @@ export function LiveStreamingView() {
   // The thread whose id was put in the search box by a click (a part chip, the threads list), and the list on show:
   // sessions, or the threads they are parts of.
   const [threadSearch, setThreadSearch] = useState('');
-  const [showThreads, setShowThreads] = useState(false);
+  // Sessions, the threads they are parts of, or the activity (turns over time) of one thread.
+  const [listMode, setListMode] = useState<'sessions' | 'threads' | 'activity'>('sessions');
+  const [activityThread, setActivityThread] = useState('');
+  const showThreads = listMode === 'threads';
   const searchThread = (thread: string) => {
     setThreadSearch(thread);
     setSearchQuery(thread);
-    setShowThreads(false);
+    setListMode('sessions');
     setFocusId(null);
   };
   const [debouncedQuery, setDebouncedQuery] = useState(() => stored('ego.search') ?? '');
@@ -872,17 +876,17 @@ export function LiveStreamingView() {
   // parts ego scores.
   const listSwitch = (
     <span style={{ display: 'inline-flex', gap: '2px', padding: '1px', borderRadius: 'var(--radius)', border: '1px solid var(--border-default)' }}>
-      {([['sessions', false], ['threads', true]] as const).map(([label, threads]) => (
+      {(['sessions', 'threads', 'activity'] as const).map((label) => (
         <button
           key={label}
-          onClick={() => setShowThreads(threads)}
-          aria-pressed={showThreads === threads}
+          onClick={() => setListMode(label)}
+          aria-pressed={listMode === label}
           style={{
             padding: '1px 9px',
             borderRadius: 'var(--radius)',
             border: 'none',
-            background: showThreads === threads ? 'var(--bg-selected)' : 'transparent',
-            color: showThreads === threads ? 'var(--accent-magenta)' : 'var(--text-tertiary)',
+            background: listMode === label ? 'var(--bg-selected)' : 'transparent',
+            color: listMode === label ? 'var(--accent-magenta)' : 'var(--text-tertiary)',
             fontSize: '12px',
             cursor: 'pointer',
           }}
@@ -893,6 +897,19 @@ export function LiveStreamingView() {
     </span>
   );
 
+  if (listMode === 'activity') {
+    return (
+      <div style={{ padding: '12px 18px 28px' }}>
+        <PageTitle style={{ display: 'flex', alignItems: 'baseline', gap: '14px', flexWrap: 'wrap', marginBottom: '8px' }}>
+          <h1 css={titleStyle}>activity</h1>
+          <p css={subtitleStyle}>how an always-on agent works, turn by turn</p>
+          {listSwitch}
+        </PageTitle>
+        <ActivityPanel initialThread={activityThread || undefined} />
+      </div>
+    );
+  }
+
   if (showThreads) {
     return (
       <div style={{ padding: '12px 18px 28px' }}>
@@ -901,7 +918,7 @@ export function LiveStreamingView() {
           <p css={subtitleStyle}>the ids your agents keep; each is cut into the sessions that get scored</p>
           {listSwitch}
         </PageTitle>
-        <ThreadsPanel onPick={searchThread} />
+        <ThreadsPanel onPick={searchThread} onActivity={(thread) => { setActivityThread(thread); setListMode('activity'); }} />
       </div>
     );
   }

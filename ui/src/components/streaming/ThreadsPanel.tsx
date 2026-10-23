@@ -15,7 +15,7 @@ function shortTokens(n: number): string {
 
 /** The threads the server holds, one row each: a thread is the id an agent keeps for as long as it runs, and its
  * sessions are the parts ego scores. Picking a row lists those parts in the sessions view. */
-export function ThreadsPanel({ onPick }: { onPick: (thread: string) => void }) {
+export function ThreadsPanel({ onPick, onActivity }: { onPick: (thread: string) => void; onActivity?: (thread: string) => void }) {
   const [rows, setRows] = useState<ThreadRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const tenant = useSelectedTenant();
@@ -46,6 +46,7 @@ export function ThreadsPanel({ onPick }: { onPick: (thread: string) => void }) {
             <th>Last seen</th>
             <th css={numStyle}>Tokens</th>
             <th css={numStyle}>Last score</th>
+            {onActivity && <th />}
           </tr>
         </thead>
         <tbody>
@@ -62,6 +63,11 @@ export function ThreadsPanel({ onPick }: { onPick: (thread: string) => void }) {
               <td>{formatStarted(r.lastSeen)}</td>
               <td css={numStyle} title={`${r.totalTokens.toLocaleString()} tokens`}>{r.totalTokens ? shortTokens(r.totalTokens) : '–'}</td>
               <td css={numStyle}>{r.lastScore != null ? r.lastScore.toFixed(2) : '–'}</td>
+              {onActivity && (
+                <td>
+                  <button css={linkStyle} onClick={() => onActivity(r.thread)} title="Turns of this thread over time">activity ›</button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

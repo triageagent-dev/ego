@@ -12,6 +12,7 @@ import type {
   EvalSetSummary,
   UsageSeries,
   ThreadRow,
+  TurnsResult,
   LimitItem,
   UsageCall,
   UsageSession,
@@ -381,6 +382,13 @@ export async function getUsage(hours: number): Promise<UsageSeries> {
   if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load usage: ${httpStatusLabel(response)}`);
   return unwrap<UsageSeries>(response);
+}
+
+/** The turns of one thread that began in the last `hours`, oldest first. */
+export async function getThreadTurns(thread: string, hours: number): Promise<TurnsResult> {
+  const response = await fetch(`${config.api.endpoints.threadTurns}?thread=${encodeURIComponent(thread)}&hours=${hours}`);
+  if (!response.ok) throw new Error(`Failed to load turns: ${httpStatusLabel(response)}`);
+  return unwrap<TurnsResult>(response);
 }
 
 /** The threads the caller may see, the one seen last first (the picked tenant narrows them). */
