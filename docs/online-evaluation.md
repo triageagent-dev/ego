@@ -11,13 +11,13 @@ come from `gen_ai.agent.name` (else the trace root span name), the tenant from
 
 ## 1. Sampling
 
-The unit is a closed segment: a run of whole traces of one thread (the sender's own session id), closed for good
+The unit is a completed session (`SessionStore.completeSession`, 30 s of quiet). For a sender that declares a thread
+(`ego.thread`, an always-on agent) it is instead a closed segment: a run of whole traces of that thread, closed for good
 when the thread's next trace arrives after `--segment-idle` of quiet, past `--segment-max-spans` or
 `--segment-max-age`, or from the sweep once the thread has stopped (`SessionStore.closeSegmentLocked`). The 30 s
-quiet state (`completeSession`) is only what the UI shows. A session that has one segment is scored once, after its
-last trace, so scoring follows the end of the thread's activity by up to `--segment-idle`. For a segment n >= 2 the
+quiet state is then only what the UI shows, and scoring follows the end of the thread's activity by up to `--segment-idle`. For a segment n >= 2 the
 judge prompts start with the last user prompt and final answer of segment n-1, fenced as an earlier part of the same
-thread. A hook hands each segment to the sampler, which reads its features from the spans:
+thread. A hook hands each one to the sampler, which reads its features from the spans:
 
 - **kind**: the call kind with the most tokens in the session (same rule as
   the usage ledger), **tenant**, **service**, `service.version`, **model**;

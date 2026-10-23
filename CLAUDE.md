@@ -49,10 +49,10 @@ streaming** path for the UI.
 - `internal/incremental`: real-time span/log → conversation-element updates pushed to the UI.
 - `internal/api`: everything behind `serve`.
   - OTLP/HTTP and OTLP/gRPC receivers feed the **same** `SessionStore` and conversion path - don't
-    special-case one. Sender ids group by `ego.thread` → `ego.session_name` → `gen_ai.conversation.id` → synthetic
-    fallback into a thread; a thread is cut into segments of whole traces (`segments.go`), and a segment is the
-    session everything else stores, lists and scores (id `<thread>`, then `<thread>~n`). `completeSession` converts
-    to invocations at 30 s of quiet; closing a segment (`closeSegmentLocked`) is what queues online evaluation.
+    special-case one. Sessions group by `ego.session_name` → `gen_ai.conversation.id` → synthetic fallback and
+    behave as they always did (`completeSession` at 30 s of quiet queues online evaluation). Only a sender that
+    declares `ego.thread` is segmented (`segments.go`): its thread is cut into segments of whole traces, each a
+    session (id `<thread>`, then `<thread>~n`), scored when closed (`closeSegmentLocked`) instead.
   - Live UI feed is WebSocket `GET /ws/ui-updates` (`wsupdates.go`), because gateways buffer long-lived SSE.
     `GET /stream/ui-updates` (`sse.go`, same hub) remains as a curl-able fallback. Both differ from `/ws/traces`
     (an SDK ingestion channel ego does not implement).

@@ -121,6 +121,7 @@ type sessionSnapshot struct {
 	SessionID string `json:"session_id"`
 	// Thread, Part, Closed and ClosedAt place the session in its thread (segments.go). Rows archived before
 	// segments existed have none of them: see sessionHeader.
+	Segmented   bool             `json:"segmented,omitempty"`
 	Thread      string           `json:"thread,omitempty"`
 	Part        int              `json:"part,omitempty"`
 	Closed      bool             `json:"closed,omitempty"`
@@ -154,6 +155,7 @@ func snapshotOf(s *Session) sessionSnapshot {
 	}
 	return sessionSnapshot{
 		SessionID:   s.ID,
+		Segmented:   s.Segmented,
 		Thread:      s.threadKey(),
 		Part:        s.partNo(),
 		Closed:      s.Closed,

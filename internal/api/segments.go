@@ -11,7 +11,10 @@ import (
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 )
 
-// Threads, segments and turns.
+// Threads, segments and turns. Opt-in: only a sender that declares a thread with the resource attribute ego.thread
+// (an always-on agent) gets any of this. A session without it is its own thread, part 1, and works as it always did:
+// it completes 30 s after its last span (3 s after a root), is queued for scoring then, reopens on a late span, and is
+// capped at maxSpansPerSession.
 //
 // A sender's session id says who is talking, not what one unit of work was: an always-on agent (a pod that wakes
 // every few minutes for weeks) sends everything under one id. ego therefore keeps three levels.
@@ -121,6 +124,10 @@ func (s *Session) partNo() int {
 	}
 	return 1
 }
+
+// sealed reports a closed segment of a declared thread: final, it takes no new trace and never reopens. Any other
+// session is "closed" only while it is complete, and a late span reopens it.
+func (s *Session) sealed() bool { return s.Segmented && s.Closed }
 
 // noteSpan widens the segment's span window.
 func (s *Session) noteSpan(sp *tracepkg.Span) {
@@ -303,7 +310,7 @@ func (s *SessionStore) threadStateLocked(key string) *threadState {
 	var lastID string
 	lastClosed := false
 	if s.store != nil {
-		rows, err := s.store.ThreadSegments(key)
+		rows, err := s.store.ThreadSegments(key, true)
 		if err != nil {
 			logx.Warnf("session archive: reading thread %s: %v", key, err)
 		}
@@ -317,8 +324,8 @@ func (s *SessionStore) threadStateLocked(key string) *threadState {
 		}
 	}
 	if ts.parts == 0 {
-		// Not indexed (yet): an archive written before segments, whose index is still being filled in.
-		if old, ok := s.reviveLocked(key); ok {
+		// Not indexed (yet): a segment whose index row is still being filled in.
+		if old, ok := s.reviveLocked(key); ok && old.Segmented {
 			ts.parts, lastID, lastClosed = old.partNo(), old.ID, old.Closed
 			for tid := range old.TraceIDs {
 				ts.traces[tid] = traceRef{seg: old.ID, at: now}
@@ -361,6 +368,12 @@ func (s *SessionStore) placeTraceLocked(key string, tr *tracepkg.Trace, evalSetI
 	if ts.known && ts.sender != sender {
 		return nil, false, false
 	}
+	if ts.parts == 0 {
+		// The name is taken by a session that is not a segment: the two kinds of sender do not share a name.
+		if old, ok := s.reviveLocked(key); ok && !old.Segmented {
+			return nil, false, false
+		}
+	}
 	now := s.now()
 
 	if ref, seen := ts.traces[tr.TraceID]; seen {
@@ -390,6 +403,7 @@ func (s *SessionStore) placeTraceLocked(key string, tr *tracepkg.Trace, evalSetI
 		id := segmentID(key, ts.parts)
 		open = &Session{
 			ID:             id,
+			Segmented:      true,
 			Thread:         key,
 			Part:           ts.parts,
 			Sender:         sender,
@@ -428,12 +442,61 @@ func (s *SessionStore) joinSegmentLocked(seg *Session, traceID, evalSetID string
 	seg.TraceIDs[traceID] = struct{}{}
 }
 
+// placePlainLocked finds or creates the session of a sender that declared no thread: its own thread, part 1, under
+// its own id however long it has been quiet. A complete session is reopened by a late span, as it always was. ok is
+// false when the session belongs to another sender, or is a segment of a declared thread (a name is one kind or the
+// other). Must be called with s.mu held.
+func (s *SessionStore) placePlainLocked(name, traceID, evalSetID, sender string, resourceAttrs map[string]any) (session *Session, isNew, ok bool) {
+	session, _ = s.reviveLocked(name)
+	if session == nil {
+		session = &Session{
+			ID:             name,
+			Thread:         name,
+			Part:           1,
+			Sender:         sender,
+			tenantAttr:     s.usageTenantAttr,
+			PrimaryTraceID: traceID,
+			EvalSetID:      evalSetID,
+			Metadata:       withoutSessionAttrs(resourceAttrs),
+			TraceIDs:       map[string]struct{}{},
+			StartedAt:      s.now().UTC(),
+			extractor:      incremental.New(),
+		}
+		s.sessions[name] = session
+		s.order = append(s.order, name)
+		s.markChangedLocked(session)
+		isNew = true
+	} else {
+		// Another sender's session, or a segment, is handed back untouched: the caller refuses the spans, and
+		// nothing about the session (eval set, completion, trace ids) may change on a stranger's say-so.
+		if session.Sender != sender || session.Segmented {
+			return nil, false, false
+		}
+		if evalSetID != "" {
+			session.EvalSetID = evalSetID
+			s.markChangedLocked(session)
+		}
+		// Reopen rather than leaving the session stuck complete.
+		if session.IsComplete {
+			session.IsComplete = false
+			session.CompletedAt = nil
+			session.Closed, session.ClosedAt = false, nil
+			s.markChangedLocked(session)
+		}
+	}
+	session.TraceIDs[traceID] = struct{}{}
+	return session, isNew, true
+}
+
 // completeLocked marks a session complete and prepares its session_complete broadcast. Must be called with s.mu held;
-// the caller publishes the returned completion after releasing it.
+// the caller publishes the returned completion after releasing it. A session that is not a segment is closed with it.
 func (s *SessionStore) completeLocked(session *Session) completion {
 	now := s.now().UTC()
 	session.IsComplete = true
 	session.CompletedAt = &now
+	if !session.Segmented {
+		session.Closed, session.ClosedAt = true, &now
+	}
 	s.markChangedLocked(session)
 
 	// Batch-convert the session's full span set into real invocations (tool calls, user/agent text, model info) now
@@ -505,7 +568,7 @@ func (s *SessionStore) EarlierPart(sessionID string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sess, ok := s.lookupLocked(sessionID)
-	if !ok || sess.partNo() <= 1 {
+	if !ok || !sess.Segmented || sess.partNo() <= 1 {
 		return "", false
 	}
 	prev, ok := s.lookupLocked(segmentID(sess.threadKey(), sess.partNo()-1))

@@ -47,12 +47,14 @@ type sessionIndexRow struct {
 	// Thread and Part place the segment in its thread; Closed says it is final; FirstMs and EndedMs are the start of
 	// its first span and the end of its last;
 	// TraceIDs are the traces it holds, so a thread's routing can be rebuilt from the index alone.
-	Thread   string
-	Part     int
-	Closed   bool
-	FirstMs  int64
-	EndedMs  int64
-	TraceIDs []string
+	Thread string
+	Part   int
+	// Segmented marks a segment of a declared thread; only those have routing state and are listed as threads.
+	Segmented bool
+	Closed    bool
+	FirstMs   int64
+	EndedMs   int64
+	TraceIDs  []string
 	// Scored is true when online evaluation scored the session (read from online_scores, never stored here).
 	Scored bool
 }
@@ -116,11 +118,14 @@ func indexRowOf(s *Session) sessionIndexRow {
 	text = append(text, agents...)
 	text = append(text, models...)
 	text = append(text, tenants...)
+	// Only a segment's traces are indexed: they rebuild its thread's routing.
 	traceIDs := make([]string, 0, len(s.TraceIDs))
-	for id := range s.TraceIDs {
-		traceIDs = append(traceIDs, id)
+	if s.Segmented {
+		for id := range s.TraceIDs {
+			traceIDs = append(traceIDs, id)
+		}
+		sort.Strings(traceIDs)
 	}
-	sort.Strings(traceIDs)
 	first, ended := s.StartedAt.UnixMilli(), s.StartedAt.UnixMilli()
 	if s.firstUs > 0 {
 		first = s.firstUs / 1000
@@ -138,6 +143,7 @@ func indexRowOf(s *Session) sessionIndexRow {
 		Search:    strings.ToLower(strings.Join(text, indexSep)),
 		Thread:    s.threadKey(),
 		Part:      s.partNo(),
+		Segmented: s.Segmented,
 		Closed:    s.Closed,
 		FirstMs:   first,
 		EndedMs:   ended,
@@ -168,6 +174,7 @@ func ensureSessionIndexSchema(db *sql.DB) error {
 		{"thread", "TEXT NOT NULL DEFAULT ''"},
 		{"part", "INTEGER NOT NULL DEFAULT 1"},
 		{"closed", "INTEGER NOT NULL DEFAULT 0"},
+		{"segmented", "INTEGER NOT NULL DEFAULT 0"},
 		{"first_ms", "INTEGER NOT NULL DEFAULT 0"},
 		{"ended_ms", "INTEGER NOT NULL DEFAULT 0"},
 		{"trace_ids", "TEXT"},
@@ -196,12 +203,12 @@ func writeIndexRows(tx *sql.Tx, rows []sessionIndexRow, fillOnly bool) error {
 		guard = " WHERE session_index.trace_ids IS NULL"
 	}
 	stmt, err := tx.Prepare(`INSERT INTO session_index (session_id, started_ms, complete, llm_calls, tenants, agents, search,
-			thread, part, closed, first_ms, ended_ms, trace_ids)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			thread, part, closed, first_ms, ended_ms, trace_ids, segmented)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET started_ms = excluded.started_ms, complete = excluded.complete,
 			llm_calls = excluded.llm_calls, tenants = excluded.tenants, agents = excluded.agents, search = excluded.search,
 			thread = excluded.thread, part = excluded.part, closed = excluded.closed, first_ms = excluded.first_ms, ended_ms = excluded.ended_ms,
-			trace_ids = excluded.trace_ids` + guard)
+			trace_ids = excluded.trace_ids, segmented = excluded.segmented` + guard)
 	if err != nil {
 		return err
 	}
@@ -215,8 +222,12 @@ func writeIndexRows(tx *sql.Tx, rows []sessionIndexRow, fillOnly bool) error {
 		if r.Closed {
 			closed = 1
 		}
+		seg := 0
+		if r.Segmented {
+			seg = 1
+		}
 		if _, err := stmt.Exec(r.ID, r.StartedMs, done, r.LLMCalls, joinIndexList(r.Tenants), joinIndexList(r.Agents), r.Search,
-			r.Thread, r.Part, closed, r.FirstMs, r.EndedMs, joinIndexList(r.TraceIDs)); err != nil {
+			r.Thread, r.Part, closed, r.FirstMs, r.EndedMs, joinIndexList(r.TraceIDs), seg); err != nil {
 			return err
 		}
 	}
@@ -661,10 +672,14 @@ type threadSegment struct {
 	TraceIDs []string
 }
 
-// ThreadSegments lists the indexed segments of a thread, oldest part first, with their trace ids: what the ingest
-// path needs to route a trace of a thread it has not seen since the process started.
-func (s *SQLiteStore) ThreadSegments(thread string) ([]threadSegment, error) {
-	rows, err := s.db.Query(`SELECT session_id, part, closed, COALESCE(trace_ids, '') FROM session_index WHERE thread = ? ORDER BY part`, thread)
+// ThreadSegments lists the indexed sessions of a thread, oldest part first, with their trace ids. The ingest path
+// asks for segments of a declared thread only, to route a trace of a thread it has not seen since the process started.
+func (s *SQLiteStore) ThreadSegments(thread string, segmentsOnly bool) ([]threadSegment, error) {
+	q := `SELECT session_id, part, closed, COALESCE(trace_ids, '') FROM session_index WHERE thread = ?`
+	if segmentsOnly {
+		q += ` AND segmented = 1`
+	}
+	rows, err := s.db.Query(q+` ORDER BY part`, thread)
 	if err != nil {
 		return nil, err
 	}
@@ -685,7 +700,7 @@ func (s *SQLiteStore) ThreadSegments(thread string) ([]threadSegment, error) {
 
 // OpenThreads lists the threads that have a segment which is not closed yet.
 func (s *SQLiteStore) OpenThreads() ([]string, error) {
-	rows, err := s.db.Query(`SELECT DISTINCT thread FROM session_index WHERE closed = 0`)
+	rows, err := s.db.Query(`SELECT DISTINCT thread FROM session_index WHERE closed = 0 AND segmented = 1`)
 	if err != nil {
 		return nil, err
 	}

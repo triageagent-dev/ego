@@ -119,6 +119,8 @@ func appendMissing(list []string, add ...string) []string {
 func (s *SessionStore) threadCandidates(f mcptools.SessionFilter, limit int, info RoleInfo, allow func(SessionSummary) bool) ([]string, error) {
 	where := sessionPageFilter{tenant: f.Tenant, agent: f.Agent, query: strings.ToLower(f.Query)}
 	cond, args := where.where(nil)
+	// Only the sessions of declared threads are threads.
+	cond += " AND segmented = 1"
 	if !f.Since.IsZero() {
 		cond += " AND ended_ms >= ?"
 		args = append(args, f.Since.UnixMilli())
@@ -172,7 +174,7 @@ func (s *SQLiteStore) recentThreads(cond string, args []any, limit int) ([]strin
 func (s *SQLiteStore) threadSegmentRows(threads []string) ([]threadSeg, error) {
 	var out []threadSeg
 	for _, chunk := range chunkStrings(threads, 400) {
-		rows, err := s.db.Query(`SELECT thread, first_ms, ended_ms, part, closed, tenants, agents FROM session_index WHERE thread IN (?`+
+		rows, err := s.db.Query(`SELECT thread, first_ms, ended_ms, part, closed, tenants, agents FROM session_index WHERE segmented = 1 AND thread IN (?`+
 			strings.Repeat(",?", len(chunk)-1)+`)`, anyArgs(chunk)...)
 		if err != nil {
 			return nil, err
@@ -289,7 +291,12 @@ func (s *SQLiteStore) threadLastScores(threads []string) map[string]float64 {
 
 // threadsFromMemory is Threads without an archive: the sessions in memory, grouped by thread.
 func (s *SessionStore) threadsFromMemory(f mcptools.SessionFilter, limit int, allow func(SessionSummary) bool) []ThreadSummary {
-	all := s.List()
+	var all []SessionSummary
+	for _, sum := range s.List() {
+		if sum.Segmented {
+			all = append(all, sum)
+		}
+	}
 	match := map[string]bool{}
 	for _, sum := range all {
 		if allow(sum) && sessionMatches(sum, mcptools.SessionFilter{Agent: f.Agent, Tenant: f.Tenant, Since: f.Since, Query: f.Query}) {

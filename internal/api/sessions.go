@@ -19,6 +19,10 @@ const (
 	evalSetIDAttr       = "ego.eval_set_id"
 	genAIConversationID = "gen_ai.conversation.id"
 
+	// maxSpansPerSession is the cap of a session that is not a segment of a declared thread; a segment is bounded by
+	// the segment rules instead (segments.go).
+	maxSpansPerSession = 10000
+
 	defaultIdleTimeout     = 30 * time.Second
 	defaultCompletionGrace = 3 * time.Second
 )
@@ -26,15 +30,21 @@ const (
 // Session is one live OTLP-ingested session: the aggregated spans of every trace grouped under one session
 // identity.
 //
-// A session is a segment of a thread (segments.go): ID is the thread's id for the first part and "<thread>~n" for
-// part n. Thread and Part are stored, so the thread table is an indexed query rather than a parse of ids.
+// A session whose sender declared a thread (the resource attribute ego.thread) is a segment of that thread
+// (segments.go): ID is the thread's id for the first part and "<thread>~n" for part n. Every other session is its own
+// thread, part 1: Thread is its ID and it never gets a "~n". Thread and Part are stored, so the thread table is an
+// indexed query rather than a parse of ids.
 type Session struct {
 	ID string
+	// Segmented is true for a segment of a declared thread. Only those are split, kept in the thread routing, swept
+	// and scored at close.
+	Segmented bool
 	// Thread is the sender's own id for the work this session is a part of, Part its 1-based number in that thread.
 	Thread string
 	Part   int
 	// Closed is true once the segment is final: it takes no new trace and is scored. A merely complete (quiet)
-	// segment can still reopen.
+	// segment can still reopen. A session that is not a segment is "closed" while it is complete, so the data model
+	// is the same for both; a late span reopens it as it always did.
 	Closed         bool
 	ClosedAt       *time.Time
 	PrimaryTraceID string
@@ -79,6 +89,7 @@ type SessionSummary struct {
 	Thread       string          `json:"thread,omitempty"`
 	Part         int             `json:"part,omitempty"`
 	Closed       bool            `json:"closed,omitempty"`
+	Segmented    bool            `json:"-"`
 	TraceID      string          `json:"traceId"`
 	EvalSetID    *string         `json:"evalSetId"`
 	SpanCount    int             `json:"spanCount"`
@@ -157,6 +168,7 @@ func summarize(s *Session) SessionSummary {
 		Thread:       s.threadKey(),
 		Part:         s.partNo(),
 		Closed:       s.Closed,
+		Segmented:    s.Segmented,
 		TraceID:      s.PrimaryTraceID,
 		EvalSetID:    evalSetID,
 		SpanCount:    len(s.Spans),
@@ -560,7 +572,7 @@ func (s *SessionStore) LoadPersisted() error {
 		if !snap.IsComplete {
 			s.resetIdleTimerLocked(id)
 		}
-		if !sess.Closed {
+		if sess.Segmented && !sess.Closed {
 			openThreads[sess.threadKey()] = true
 		}
 	}
@@ -620,8 +632,8 @@ func snapThread(snap sessionSnapshot) string {
 }
 
 // sessionHeader rebuilds a Session from its snapshot without its invocations. A session archived before segments
-// existed is the first part of its own thread, and closed when it had completed: online evaluation already decided
-// about it when it completed, and a later span under its id opens part 2 instead of rescoring it.
+// existed, or from a sender that declared no thread, is the first part of its own thread, closed while it is
+// complete; a later span under its id reopens it.
 func sessionHeader(snap sessionSnapshot, tenantAttr string) *Session {
 	traceIDs := make(map[string]struct{}, len(snap.TraceIDs))
 	for _, tid := range snap.TraceIDs {
@@ -629,6 +641,7 @@ func sessionHeader(snap sessionSnapshot, tenantAttr string) *Session {
 	}
 	sess := &Session{
 		ID:             snap.SessionID,
+		Segmented:      snap.Segmented,
 		Thread:         snapThread(snap),
 		Part:           snap.Part,
 		Closed:         snap.Closed,
@@ -646,10 +659,15 @@ func sessionHeader(snap sessionSnapshot, tenantAttr string) *Session {
 		CompletedAt:    snap.CompletedAt,
 		extractor:      incremental.New(),
 	}
-	if snap.Part == 0 {
-		sess.Part = 1
+	if !snap.Segmented {
+		// Not a segment: complete means closed, and a late span reopens it. A row split by an earlier version keeps
+		// the thread and part it was stored with.
+		if sess.Part == 0 {
+			sess.Part = 1
+		}
+		sess.Closed, sess.ClosedAt = snap.IsComplete, nil
 		if snap.IsComplete {
-			sess.Closed, sess.ClosedAt = true, snap.CompletedAt
+			sess.ClosedAt = snap.CompletedAt
 		}
 	}
 	sess.recomputeBounds()
@@ -984,8 +1002,9 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 		resourceAttrs, sessionName, conversationID, evalSetID := p.resourceAttrs, p.sessionName, p.conversationID, p.evalSetID
 
 		for _, tr := range p.traces {
-			// The sender's own thread name beats its session id: an agent whose runtime rotates the session id keeps
-			// one thread.
+			// A sender that declares a thread (ego.thread) is an always-on agent: its name is the thread, whatever the
+			// session id says, and its sessions are segments of it. Every other sender's session is its own.
+			declared := p.thread != ""
 			name := p.thread
 			if name == "" {
 				name = sessionName
@@ -1009,7 +1028,13 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 				}
 			}
 
-			session, isNew, owned := s.placeTraceLocked(name, tr, evalSetID, sender, resourceAttrs, &out)
+			var session *Session
+			var isNew, owned bool
+			if declared {
+				session, isNew, owned = s.placeTraceLocked(name, tr, evalSetID, sender, resourceAttrs, &out)
+			} else {
+				session, isNew, owned = s.placePlainLocked(name, tr.TraceID, evalSetID, sender, resourceAttrs)
+			}
 			if !owned {
 				logx.Warnf("ingest: dropped spans for session %q: it belongs to another sender", name)
 				continue
@@ -1022,8 +1047,10 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 			var updates []sessionScopedUpdate
 
 			for _, span := range tr.AllSpans {
-				// Segments close on size between traces (segmentDueAt); this only stops one runaway trace.
-				if len(session.Spans) >= hardMaxSpansPerSegment {
+				// Segments close on size between traces (segmentDueAt), so theirs only stops one runaway trace; any
+				// other session is capped, and the spans past it are dropped.
+				if len(session.Spans) >= maxSpansPerSession && !session.Segmented ||
+					len(session.Spans) >= hardMaxSpansPerSegment {
 					break
 				}
 				session.Spans = append(session.Spans, span)
@@ -1063,18 +1090,18 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 				if span.ParentSpanID == "" {
 					session.HasRootSpan = true
 				}
-				if !session.Closed {
+				if !session.sealed() {
 					s.resetIdleTimerLocked(session.ID)
 					if span.ParentSpanID == "" {
 						s.scheduleCompletionLocked(session.ID)
 					}
 				}
 			}
-			if session.Closed {
+			if session.sealed() {
 				// A late span of a closed segment's own trace: its invocations are rebuilt, the segment is neither
 				// reopened nor queued for scoring again.
 				session.Invocations = extractInvocationsForUI(otlp.BuildTrace(session.ID, session.Spans))
-			} else {
+			} else if session.Segmented {
 				s.scheduleSweepLocked(name, s.segIdle)
 			}
 
@@ -1122,8 +1149,10 @@ func (s *SessionStore) scheduleCompletionLocked(sessionID string) {
 }
 
 // completeSession marks a session complete and broadcasts session_complete, idempotently. Runs as an
-// idle/completion timer callback, so it acquires s.mu itself rather than assuming it's held. Complete is only the
-// quiet state the UI shows: online evaluation hears about a segment when it is closed (closeSegmentLocked).
+// idle/completion timer callback, so it acquires s.mu itself rather than assuming it's held. For a segment of a
+// declared thread, complete is only the quiet state the UI shows: online evaluation hears about it when it is closed
+// (closeSegmentLocked). Any other session is final when it completes, and is queued for scoring here; a late span
+// reopens it, and OnlineEvalExists keeps it from being scored twice.
 func (s *SessionStore) completeSession(sessionID string) {
 	s.mu.Lock()
 	session, ok := s.sessions[sessionID]
@@ -1132,8 +1161,12 @@ func (s *SessionStore) completeSession(sessionID string) {
 		return
 	}
 	c := s.completeLocked(session)
+	out := closings{completions: []completion{c}}
+	if !session.Segmented {
+		out.closed = []string{sessionID}
+	}
 	s.mu.Unlock()
-	s.finish(closings{completions: []completion{c}})
+	s.finish(out)
 }
 
 type sessionScopedUpdate struct {

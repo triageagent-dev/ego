@@ -181,7 +181,7 @@ func TestSegments_Assignment(t *testing.T) {
 					}
 					spans = append(spans, segSpan{trace: tr.id, span: fmt.Sprintf("%s-%d", tr.id, i), parent: parent, startMs: base + tr.at*minute, durMs: 1000})
 				}
-				s.Ingest(segBody("", "agent", spans...))
+				s.Ingest(segBody("agent", "", spans...))
 			}
 			if got := s.ids(); len(got) != len(tc.order) {
 				t.Fatalf("segments = %v, want %v", got, tc.order)
@@ -224,13 +224,13 @@ func TestSegments_LateSpansOfAClosedSegmentsTrace(t *testing.T) {
 	s := newSegStore(t)
 	base := time.Now().Add(-48*time.Hour).UnixMilli() / minute * minute
 
-	s.Ingest(segBody("", "agent", segSpan{trace: "t1", span: "a", parent: "r", startMs: base, durMs: 1000}))
-	s.Ingest(segBody("", "agent", segSpan{trace: "t2", span: "b", startMs: base + 90*minute, durMs: 1000}))
+	s.Ingest(segBody("agent", "", segSpan{trace: "t1", span: "a", parent: "r", startMs: base, durMs: 1000}))
+	s.Ingest(segBody("agent", "", segSpan{trace: "t2", span: "b", startMs: base + 90*minute, durMs: 1000}))
 	if got := s.queuedIDs(); fmt.Sprint(got) != "[agent]" {
 		t.Fatalf("queued = %v, want [agent] once part 2 opened", got)
 	}
 	// The root of t1 arrives last, long after part 1 closed.
-	s.Ingest(segBody("", "agent", segSpan{trace: "t1", span: "r", startMs: base - 1000, durMs: 5000}))
+	s.Ingest(segBody("agent", "", segSpan{trace: "t1", span: "r", startMs: base - 1000, durMs: 5000}))
 
 	first, part2 := s.byID(t, "agent"), s.byID(t, "agent~2")
 	if first.SpanCount != 2 || part2.SpanCount != 1 {
@@ -248,10 +248,10 @@ func TestSegments_LateSpansOfAClosedSegmentsTrace(t *testing.T) {
 func TestSegments_NewTraceWithOldTimestampsAfterCloseOpensNextSegment(t *testing.T) {
 	s := newSegStore(t)
 	base := time.Now().Add(-48*time.Hour).UnixMilli() / minute * minute
-	s.Ingest(segBody("", "agent", segSpan{trace: "t1", span: "a", startMs: base, durMs: 1000}))
-	s.Ingest(segBody("", "agent", segSpan{trace: "t2", span: "b", startMs: base + 90*minute, durMs: 1000}))
+	s.Ingest(segBody("agent", "", segSpan{trace: "t1", span: "a", startMs: base, durMs: 1000}))
+	s.Ingest(segBody("agent", "", segSpan{trace: "t2", span: "b", startMs: base + 90*minute, durMs: 1000}))
 	// t3 happened between t1 and t2 as far as its clock says, but nobody has seen it.
-	s.Ingest(segBody("", "agent", segSpan{trace: "t3", span: "c", startMs: base + 10*minute, durMs: 1000}))
+	s.Ingest(segBody("agent", "", segSpan{trace: "t3", span: "c", startMs: base + 10*minute, durMs: 1000}))
 	if s.byID(t, "agent").SpanCount != 1 {
 		t.Errorf("part 1 took a trace it had not seen: %+v", s.byID(t, "agent"))
 	}
@@ -299,7 +299,7 @@ func TestSegments_OnlineHookRunsAtCloseNotAtComplete(t *testing.T) {
 	s.segIdle = 150 * time.Millisecond
 
 	now := time.Now().UnixMilli()
-	s.Ingest(segBody("", "agent", segSpan{trace: "t1", span: "root", startMs: now, durMs: 10}))
+	s.Ingest(segBody("agent", "", segSpan{trace: "t1", span: "root", startMs: now, durMs: 10}))
 	waitForCondition(t, time.Second, func() bool { return s.byID(t, "agent").IsComplete })
 	if got := s.queuedIDs(); len(got) != 0 {
 		t.Fatalf("queued = %v at the 30 s complete, want none", got)
@@ -313,7 +313,7 @@ func TestSegments_OnlineHookRunsAtCloseNotAtComplete(t *testing.T) {
 		t.Error("the swept segment must be closed")
 	}
 	// The next trace starts part 2.
-	s.Ingest(segBody("", "agent", segSpan{trace: "t2", span: "b", startMs: time.Now().UnixMilli(), durMs: 10}))
+	s.Ingest(segBody("agent", "", segSpan{trace: "t2", span: "b", startMs: time.Now().UnixMilli(), durMs: 10}))
 	if sum := s.byID(t, "agent~2"); sum.Closed {
 		t.Error("part 2 must be open")
 	}
@@ -324,7 +324,7 @@ func TestSegments_SweepWaitsForTheQuietStateBeforeSizeOrAge(t *testing.T) {
 	s := newSegStore(t)
 	s.segMaxSpans = 1
 	now := time.Now().UnixMilli()
-	s.Ingest(segBody("", "agent", segSpan{trace: "t1", span: "a", startMs: now, durMs: 10}))
+	s.Ingest(segBody("agent", "", segSpan{trace: "t1", span: "a", startMs: now, durMs: 10}))
 	s.sweepThread("agent")
 	if s.byID(t, "agent").Closed {
 		t.Fatal("swept closed while its trace may still be arriving")
@@ -345,8 +345,8 @@ func TestSegments_ArchiveRestoresPartsAndRoutesLateSpans(t *testing.T) {
 	store := NewSessionStoreWithArchive(nil, archive, SessionLimits{UsageTenantAttr: "tenant.id"})
 	store.idleTimeout, store.completionGrace = time.Hour, time.Hour
 	base := time.Now().Add(-48*time.Hour).UnixMilli() / minute * minute
-	store.Ingest(segBody("", "agent", segSpan{trace: "t1", span: "a", parent: "r1", startMs: base, durMs: 1000, tokens: 10}))
-	store.Ingest(segBody("", "agent", segSpan{trace: "t2", span: "b", startMs: base + 90*minute, durMs: 1000, tokens: 20}))
+	store.Ingest(segBody("agent", "", segSpan{trace: "t1", span: "a", parent: "r1", startMs: base, durMs: 1000, tokens: 10}))
+	store.Ingest(segBody("agent", "", segSpan{trace: "t2", span: "b", startMs: base + 90*minute, durMs: 1000, tokens: 20}))
 	if err := store.flushPersist(); err != nil {
 		t.Fatal(err)
 	}
@@ -369,8 +369,8 @@ func TestSegments_ArchiveRestoresPartsAndRoutesLateSpans(t *testing.T) {
 	store2.mu.Lock()
 	store2.threads = map[string]*threadState{}
 	store2.mu.Unlock()
-	store2.Ingest(segBody("", "agent", segSpan{trace: "t1", span: "r1", startMs: base - 500, durMs: 3000}))
-	store2.Ingest(segBody("", "agent", segSpan{trace: "t3", span: "c", startMs: base + 91*minute, durMs: 1000}))
+	store2.Ingest(segBody("agent", "", segSpan{trace: "t1", span: "r1", startMs: base - 500, durMs: 3000}))
+	store2.Ingest(segBody("agent", "", segSpan{trace: "t3", span: "c", startMs: base + 91*minute, durMs: 1000}))
 	if p1 := summaryOf(t, store2, "agent"); p1.SpanCount != 2 || !p1.Closed {
 		t.Errorf("part 1 = %d spans closed=%v, want 2 spans, closed: the late root of t1 belongs to it", p1.SpanCount, p1.Closed)
 	}
@@ -399,7 +399,7 @@ func TestSegments_StoredThreadColumns(t *testing.T) {
 	if err := store.flushPersist(); err != nil {
 		t.Fatal(err)
 	}
-	segs, err := archive.ThreadSegments("pod")
+	segs, err := archive.ThreadSegments("pod", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -461,19 +461,23 @@ func TestSegments_MigratesAnArchiveWrittenBeforeThreads(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer archive.Close()
-	segs, err := archive.ThreadSegments("old-done")
+	segs, err := archive.ThreadSegments("old-done", false)
 	if err != nil || len(segs) != 1 || segs[0].ID != "old-done" || segs[0].Part != 1 || !segs[0].Closed {
 		t.Errorf("old-done = %+v err=%v, want part 1 of its own thread, closed (it had completed)", segs, err)
 	}
-	if segs, _ := archive.ThreadSegments("old-open"); len(segs) != 1 || segs[0].Closed {
-		t.Errorf("old-open = %+v, want one open segment", segs)
+	if segs, _ := archive.ThreadSegments("old-open", false); len(segs) != 1 || segs[0].Closed {
+		t.Errorf("old-open = %+v, want one open session", segs)
+	}
+	if segs, _ := archive.ThreadSegments("old-done", true); len(segs) != 0 {
+		t.Errorf("old-done as a declared thread = %+v, want none", segs)
 	}
 	var thread string
 	if err := archive.db.QueryRow(`SELECT thread FROM llm_calls WHERE span_id = 's1'`).Scan(&thread); err != nil || thread != "old-done" {
 		t.Errorf("ledger thread = %q err=%v, want old-done", thread, err)
 	}
+	// None of them is a segment of a declared thread, so none is swept.
 	open, err := archive.OpenThreads()
-	if err != nil || fmt.Sprint(open) != "[old-open]" {
-		t.Errorf("open threads = %v err=%v", open, err)
+	if err != nil || len(open) != 0 {
+		t.Errorf("open threads = %v err=%v, want none", open, err)
 	}
 }

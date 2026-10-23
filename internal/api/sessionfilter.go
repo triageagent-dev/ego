@@ -54,7 +54,7 @@ func (s *SessionStore) Find(f mcptools.SessionFilter, allow func(SessionSummary)
 	}
 	if f.Thread != "" && s.store != nil {
 		// A thread's older segments may have left memory: read them back, newest first, up to the search bound.
-		segs, err := s.store.ThreadSegments(f.Thread)
+		segs, err := s.store.ThreadSegments(f.Thread, false)
 		if err != nil {
 			logx.Warnf("session archive: reading thread %q: %v", f.Thread, err)
 		}
