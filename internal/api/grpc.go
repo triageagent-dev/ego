@@ -27,7 +27,7 @@ func (s *traceServiceServer) Export(ctx context.Context, req *coltracepb.ExportT
 	if err != nil {
 		return nil, err
 	}
-	s.store.IngestFor(ingestSender(ctx), body)
+	s.store.IngestBound(ingestSender(ctx), ingestTenant(ctx), body)
 	return &coltracepb.ExportTraceServiceResponse{}, nil
 }
 

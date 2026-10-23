@@ -12,6 +12,10 @@ type senderRequest struct {
 
 type senderTokenRequest struct {
 	Label string `json:"label,omitempty"`
+	// Tenant binds the token to one tenant of the sender (see SenderToken.Tenant); TenantName is what that tenant is
+	// called in the UI.
+	Tenant     string `json:"tenant,omitempty"`
+	TenantName string `json:"tenantName,omitempty"`
 }
 
 // adminSendersHandler implements GET (list) and POST (create) on /api/admin/senders. Admin only.
@@ -68,7 +72,7 @@ func adminSenderByIDHandler(senders *SenderStore) http.HandlerFunc {
 
 // adminSenderTokensHandler implements GET (list) and POST (mint) on /api/admin/senders/{id}/tokens. The minted
 // token is in the POST response only. Admin only.
-func adminSenderTokensHandler(senders *SenderStore) http.HandlerFunc {
+func adminSenderTokensHandler(senders *SenderStore, names *TenantNames) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !roleInfoOrOpen(r.Context()).IsAdmin {
 			writeRoleForbidden(w)
@@ -90,7 +94,24 @@ func adminSenderTokensHandler(senders *SenderStore) http.HandlerFunc {
 					return
 				}
 			}
-			token, meta, err := senders.NewToken(id, req.Label)
+			if req.TenantName != "" && req.Tenant == "" {
+				writeEvaluateError(w, http.StatusBadRequest, "tenantName needs a tenant")
+				return
+			}
+			if req.Tenant != "" {
+				if err := ValidTenantLabel(req.Tenant); err != nil {
+					writeEvaluateError(w, http.StatusBadRequest, err.Error())
+					return
+				}
+			}
+			// The name is checked before the token exists, so a bad one does not leave a token behind.
+			if req.TenantName != "" {
+				if err := names.Set(tenantKey(id, req.Tenant), req.TenantName); err != nil {
+					writeEvaluateError(w, http.StatusBadRequest, err.Error())
+					return
+				}
+			}
+			token, meta, err := senders.NewToken(id, req.Label, req.Tenant)
 			if err != nil {
 				writeEvaluateError(w, http.StatusInternalServerError, "failed to mint token: "+err.Error())
 				return

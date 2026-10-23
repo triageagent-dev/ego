@@ -380,6 +380,9 @@ curl -X POST   "$EGO/api/admin/tenant-names"             -H "Authorization: Bear
 # senders and their tokens (admin)
 curl -X POST   "$EGO/api/admin/senders"                  -H "Authorization: Bearer $ADMIN" -d '{"id":"core","name":"production core"}'
 curl -X POST   "$EGO/api/admin/senders/core/tokens"      -H "Authorization: Bearer $ADMIN" -d '{"label":"exporter"}'   # the token is in the answer, once
+# a token bound to one tenant of its sender, with the tenant's name: its spans belong to that tenant whatever label
+# they carry, and on /mcp it reads that tenant only. Several tokens of one sender make several tenants.
+curl -X POST   "$EGO/api/admin/senders/core/tokens"      -H "Authorization: Bearer $ADMIN" -d '{"label":"demo-1","tenant":"demo-1","tenantName":"Demo 1"}'
 curl -X DELETE "$EGO/api/admin/senders/core/tokens/<id>" -H "Authorization: Bearer $ADMIN"                              # revoke one token
 OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer egs_..."                                                               # sender side
 

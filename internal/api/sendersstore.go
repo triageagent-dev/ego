@@ -48,7 +48,8 @@ func ensureSendersSchema(db *sql.DB) error {
 			}
 		}
 	}
-	return nil
+	// A token bound to one tenant of its sender; empty on a token minted before the binding existed.
+	return addColumn(db, "sender_tokens", "tenant", "TEXT NOT NULL DEFAULT ''")
 }
 
 func (s *SQLiteStore) saveSender(t Sender) error {
@@ -80,8 +81,8 @@ func (s *SQLiteStore) deleteSender(id string) error {
 }
 
 func (s *SQLiteStore) saveSenderToken(t senderTokenRecord) error {
-	_, err := s.db.Exec(`INSERT INTO sender_tokens (id, sender, label, hash, created_at) VALUES (?, ?, ?, ?, ?)`,
-		t.ID, t.Sender, t.Label, t.hash, t.CreatedAt)
+	_, err := s.db.Exec(`INSERT INTO sender_tokens (id, sender, label, hash, created_at, tenant) VALUES (?, ?, ?, ?, ?, ?)`,
+		t.ID, t.Sender, t.Label, t.hash, t.CreatedAt, t.Tenant)
 	if err != nil {
 		return fmt.Errorf("saving sender token: %w", err)
 	}
@@ -125,7 +126,7 @@ func (s *SQLiteStore) loadSenders() ([]Sender, []senderTokenRecord, error) {
 		senders = append(senders, t)
 	}
 	rows.Close()
-	trows, err := s.db.Query(`SELECT id, sender, label, hash, created_at FROM sender_tokens`)
+	trows, err := s.db.Query(`SELECT id, sender, label, hash, created_at, tenant FROM sender_tokens`)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -133,7 +134,7 @@ func (s *SQLiteStore) loadSenders() ([]Sender, []senderTokenRecord, error) {
 	var tokens []senderTokenRecord
 	for trows.Next() {
 		var t senderTokenRecord
-		if err := trows.Scan(&t.ID, &t.Sender, &t.Label, &t.hash, &t.CreatedAt); err != nil {
+		if err := trows.Scan(&t.ID, &t.Sender, &t.Label, &t.hash, &t.CreatedAt, &t.Tenant); err != nil {
 			return nil, nil, err
 		}
 		tokens = append(tokens, t)

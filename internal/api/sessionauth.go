@@ -29,6 +29,8 @@ type identity struct {
 	TokenID  string
 	Expiry   int64
 	Sender   string // identitySender only: the sender whose ingest token authenticated the request.
+	// SenderTenant is the tenant that token is bound to ("" when it is not): it then reads that tenant only.
+	SenderTenant string
 }
 
 const identityGitHub = "github"
@@ -140,8 +142,8 @@ func senderGate(secret string, senders *SenderStore, direct, session http.Handle
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if token, ok := bearerToken(r.Header.Get("Authorization")); ok {
-			if sender, found := senders.Resolve(token); found {
-				id := identity{Username: "sender:" + sender, Kind: identitySender, Sender: sender}
+			if tok, found := senders.Resolve(token); found {
+				id := identity{Username: "sender:" + tok.Sender, Kind: identitySender, Sender: tok.Sender, SenderTenant: tok.Tenant}
 				direct.ServeHTTP(w, r.WithContext(withIdentity(r.Context(), id)))
 				return
 			}

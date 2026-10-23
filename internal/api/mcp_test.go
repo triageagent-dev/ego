@@ -347,7 +347,7 @@ func TestMCPRoute_SenderTokenAuthenticatesAsTenantLimitedMember(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	coreToken, _, _ := senders.NewToken("core", "")
+	coreToken, _, _ := senders.NewToken("core", "", "")
 	roles, err := NewRoleStore(nil, RoleNone, nil)
 	if err != nil {
 		t.Fatal(err)

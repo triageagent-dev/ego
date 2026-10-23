@@ -78,45 +78,55 @@ func bearerMatches(header, token string) bool {
 	return ok && subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
 }
 
-// resolve returns the sender a request authenticates as ("" for the shared token or an open receiver) and
-// whether it may send at all.
-func (a *ingestAuth) resolve(header string) (sender string, ok bool) {
+// resolve returns the sender a request authenticates as ("" for the shared token or an open receiver), the tenant
+// its token is bound to ("" when none) and whether it may send at all.
+func (a *ingestAuth) resolve(header string) (sender, tenant string, ok bool) {
 	if !a.required() {
-		return "", true
+		return "", "", true
 	}
 	got, has := bearerToken(header)
 	if !has {
-		return "", false
+		return "", "", false
 	}
 	if a.globalToken != "" && subtle.ConstantTimeCompare([]byte(got), []byte(a.globalToken)) == 1 {
-		return "", true
+		return "", "", true
 	}
-	return a.senders.Resolve(got)
+	tok, ok := a.senders.Resolve(got)
+	return tok.Sender, tok.Tenant, ok
 }
 
 type ingestSenderKey struct{}
 
-func withIngestSender(ctx context.Context, sender string) context.Context {
-	return context.WithValue(ctx, ingestSenderKey{}, sender)
+// ingestPrincipal is who a push authenticated as: the sender, and the tenant its token is bound to.
+type ingestPrincipal struct{ sender, tenant string }
+
+func withIngestSender(ctx context.Context, sender, tenant string) context.Context {
+	return context.WithValue(ctx, ingestSenderKey{}, ingestPrincipal{sender, tenant})
 }
 
-// ingestSender is the sender the receiver authenticated the sender as ("" when none).
+// ingestSender is the sender the receiver authenticated the sender as ("" when none), and ingestTenant the tenant
+// its token is bound to ("" when none).
 func ingestSender(ctx context.Context) string {
-	t, _ := ctx.Value(ingestSenderKey{}).(string)
-	return t
+	p, _ := ctx.Value(ingestSenderKey{}).(ingestPrincipal)
+	return p.sender
+}
+
+func ingestTenant(ctx context.Context) string {
+	p, _ := ctx.Value(ingestSenderKey{}).(ingestPrincipal)
+	return p.tenant
 }
 
 // middleware wraps an OTLP/HTTP handler.
 func (a *ingestAuth) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sender, ok := a.resolve(r.Header.Get("Authorization"))
+		sender, tenant, ok := a.resolve(r.Header.Get("Authorization"))
 		if !ok {
 			a.logRejected("http", r.Header.Get("Authorization"))
 			w.Header().Set("WWW-Authenticate", `Bearer realm="ego-ingest"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(withIngestSender(r.Context(), sender)))
+		next.ServeHTTP(w, r.WithContext(withIngestSender(r.Context(), sender, tenant)))
 	})
 }
 
@@ -128,12 +138,12 @@ func (a *ingestAuth) interceptor() grpc.UnaryServerInterceptor {
 		if v := md.Get("authorization"); len(v) > 0 {
 			header = v[0]
 		}
-		sender, ok := a.resolve(header)
+		sender, tenant, ok := a.resolve(header)
 		if !ok {
 			a.logRejected("grpc", header)
 			return nil, status.Error(codes.Unauthenticated, "unauthorized")
 		}
-		return handler(withIngestSender(ctx, sender), req)
+		return handler(withIngestSender(ctx, sender, tenant), req)
 	}
 }
 

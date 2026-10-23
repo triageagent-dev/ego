@@ -98,9 +98,12 @@ type Sender struct {
 
 // SenderToken is the metadata of an ingest token; the token itself is shown once, when it is created.
 type SenderToken struct {
-	ID        string `json:"id"`
-	Sender    string `json:"sender"`
-	Label     string `json:"label,omitempty"`
+	ID     string `json:"id"`
+	Sender string `json:"sender"`
+	Label  string `json:"label,omitempty"`
+	// Tenant binds the token to one tenant of its sender: whatever label the spans carry, they belong to this tenant,
+	// and the token reads this tenant only. Empty leaves the sender's spans to label themselves.
+	Tenant    string `json:"tenant,omitempty"`
 	CreatedAt string `json:"createdAt"`
 }
 
@@ -159,19 +162,27 @@ func (s *SenderStore) HasTokens() bool {
 	return len(s.tokens) > 0
 }
 
-// Resolve returns the sender a presented ingest token belongs to.
-func (s *SenderStore) Resolve(token string) (sender string, ok bool) {
+// Resolve returns the token a presented ingest token is: its sender, and the tenant it is bound to ("" when none).
+func (s *SenderStore) Resolve(token string) (SenderToken, bool) {
 	if s == nil || token == "" {
-		return "", false
+		return SenderToken{}, false
 	}
 	h := hashSenderToken(token)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id, found := s.byHash[h]
 	if !found {
-		return "", false
+		return SenderToken{}, false
 	}
-	return s.tokens[id].Sender, true
+	return s.tokens[id].SenderToken, true
+}
+
+// ValidTenantLabel checks the label a token is bound to: the part of a tenant key after "<sender>/".
+func ValidTenantLabel(label string) error {
+	if label == "" || len(label) > maxTenantKeyLen || strings.ContainsAny(label, " \t\n,|") || !printable(label) {
+		return fmt.Errorf("tenant must be 1-%d printable characters, with no spaces, commas or bars", maxTenantKeyLen)
+	}
+	return nil
 }
 
 func (s *SenderStore) List() []Sender {
@@ -240,7 +251,12 @@ func (s *SenderStore) Delete(id string) (bool, error) {
 }
 
 // NewToken mints an ingest token for sender and returns it; it is not stored in clear and cannot be shown again.
-func (s *SenderStore) NewToken(sender, label string) (token string, meta SenderToken, err error) {
+func (s *SenderStore) NewToken(sender, label, tenant string) (token string, meta SenderToken, err error) {
+	if tenant != "" {
+		if err := ValidTenantLabel(tenant); err != nil {
+			return "", SenderToken{}, err
+		}
+	}
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
 		return "", SenderToken{}, err
@@ -252,7 +268,7 @@ func (s *SenderStore) NewToken(sender, label string) (token string, meta SenderT
 		return "", SenderToken{}, fmt.Errorf("sender %q does not exist", sender)
 	}
 	rec := senderTokenRecord{
-		SenderToken: SenderToken{ID: newRandomID("st"), Sender: sender, Label: strings.TrimSpace(label), CreatedAt: nowRFC3339()},
+		SenderToken: SenderToken{ID: newRandomID("st"), Sender: sender, Label: strings.TrimSpace(label), Tenant: tenant, CreatedAt: nowRFC3339()},
 		hash:        hashSenderToken(token),
 	}
 	if s.archive != nil {

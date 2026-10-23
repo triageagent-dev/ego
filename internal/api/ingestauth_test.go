@@ -33,11 +33,11 @@ func newTestSenders(t *testing.T) (*SenderStore, string, string) {
 			t.Fatal(err)
 		}
 	}
-	acme, _, err := ts.NewToken("acme", "ci")
+	acme, _, err := ts.NewToken("acme", "ci", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	globex, _, err := ts.NewToken("globex", "")
+	globex, _, err := ts.NewToken("globex", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

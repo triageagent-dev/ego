@@ -396,7 +396,7 @@ func TestSenderStoreAndAdminAPI(t *testing.T) {
 		t.Fatalf("a duplicate sender = %d, want 400", rec.Code)
 	}
 
-	rec := post("/api/admin/senders/core/tokens", `{"label":"exporter"}`, admin, adminSenderTokensHandler(ss), "core")
+	rec := post("/api/admin/senders/core/tokens", `{"label":"exporter"}`, admin, adminSenderTokensHandler(ss, nil), "core")
 	var minted struct {
 		Data struct {
 			Token string      `json:"token"`
@@ -406,7 +406,7 @@ func TestSenderStoreAndAdminAPI(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &minted); err != nil || !strings.HasPrefix(minted.Data.Token, "egs_") {
 		t.Fatalf("mint = %d %s", rec.Code, rec.Body)
 	}
-	if rec := post("/api/admin/senders/nope/tokens", `{}`, admin, adminSenderTokensHandler(ss), "nope"); rec.Code != http.StatusNotFound {
+	if rec := post("/api/admin/senders/nope/tokens", `{}`, admin, adminSenderTokensHandler(ss, nil), "nope"); rec.Code != http.StatusNotFound {
 		t.Fatalf("a token for a missing sender = %d, want 404", rec.Code)
 	}
 	if b, _ := json.Marshal(ss.Tokens("core")); strings.Contains(string(b), minted.Data.Token) {
@@ -417,8 +417,8 @@ func TestSenderStoreAndAdminAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sender, ok := again.Resolve(minted.Data.Token); !ok || sender != "core" {
-		t.Fatalf("after reload the token resolves to %q, %v", sender, ok)
+	if tok, ok := again.Resolve(minted.Data.Token); !ok || tok.Sender != "core" {
+		t.Fatalf("after reload the token resolves to %q, %v", tok.Sender, ok)
 	}
 	var stored string
 	_ = archive.db.QueryRow(`SELECT hash FROM sender_tokens`).Scan(&stored)
@@ -434,7 +434,7 @@ func TestSenderStoreAndAdminAPI(t *testing.T) {
 	if _, ok := again.Resolve(minted.Data.Token); ok || rec.Code != http.StatusOK {
 		t.Fatalf("a revoked token still resolves (%d)", rec.Code)
 	}
-	tok2, _, _ := again.NewToken("core", "")
+	tok2, _, _ := again.NewToken("core", "", "")
 	req = admin(httptest.NewRequest(http.MethodDelete, "/", nil))
 	req.SetPathValue("id", "core")
 	adminSenderByIDHandler(again)(httptest.NewRecorder(), req)
@@ -471,8 +471,8 @@ func TestSendersMigrateFromTenantTables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sender, ok := ss.Resolve("egs_old"); !ok || sender != "triage" || !ss.Exists("triage") {
-		t.Fatalf("migrated token resolves to %q, %v", sender, ok)
+	if tok, ok := ss.Resolve("egs_old"); !ok || tok.Sender != "triage" || !ss.Exists("triage") {
+		t.Fatalf("migrated token resolves to %q, %v", tok.Sender, ok)
 	}
 }
 

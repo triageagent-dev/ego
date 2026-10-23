@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"fmt"
 	"sort"
 	"strings"
@@ -1027,6 +1028,12 @@ func (s *SessionStore) Ingest(body map[string]any) int {
 // meet in one session, and spans for a session owned by another sender are dropped. The tenant label on the spans is the sender's own and is kept as sent: it only ever names a
 // tenant inside the sender's namespace.
 func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
+	return s.IngestBound(sender, "", body)
+}
+
+// IngestBound is IngestFor for a token bound to one tenant of its sender: every span of the export belongs to that
+// tenant, whatever label it carries, so the token cannot write into another tenant.
+func (s *SessionStore) IngestBound(sender, tenant string, body map[string]any) int {
 	// Decoding a large export is the expensive part and touches no store state, so it happens before the lock is
 	// taken: a big body must not stall every reader of the store while it is parsed.
 	type parsedResource struct {
@@ -1044,6 +1051,14 @@ func (s *SessionStore) IngestFor(sender string, body map[string]any) int {
 		p.evalSetID, _ = p.resourceAttrs[evalSetIDAttr].(string)
 		p.thread, _ = p.resourceAttrs[threadAttr].(string)
 		p.traces = otlp.ParseExportRequest(map[string]any{"resourceSpans": []any{rs}})
+		if sender != "" && tenant != "" {
+			attr := cmp.Or(s.usageTenantAttr, DefaultTenantAttr)
+			for _, tr := range p.traces {
+				for _, sp := range tr.AllSpans {
+					sp.Tags[attr] = tenant
+				}
+			}
+		}
 		parsed = append(parsed, p)
 	}
 

@@ -530,9 +530,14 @@ func roleInfoOrOpen(ctx context.Context) RoleInfo {
 // else, so its label does not pick up the role of a GitHub user of the same name. Everyone else gets the
 // strongest matching role binding (see EffectiveRole); unknown team membership comes back Unresolved.
 func roleForIdentity(r *http.Request, roleStore *RoleStore, org string, ghTokens *githubTokenValidator, id identity) RoleInfo {
-	// A sender's ingest token reads its own tenants and nothing else; no role binding can widen it.
+	// A sender's ingest token reads its own tenants and nothing else; no role binding can widen it. A token bound to
+	// one tenant reads that tenant only.
 	if id.Kind == identitySender {
-		return RoleInfo{Role: RoleMember, Tenants: []string{id.Sender + "/*"}, FromSender: true}
+		grant := id.Sender + "/*"
+		if id.SenderTenant != "" {
+			grant = tenantKey(id.Sender, id.SenderTenant)
+		}
+		return RoleInfo{Role: RoleMember, Tenants: []string{grant}, FromSender: true}
 	}
 	if id.Kind == tokenKindAPI {
 		info := RoleInfo{Role: id.Role, IsAdmin: id.Role == RoleAdmin && len(id.Tenants) == 0}

@@ -173,7 +173,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/admin/tenant-names", adminTenantNamesHandler(tenantNames))
 	mux.HandleFunc("/api/admin/senders", adminSendersHandler(senderStore))
 	mux.HandleFunc("/api/admin/senders/{id}", adminSenderByIDHandler(senderStore))
-	mux.HandleFunc("/api/admin/senders/{id}/tokens", adminSenderTokensHandler(senderStore))
+	mux.HandleFunc("/api/admin/senders/{id}/tokens", adminSenderTokensHandler(senderStore, tenantNames))
 	mux.HandleFunc("/api/admin/senders/{id}/tokens/{tokenId}", adminSenderTokenByIDHandler(senderStore))
 
 	uiDist, err := fs.Sub(uiassets.DistFS, "dist")
@@ -347,7 +347,7 @@ func otlpTracesHandler(store *SessionStore) http.HandlerFunc {
 			}
 		}
 
-		store.IngestFor(ingestSender(r.Context()), body)
+		store.IngestBound(ingestSender(r.Context()), ingestTenant(r.Context()), body)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
