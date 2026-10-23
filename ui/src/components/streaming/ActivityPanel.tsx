@@ -4,7 +4,7 @@ import { getThreads, getThreadTurns } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
 import { stored, store } from '../../lib/stored';
 import { useSelectedTenant } from '../../lib/tenant';
-import { buildGraph, pathOf, type Graph } from '../../lib/agentGraph';
+import { buildGraph, pathOf, turnNodeId, type Graph } from '../../lib/agentGraph';
 import { fmtDuration, shortCount, turnStats } from '../../lib/turns';
 import { useTurnDetail } from '../../lib/useTurnDetail';
 import type { ThreadRow, TurnRow, TurnsResult } from '../../lib/types';
@@ -77,7 +77,8 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
 
   const node = graph?.nodes.find((n) => n.id === nodeId) ?? null;
   const { detail, error: detailError } = useTurnDetail(shown);
-  const path = useMemo(() => (detail && graph ? pathOf(detail, graph) : null), [detail, graph]);
+  const shownNode = shown ? turnNodeId(shown) : null;
+  const path = useMemo(() => (detail && graph ? pathOf(detail, graph, shownNode) : null), [detail, graph, shownNode]);
 
   if (threads && threads.length === 0) return <p css={noteStyle}>no threads yet: an agent shows here once it has sent spans</p>;
 
@@ -118,14 +119,15 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
           <div css={layoutStyle}>
             <div css={mainStyle}>
               <div css={graphBoxStyle}>
-                <AgentGraph graph={graph} path={path} selectedId={nodeId} onSelectNode={setNodeId} />
+                <AgentGraph graph={graph} path={path} turnNode={shownNode} selectedId={nodeId} onSelectNode={setNodeId} onPickTurn={setSelected} />
               </div>
               <div css={legendStyle}>
                 <span><i style={{ background: '#a79ff0' }} />agent</span>
-                <span><i style={{ background: '#10b981' }} />model</span>
-                <span><i style={{ background: '#5eead4' }} />MCP server</span>
-                <span><i style={{ background: '#b5abfc' }} />tool</span>
-                <span>size and link width: calls · red: failures · drag, scroll to zoom, double-click to fit</span>
+                <span><i style={{ background: '#7b8294' }} />model, MCP server, tool and, small, a turn</span>
+                <span><i style={{ background: '#f59e0b' }} />some failures</span>
+                <span><i style={{ background: '#ef4444' }} />many</span>
+                <span><i style={{ background: 'transparent', boxShadow: '0 0 0 2px #f97316' }} />the turn on show</span>
+                <span>click a turn to see its path · drag, scroll to zoom, double-click to fit</span>
               </div>
               <div css={stripStyle}>
                 <TurnTimeline compact turns={data.turns} segments={data.segments} fromMs={data.fromMs} toMs={data.toMs} selected={shown} onSelect={setSelected} />
@@ -313,7 +315,7 @@ const graphBoxStyle = css`
   overflow: hidden;
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
-  background: var(--card-surface);
+  background: var(--bg-primary);
 `;
 
 const stripStyle = css`

@@ -6,7 +6,7 @@ import type { TurnRow } from './types';
 // called and the colour of its ring and its link how often that failed. The path one turn took through it is found
 // from the turn's own steps.
 
-export type NodeKind = 'agent' | 'model' | 'server' | 'tool';
+export type NodeKind = 'agent' | 'model' | 'server' | 'tool' | 'turn';
 
 export interface GNode {
   id: string;
@@ -17,6 +17,8 @@ export interface GNode {
   ms: number;
   // A tool's server, for its tooltip.
   server?: string;
+  // A turn node: the turn it stands for.
+  row?: TurnRow;
   x?: number;
   y?: number;
   fx?: number | null;
@@ -39,12 +41,16 @@ export interface Graph {
 
 // A server with more tools than this shows its busiest ones and one node for the rest.
 const MAX_TOOLS = 10;
+// The newest turns that get a node of their own; the numbers of all of them are in the other nodes.
+export const MAX_TURN_NODES = 400;
 export const BUILTIN = 'built-in';
 
 const modelId = (m: string) => `m:${m}`;
 const serverId = (s: string) => `s:${s || BUILTIN}`;
 const toolId = (s: string, t: string) => `t:${s || BUILTIN}/${t}`;
 const moreId = (s: string) => `t:${s || BUILTIN}/…`;
+export const turnKey = (r: TurnRow) => `${r.session}:${r.rootSpanId}`;
+export const turnNodeId = (r: TurnRow) => `turn:${turnKey(r)}`;
 
 export function buildGraph(rows: TurnRow[], agent: string): Graph {
   const nodes = new Map<string, GNode>();
@@ -93,6 +99,19 @@ export function buildGraph(rows: TurnRow[], agent: string): Graph {
     }
   }
 
+  // A node for each of the newest turns, joined to the models and tools it used: the turns gather round what they
+  // used, and a turn that failed stands out among them.
+  for (const r of rows.slice(-MAX_TURN_NODES)) {
+    const id = turnNodeId(r);
+    const t = node(id, 'turn', new Date(r.startMs).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }));
+    t.row = r;
+    t.calls = 1;
+    t.failed = r.failed || r.failedTools ? 1 : 0;
+    t.ms = r.durationMs;
+    for (const [name, c] of Object.entries(r.modelCalls ?? {})) add(link(id, modelId(name)), c.calls, c.failed ?? 0, c.ms ?? 0);
+    for (const [name, c] of Object.entries(r.toolCalls ?? {})) add(link(id, toolId(c.server ?? '', name)), c.calls, c.failed ?? 0, c.ms ?? 0);
+  }
+
   // Fold the tail of a server's tools into one node.
   const bySever = new Map<string, GNode[]>();
   for (const n of nodes.values()) if (n.kind === 'tool') bySever.set(n.server ?? BUILTIN, [...(bySever.get(n.server ?? BUILTIN) ?? []), n]);
@@ -106,6 +125,13 @@ export function buildGraph(rows: TurnRow[], agent: string): Graph {
       add(link(sid, rest.id), t.calls, t.failed, t.ms);
       nodes.delete(t.id);
       links.delete(`${sid}>${t.id}`);
+      // The turns that used it now reach the node that holds it.
+      for (const l of [...links.values()]) {
+        if (l.target === t.id && String(l.source).startsWith('turn:')) {
+          links.delete(l.id);
+          add(link(String(l.source), rest.id), l.calls, l.failed, l.ms);
+        }
+      }
     }
   }
   return { nodes: [...nodes.values()], links: [...links.values()] };
@@ -124,21 +150,24 @@ export interface PathStep {
 
 // The route each step of a turn takes through the graph: a model request is one link from the agent, a tool call goes
 // through its server. A step whose node the graph does not hold (it was folded into "more") ends at that node.
-export function pathOf(detail: TurnDetail, graph: Graph): PathStep[] {
+export function pathOf(detail: TurnDetail, graph: Graph, turnNode?: string | null): PathStep[] {
   const has = new Set(graph.nodes.map((n) => n.id));
+  // With the turn's own node, a step is the link from that node to what it used; without it (an older turn that has
+  // no node), the route from the agent.
+  const own = !!turnNode && has.has(turnNode);
   const out: PathStep[] = [];
   detail.steps.forEach((s, i) => {
     const ms = s.durationUs / 1000;
     if (s.kind === 'model') {
       const id = modelId(s.label);
-      if (has.has(id)) out.push({ n: i + 1, nodeId: id, linkIds: [`agent>${id}`], failed: s.failed, ms, label: s.label });
+      if (has.has(id)) out.push({ n: i + 1, nodeId: id, linkIds: [own ? `${turnNode}>${id}` : `agent>${id}`], failed: s.failed, ms, label: s.label });
       return;
     }
     const server = s.server ?? '';
     let id = toolId(server, s.label);
     if (!has.has(id)) id = moreId(server);
     if (!has.has(id)) return;
-    out.push({ n: i + 1, nodeId: id, linkIds: [`agent>${serverId(server)}`, `${serverId(server)}>${id}`], failed: s.failed, ms, label: s.label });
+    out.push({ n: i + 1, nodeId: id, linkIds: own ? [`${turnNode}>${id}`] : [`agent>${serverId(server)}`, `${serverId(server)}>${id}`], failed: s.failed, ms, label: s.label });
   });
   return out;
 }
