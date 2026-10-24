@@ -125,7 +125,7 @@ func (b *mcpBackend) Runs(ctx context.Context, limit int, statuses []string) ([]
 	if b.archive == nil {
 		return nil, errRunsUnavailable
 	}
-	runs, err := b.archive.ListRunsFor(roleInfoOrOpen(ctx), statuses, clampLimit(limit, 100), "")
+	runs, err := b.archive.ListRunsFor(roleInfoOrOpen(ctx), "", statuses, clampLimit(limit, 100), "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list runs: %w", err)
 	}

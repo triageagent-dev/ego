@@ -76,3 +76,38 @@ func TestInterruptedManualRunsAreClosedAtStart(t *testing.T) {
 		t.Errorf("online run status = %q, want running", got.Status)
 	}
 }
+
+// The tenant picked in the switcher narrows the online runs but does not hide a run that has no tenant.
+func TestPickedTenantKeepsHandStartedRuns(t *testing.T) {
+	store := newRunStore(t)
+	manual, _ := store.CreateRun(runSpecSummaryDTO{Approach: "traces"})
+	mine, _ := store.CreateRun(runSpecSummaryDTO{Approach: "online"})
+	other, _ := store.CreateRun(runSpecSummaryDTO{Approach: "online"})
+	for run, tenant := range map[string]string{mine.RunID: "s/mine", other.RunID: "s/other"} {
+		if err := store.InsertOnlineEval(onlineEvalRow{SessionID: "sess-" + tenant, TraceID: "t", Tenant: tenant, RunID: run}, "v", "m", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ids := func(info RoleInfo, pick string) map[string]bool {
+		runs, err := store.ListRunsFor(info, pick, nil, 10, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]bool{}
+		for _, r := range runs {
+			got[r.RunID] = true
+		}
+		return got
+	}
+	if got := ids(RoleInfo{}, "s/mine"); len(got) != 2 || !got[manual.RunID] || !got[mine.RunID] {
+		t.Errorf("picked tenant shows %v, want the hand-started run and that tenant's", got)
+	}
+	if got := ids(RoleInfo{}, ""); len(got) != 3 {
+		t.Errorf("no pick shows %v, want all three", got)
+	}
+	// A role limited to a tenant never sees a run that has none.
+	if got := ids(RoleInfo{Tenants: []string{"s/mine"}}, ""); len(got) != 1 || !got[mine.RunID] {
+		t.Errorf("limited role sees %v, want only its tenant's run", got)
+	}
+}

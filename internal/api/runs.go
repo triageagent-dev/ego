@@ -120,10 +120,7 @@ func listRunsHandler(store *SQLiteStore) http.HandlerFunc {
 				limit = clampLimit(n, limit)
 			}
 		}
-		// The tenant picked in the switcher limits the list to that tenant's online runs, as it does usage and scores.
-		info := roleInfoOrOpen(r.Context())
-		info.Tenants = narrowTenants(info.Tenants, q.Get("tenant"))
-		visible, err := store.ListRunsFor(info, q["status"], limit, q.Get("before"))
+		visible, err := store.ListRunsFor(roleInfoOrOpen(r.Context()), q.Get("tenant"), q["status"], limit, q.Get("before"))
 		if err != nil {
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to list runs: "+err.Error())
 			return
@@ -136,11 +133,15 @@ func listRunsHandler(store *SQLiteStore) http.HandlerFunc {
 // newest runs mostly belong to other tenants, so the page size cannot bound the scan.
 const tenantRunScan = 2000
 
-// ListRunsFor lists the runs info may see, newest first, at most limit.
-func (s *SQLiteStore) ListRunsFor(info RoleInfo, statuses []string, limit int, before string) ([]runDTO, error) {
+// ListRunsFor lists the runs info may see, newest first, at most limit. pick is the tenant chosen in the switcher: it
+// narrows the online runs to that tenant, but a run that belongs to no tenant (an evaluation started by hand) is not
+// hidden by it, since the choice only filters what has a tenant to filter on.
+func (s *SQLiteStore) ListRunsFor(info RoleInfo, pick string, statuses []string, limit int, before string) ([]runDTO, error) {
+	picked := info
+	picked.Tenants = narrowTenants(info.Tenants, pick)
 	fetch := limit
 	var tenants map[string]string
-	if info.TenantScoped() {
+	if info.TenantScoped() || picked.TenantScoped() {
 		fetch = tenantRunScan
 		var err error
 		if tenants, err = s.OnlineRunTenants(); err != nil {
@@ -156,9 +157,11 @@ func (s *SQLiteStore) ListRunsFor(info RoleInfo, statuses []string, limit int, b
 		if len(visible) == limit {
 			break
 		}
-		if runVisibleToRole(run, info, tenants[run.RunID]) {
-			visible = append(visible, run)
+		tenant := tenants[run.RunID]
+		if !runVisibleToRole(run, info, tenant) || (tenant != "" && !picked.AllowsAnyTenant([]string{tenant})) {
+			continue
 		}
+		visible = append(visible, run)
 	}
 	return visible, nil
 }

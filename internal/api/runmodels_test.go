@@ -103,7 +103,8 @@ func TestListRunsFollowsThePickedTenant(t *testing.T) {
 		}
 		return len(body.Data)
 	}
-	for tenant, want := range map[string]int{"": 4, "core/acme": 1, "core/": 2, "edge/": 1, "nobody": 0} {
+	// The fourth run was started by hand and has no tenant: a pick narrows the online runs but never hides it.
+	for tenant, want := range map[string]int{"": 4, "core/acme": 2, "core/": 3, "edge/": 2, "nobody": 1} {
 		if got := count(tenant); got != want {
 			t.Errorf("tenant %q lists %d runs, want %d", tenant, got, want)
 		}
