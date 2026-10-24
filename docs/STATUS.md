@@ -89,8 +89,5 @@ What ego supports today, and what it does not.
 
 - The ROUGE-1 tokenizer does not stem and does not tokenize CJK or other unspaced scripts per character, so
   `response_match_score` runs a little lower on inflected English and is not meaningful on those scripts.
-- `govulncheck` flags [GO-2026-6443](https://pkg.go.dev/vuln/GO-2026-6443), a `google.golang.org/grpc` server
-  panic on a request without `:authority`, reachable through the OTLP/gRPC receiver. The only fix is an
-  unreleased dev version, so `go.mod` stays on the latest stable release. Bump to the first stable release
-  that carries the fix.
+- `govulncheck` reports no reachable vulnerability (checked 2026-10-24). One advisory sits in a module ego requires, `golang.org/x/crypto` openpgp (GO-2026-5932, no fix released), and no code path of ego calls it. The earlier gRPC advisory (GO-2026-6443) is fixed in the release `go.mod` now uses.
 - Logging (`internal/logx`): leveled `log/slog` lines (`--log-level`, default info); sign-in user names are logged only with `--audit-log`; refused OTLP pushes are logged once a minute without the token.

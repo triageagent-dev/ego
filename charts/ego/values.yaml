@@ -55,6 +55,8 @@ auth:
   githubClientId: ""
   # -- Role of a signed-in user no role binding covers: admin, member, viewer or none (no access). With none, give
   # every team a binding (tenants: ["*"] for staff, "<sender>/*" or "<sender>/<tenant>" for customers).
+  # Take care: member lets every signed-in member of the organisation read and write EVERY tenant. In a deployment
+  # that holds customers' tenants set none and bind each team to the tenants it may see.
   defaultRole: member
   # -- Log the GitHub user name of every sign-in and refused sign-in (--audit-log). Off: the log carries no user names.
   auditLog: false
@@ -114,6 +116,8 @@ otlpAuth:
 #   ingress:
 #     - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: my-producers}}}]
 #       ports: [{port: 4317}, {port: 4318}]
+# Off by default, so the receivers (4317, 4318), the UI and the login page are reachable from every pod in the
+# cluster, protected by their tokens only. Turn it on in a shared cluster and list who may reach which port.
 networkPolicy:
   enabled: false
   ingress: []
