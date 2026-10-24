@@ -157,23 +157,27 @@ Recommendation: R15.
 | Workflows | Top-level `contents: read`, write scopes only on the gated release jobs, actions pinned by SHA, no `pull_request_target`, no untrusted input in shell | .github/workflows |
 | Tests, vet, format | `go vet ./...` clean, `gofmt -l .` empty, `go test ./...` passes in every package | run 2026-10-24 |
 
+## Remediation
+
+Fixed in ego after 299a9ae (commits c971c92 to 98c2bcc, deployed). Status per recommendation below. F17 (a session is visible in full to a role that holds any one of its tenants) is unchanged: it is how the session list has always worked. F18 and F19 are closed (zod override, STATUS note); the x/crypto advisory has no fix and is not called.
+
 ## Recommendations
 
 | # | Recommendation | Addresses | Status |
 |---|---|---|---|
-| R1 | Build session ids from escaped or length-prefixed parts (or a separator that labels cannot contain), and record the tenant on the session so that spans of a different tenant for an existing id are refused the way another sender's are | F1 | Open |
-| R2 | Restrict a bound tenant (and every label a sender sends) to a safe alphabet: no `:`, `/`, `*`, `\|`, control or separator characters; refuse `*` for a bound token | F1, F9 | Open |
-| R3 | Strip or reject 0x1F and other control characters in tenant labels, agent names and session names at ingest, and make `splitIndexList` reject keys that are not valid; rebuild the index rows already stored | F2 | Open |
-| R4 | Make the migration incremental (batches with a cursor, committed as it goes), stream the backfill instead of collecting it, add a `startupProbe` or start the health listener before `LoadPersisted`, and log progress | F3 | Open |
-| R5 | Make purge delete findings, corrections, alerts and scores of the tenants (or document what it keeps), add a dry run that returns counts, log the caller and keys, and persist before or inside the same step so a flush cannot write sessions back | F4, F14 | Open |
-| R6 | Cap open sessions, distinct tenant labels, names and bytes per sender (configurable, 429 beyond), and set a ceiling on open sessions without an archive | F5 | Open |
-| R7 | Read the sessions for turns outside the store lock (copy the spans), cache the answer for a few seconds, and cap concurrent requests | F6 | Open |
-| R8 | Reject labels of the form `<sender>/...` from the shared token, or give the shared token its own prefix | F7 | Open |
-| R9 | Refuse format characters (Unicode categories Cf, Zl, Zp) in names, truncate instead of dropping, hold the names lock across check and write, and bound the table with a purge on tenant removal | F8 | Open |
-| R10 | Check the `Host` header against the listen address or an allow-list when no session secret is set | F10 | Open |
-| R11 | Document `auth.defaultRole: none` as the setting for deployments with customer tenants, or make it the chart default | F11 | Open |
-| R12 | Sign and attest local releases (cosign with a key or a short-lived identity), publish from CI again when minutes allow, pin base images by digest, pin the `govulncheck` version, pass the git credential through a file or a helper that does not put the token in argv, and sign or verify `checksums.txt` in `install.sh` | F12 | Open |
-| R13 | Key the ledger by sender and span id, clamp token values to non-negative bounded integers | F13 | Open |
-| R14 | Add a per-user daily share of the evaluation budget, defang the Jev prompt inputs, and consider a structured-output schema for the judge | F15 | Open |
-| R15 | Ship a default NetworkPolicy for the ingest ports (opt-out) and throttle failed ingest authentication per source | F16 | Open |
-| R16 | Update `docs/STATUS.md` for GO-2026-6443 and bump the UI development dependency to zod 4.6.6 or later | F18, F19 | Open |
+| R1 | Build session ids from escaped or length-prefixed parts (or a separator that labels cannot contain), and record the tenant on the session so that spans of a different tenant for an existing id are refused the way another sender's are | F1 | Fixed |
+| R2 | Restrict a bound tenant (and every label a sender sends) to a safe alphabet: no `:`, `/`, `*`, `\|`, control or separator characters; refuse `*` for a bound token | F1, F9 | Fixed |
+| R3 | Strip or reject 0x1F and other control characters in tenant labels, agent names and session names at ingest, and make `splitIndexList` reject keys that are not valid; rebuild the index rows already stored | F2 | Fixed |
+| R4 | Make the migration incremental (batches with a cursor, committed as it goes), stream the backfill instead of collecting it, add a `startupProbe` or start the health listener before `LoadPersisted`, and log progress | F3 | Fixed |
+| R5 | Make purge delete findings, corrections, alerts and scores of the tenants (or document what it keeps), add a dry run that returns counts, log the caller and keys, and persist before or inside the same step so a flush cannot write sessions back | F4, F14 | Fixed |
+| R6 | Cap open sessions, distinct tenant labels, names and bytes per sender (configurable, 429 beyond), and set a ceiling on open sessions without an archive | F5 | Partial: caps on open sessions, tenants and names per sender; no byte or disk quota, and a refused trace is dropped with a warning, not answered 429 |
+| R7 | Read the sessions for turns outside the store lock (copy the spans), cache the answer for a few seconds, and cap concurrent requests | F6 | Partial: answers cached while the store is unchanged and only two computed at once; the reads still run under the store lock |
+| R8 | Reject labels of the form `<sender>/...` from the shared token, or give the shared token its own prefix | F7 | Fixed (labels hold no "/" or ":", shared token included) |
+| R9 | Refuse format characters (Unicode categories Cf, Zl, Zp) in names, truncate instead of dropping, hold the names lock across check and write, and bound the table with a purge on tenant removal | F8 | Fixed |
+| R10 | Check the `Host` header against the listen address or an allow-list when no session secret is set | F10 | Fixed |
+| R11 | Document `auth.defaultRole: none` as the setting for deployments with customer tenants, or make it the chart default | F11 | Documented: the chart default stays member, the values file warns |
+| R12 | Sign and attest local releases (cosign with a key or a short-lived identity), publish from CI again when minutes allow, pin base images by digest, pin the `govulncheck` version, pass the git credential through a file or a helper that does not put the token in argv, and sign or verify `checksums.txt` in `install.sh` | F12 | Partial: base images and govulncheck pinned, token kept out of the git argument list; open: signing and attestation, CI triggers, install.sh checksum trust |
+| R13 | Key the ledger by sender and span id, clamp token values to non-negative bounded integers | F13 | Partial: token values clamped; the ledger key is unchanged |
+| R14 | Add a per-user daily share of the evaluation budget, defang the Jev prompt inputs, and consider a structured-output schema for the judge | F15 | Partial: a quarter of the daily budget per non-admin caller, Jev state defanged; open: injection classifier, structured judge output |
+| R15 | Ship a default NetworkPolicy for the ingest ports (opt-out) and throttle failed ingest authentication per source | F16 | Partial: failed ingest authentication is throttled per source; the network policy stays off by default (documented) |
+| R16 | Update `docs/STATUS.md` for GO-2026-6443 and bump the UI development dependency to zod 4.6.6 or later | F18, F19 | Fixed |
