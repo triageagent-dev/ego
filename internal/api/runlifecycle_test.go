@@ -134,3 +134,22 @@ func TestOnlineSpendIsPerTenant(t *testing.T) {
 		t.Errorf("spend = %+v, want s/a 600 tokens 3 calls and s/b 900 tokens (the older row left out)", got)
 	}
 }
+
+// An evaluation recorded before runs carried their tenants is attributed from the sessions its trace files name.
+func TestEarlierEvaluationsAreAttributedToTheirSessionsTenants(t *testing.T) {
+	archive := newRunStore(t)
+	store := NewSessionStoreWithArchive(nil, archive, SessionLimits{})
+	store.Ingest(labelledTracesBody("mine-1", "aaaa", "s1", "mine"))
+	var id string
+	for _, sum := range store.List() {
+		id = sum.SessionID
+	}
+	run, _ := archive.CreateRun(runSpecSummaryDTO{Approach: "traces", Target: map[string]any{"trace_files": []any{"trace_" + id + ".jsonl"}}})
+
+	store.backfillRunTenants()
+
+	got, _, _ := archive.GetRun(run.RunID)
+	if len(got.Spec.Tenants) != 1 || got.Spec.Tenants[0] != "mine" {
+		t.Errorf("tenants = %v, want [mine]", got.Spec.Tenants)
+	}
+}

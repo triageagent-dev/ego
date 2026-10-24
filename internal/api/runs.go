@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/triageagent-dev/ego/internal/logx"
 )
@@ -149,6 +150,53 @@ func runTenants(run runDTO, online string) []string {
 		return []string{online}
 	}
 	return nil
+}
+
+// backfillRunTenants gives the evaluations started before runs carried their tenants (they name their sessions in
+// the trace file names) the tenants of those sessions, so a tenant picked in the switcher still lists them.
+func (s *SessionStore) backfillRunTenants() {
+	if s.store == nil {
+		return
+	}
+	runs, err := s.store.ListRuns(nil, 5000, "")
+	if err != nil {
+		logx.Warnf("run history: reading runs to attribute them to tenants: %v", err)
+		return
+	}
+	done := 0
+	for _, run := range runs {
+		if run.Spec.Approach != "traces" || len(run.Spec.Tenants) > 0 {
+			continue
+		}
+		files, _ := run.Spec.Target["trace_files"].([]any)
+		seen := map[string]bool{}
+		for _, f := range files {
+			name, _ := f.(string)
+			id, ok := strings.CutSuffix(strings.TrimPrefix(name, "trace_"), ".jsonl")
+			if !ok || !strings.HasPrefix(name, "trace_") {
+				continue
+			}
+			if sum, ok := s.Summary(id); ok {
+				for _, k := range sum.Tenants {
+					if !seen[k] {
+						seen[k] = true
+						run.Spec.Tenants = append(run.Spec.Tenants, k)
+					}
+				}
+			}
+		}
+		if len(run.Spec.Tenants) == 0 {
+			continue
+		}
+		if err := s.store.SetRunSpec(run.RunID, run.Spec); err != nil {
+			logx.Warnf("run history: attributing run %s to its tenants: %v", run.RunID, err)
+			continue
+		}
+		done++
+	}
+	if done > 0 {
+		logx.Infof("run history: attributed %d earlier evaluation(s) to their tenants", done)
+	}
 }
 
 // ListRunsFor lists the runs info may see, newest first, at most limit. pick is the tenant chosen in the switcher:

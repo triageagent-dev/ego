@@ -131,6 +131,16 @@ func (s *SQLiteStore) FinishRun(runID, status string, summary *runSummaryDTO, er
 	return s.announce(topicRuns, err)
 }
 
+// SetRunSpec replaces a run's recorded spec.
+func (s *SQLiteStore) SetRunSpec(runID string, spec runSpecSummaryDTO) error {
+	b, err := json.Marshal(spec)
+	if err != nil {
+		return fmt.Errorf("serializing run spec: %w", err)
+	}
+	_, err = s.db.Exec(`UPDATE runs SET spec_json = ? WHERE run_id = ?`, string(b), runID)
+	return err
+}
+
 // InsertRunResults bulk-inserts one row per (trace, evaluator) result.
 func (s *SQLiteStore) InsertRunResults(runID string, rows []runResultRowDTO) error {
 	if len(rows) == 0 {

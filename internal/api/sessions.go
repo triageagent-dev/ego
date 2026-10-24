@@ -756,6 +756,7 @@ func (s *SessionStore) LoadPersisted() error {
 		} else if n > 0 {
 			logx.Infof("session archive: indexed %d archived session(s) for the session list", n)
 		}
+		s.backfillRunTenants()
 	}()
 	return nil
 }
