@@ -55,6 +55,7 @@ export interface TraceContextType {
     setThreshold: (threshold: number) => void;
     setTrajectoryMatchType: (matchType: string) => void;
     runEvaluation: () => Promise<void>;
+    stopEvaluation: () => void;
     setCurrentView: (view: ViewType) => void;
     setEvaluationOrigin: (view: ViewType | null) => void;
     setStreamingSessions: (updater: (prev: Map<string, LiveSession>) => Map<string, LiveSession>) => void;

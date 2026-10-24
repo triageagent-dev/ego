@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { css } from '@emotion/react';
+import { Button } from 'antd';
 import { Loader2 } from 'lucide-react';
 import { TraceTable } from './TraceTable';
 import { SummaryStats } from './SummaryStats';
@@ -92,6 +93,9 @@ const dashboardStyle = css`
   .progress-text {
     color: var(--text-primary);
     font-weight: 600;
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   @keyframes spin {
@@ -177,6 +181,7 @@ export const DashboardView: React.FC = () => {
               <span className="progress-text">
                 {state.progressMessage || 'Evaluating traces...'}
               </span>
+              <Button size="small" danger onClick={actions.stopEvaluation}>Stop</Button>
             </div>
           )}
 

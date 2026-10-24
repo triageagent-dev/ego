@@ -381,16 +381,15 @@ func evaluateHandler(store *SQLiteStore, sessions *SessionStore) http.HandlerFun
 		getJudgeModel := newJudgeModelGetter(ctx, user)
 		getVertexEvalClient := newVertexEvalClientGetter(ctx)
 
+		run := beginRun(store, runSpecFromRequest(req))
 		result := runResultDTO{Errors: req.loadErrors}
 		for _, tr := range req.traces {
+			if ctx.Err() != nil {
+				break
+			}
 			result.TraceResults = append(result.TraceResults, evaluateOneTrace(ctx, tr, req.cfg.Evaluators, req.evalSet, getJudgeModel, getVertexEvalClient, newDecisionClientGetter(), nil))
 		}
-
-		if store != nil {
-			if err := persistCompletedRun(store, runSpecFromRequest(req), req, result); err != nil {
-				logx.Errorf("run history: failed to persist run: %v", err)
-			}
-		}
+		finishRun(store, run, req, result, ctx.Err() != nil)
 
 		writeJSON(w, http.StatusOK, map[string]any{"data": result, "error": nil})
 	}
@@ -469,8 +468,12 @@ func evaluateStreamHandler(store *SQLiteStore, sessions *SessionStore) http.Hand
 			total := len(req.traces)
 			send(map[string]any{"message": fmt.Sprintf("Evaluating %d trace(s)...", total)})
 
+			run := beginRun(store, runSpecFromRequest(req))
 			result := runResultDTO{Errors: req.loadErrors}
 			for idx, tr := range req.traces {
+				if ctx.Err() != nil {
+					break
+				}
 				send(map[string]any{"message": fmt.Sprintf("Trace %d/%d: %s", idx+1, total, tr.TraceID)})
 
 				traceResult := evaluateOneTrace(ctx, tr, req.cfg.Evaluators, req.evalSet, getJudgeModel, getVertexEvalClient, getDecisionClient, func(partial traceResultDTO) {
@@ -482,11 +485,8 @@ func evaluateStreamHandler(store *SQLiteStore, sessions *SessionStore) http.Hand
 				result.TraceResults = append(result.TraceResults, traceResult)
 			}
 
-			if store != nil {
-				if err := persistCompletedRun(store, runSpecFromRequest(req), req, result); err != nil {
-					logx.Errorf("run history: failed to persist run: %v", err)
-				}
-			}
+			// A stop (or a client that went away) ends the request context: the run keeps what was scored so far.
+			finishRun(store, run, req, result, ctx.Err() != nil)
 
 			send(map[string]any{"message": "Evaluation complete"})
 			send(map[string]any{"done": true, "result": result})
@@ -578,6 +578,9 @@ func evaluateInvocations(
 	decisionResults, decisionModel := runDecisionEvaluators(ctx, evaluators, invocations, expected, getDecisionClient)
 
 	for i, evaluator := range evaluators {
+		if ctx.Err() != nil {
+			break
+		}
 		if results, ok := decisionResults[i]; ok {
 			for _, r := range results {
 				traceResult.MetricResults = append(traceResult.MetricResults, toMetricResultDTO(r, "llm_judge", decisionModel))
@@ -635,6 +638,9 @@ func evaluateInvocations(
 			} else {
 				result = eval.RunMetric(evaluator.Name, invocations, expected, matchType, threshold)
 			}
+		}
+		if result.Error != "" {
+			logx.Warnf("evaluation: %s failed on trace %s: %s", evaluator.Name, traceResult.TraceID, result.Error)
 		}
 		traceResult.MetricResults = append(traceResult.MetricResults, toMetricResultDTO(result, kind, judgeModelUsed))
 		notifyMetric(traceResult, onMetric)

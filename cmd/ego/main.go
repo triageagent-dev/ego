@@ -143,7 +143,7 @@ Run flags:
   --output string                 text | json (default text)
   --judge-api-key string          Gemini API key for judge-model metrics (falls back to GEMINI_API_KEY/GOOGLE_API_KEY,
                                     or ADC/Vertex if GOOGLE_GENAI_USE_VERTEXAI=true - no key needed)
-  --judge-model string             judge model for judge-model metrics (default gemini-2.5-flash)
+  --judge-model string             judge model for judge-model metrics (default gemini-3-flash-preview)
   --judge-samples int               samples per invocation for judge-model metrics, majority-voted (default 5)
   --rubric string                  rubric text for rubric_based_*_v1 metrics (repeatable); required by those metrics
   --jev-questions string           custom question file for the Jev eval; each question runs as a jev:<key> metric

@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+
+	"github.com/triageagent-dev/ego/internal/logx"
 )
 
 // runSpecSummaryDTO mirrors ui/src/lib/types.ts's RunSpecSummary. EvalSet/ EvalConfig/Target are free-form (raw
@@ -273,16 +275,33 @@ func runSpecFromRequest(req *evaluateRequest) runSpecSummaryDTO {
 	return spec
 }
 
-// persistCompletedRun builds and writes the Run + RunResultRows for one
-// finished /api/evaluate (or /api/evaluate/stream) call. Best-effort: a
-// storage failure here is logged by the caller but never fails the HTTP
-// response the evaluation itself already computed.
-func persistCompletedRun(store *SQLiteStore, spec runSpecSummaryDTO, req *evaluateRequest, result runResultDTO) error {
+// beginRun records that an evaluation has started, so the Runs list shows it while it works instead of only after
+// it ends. Best-effort: nil when there is no run history or it cannot be written, and finishRun then does nothing.
+func beginRun(store *SQLiteStore, spec runSpecSummaryDTO) *runDTO {
+	if store == nil {
+		return nil
+	}
 	run, err := store.CreateRun(spec)
 	if err != nil {
-		return err
+		logx.Errorf("run history: failed to record the run: %v", err)
+		return nil
 	}
+	return &run
+}
 
+// finishRun writes the RunResultRows of an evaluation begun with beginRun and closes its run: cancelled when the
+// caller stopped it (the results so far are kept), failed when nothing could be scored, else succeeded. Best-effort,
+// like beginRun: a storage failure is logged and never fails the response the evaluation already computed.
+func finishRun(store *SQLiteStore, run *runDTO, req *evaluateRequest, result runResultDTO, stopped bool) {
+	if run == nil {
+		return
+	}
+	if err := writeRun(store, run, req, result, stopped); err != nil {
+		logx.Errorf("run history: failed to persist run %s: %v", run.RunID, err)
+	}
+}
+
+func writeRun(store *SQLiteStore, run *runDTO, req *evaluateRequest, result runResultDTO, stopped bool) error {
 	rows := make([]runResultRowDTO, 0)
 	perMetric := map[string]perMetricSummaryDTO{}
 	counts := resultCountsDTO{}
@@ -363,10 +382,25 @@ func persistCompletedRun(store *SQLiteStore, spec runSpecSummaryDTO, req *evalua
 
 	status := "succeeded"
 	var errMsg *string
-	if len(result.Errors) > 0 && len(result.TraceResults) == 0 {
+	switch {
+	case stopped:
+		status = "cancelled"
+		msg := "stopped before it finished"
+		errMsg = &msg
+	case len(result.Errors) > 0 && len(result.TraceResults) == 0:
 		status = "failed"
 		msg := result.Errors[0]
 		errMsg = &msg
+	case counts.Errored > 0 && counts.Passed+counts.Failed == 0:
+		// Nothing was scored: say why on the run, not only on its rows.
+		status = "failed"
+		for _, row := range rows {
+			if row.ErrorText != nil {
+				msg := row.EvaluatorName + ": " + *row.ErrorText
+				errMsg = &msg
+				break
+			}
+		}
 	}
 	return store.FinishRun(run.RunID, status, summary, errMsg)
 }

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	DefaultModel      = "gemini-2.5-flash"
+	DefaultModel      = "gemini-3-flash-preview"
 	DefaultNumSamples = 5
 )
 

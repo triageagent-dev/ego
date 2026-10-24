@@ -354,9 +354,11 @@ export const TraceTable: React.FC<TraceTableProps> = ({
 
         if (metricResult.error) {
           return (
-            <div className="metric-cell">
+            <div className="metric-cell" title={metricResult.error}>
               <XCircle size={14} color="var(--status-failure)" />
-              <span style={{ fontSize: 11, color: 'var(--status-failure)' }}>Error</span>
+              <span style={{ fontSize: 11, color: 'var(--status-failure)', overflowWrap: 'anywhere' }}>
+                {metricResult.error.length > 90 ? `${metricResult.error.slice(0, 90)}…` : metricResult.error}
+              </span>
             </div>
           );
         }

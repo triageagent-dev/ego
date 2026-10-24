@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/auth/credentials"
@@ -21,6 +22,10 @@ import (
 // same Workload Identity / ADC service account already used for the judge
 // model's Vertex AI backend (internal/judge.GenAIModel).
 const cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
+
+// callTimeout bounds one :evaluateInstances call: a judge that never answers must end as an error the reader can
+// see, not keep an evaluation running with no way out.
+const callTimeout = 3 * time.Minute
 
 // defaultLocation matches google-adk's own default when
 // GOOGLE_CLOUD_LOCATION is unset.
@@ -56,7 +61,7 @@ func NewClient(ctx context.Context) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("detecting application default credentials: %w", err)
 	}
-	return &Client{httpClient: http.DefaultClient, creds: creds, project: project, location: location}, nil
+	return &Client{httpClient: &http.Client{Timeout: callTimeout}, creds: creds, project: project, location: location}, nil
 }
 
 // evaluateInstancesResponse mirrors EvaluateInstancesResponse from
@@ -124,6 +129,9 @@ func (c *Client) evaluateInstances(ctx context.Context, body any) (*metricResult
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		logx.Warnf("vertexeval: evaluateInstances HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 2000))
+		if detail := googleErrorOf(respBody); detail != "" {
+			return nil, fmt.Errorf("evaluateInstances HTTP %d: %s", resp.StatusCode, detail)
+		}
 		return nil, fmt.Errorf("evaluateInstances HTTP %d (details are in the server log)", resp.StatusCode)
 	}
 
@@ -140,6 +148,24 @@ func (c *Client) evaluateInstances(ctx context.Context, body any) (*metricResult
 		return nil, fmt.Errorf("evaluateInstances metric error: %s", mr.Error.Message)
 	}
 	return &mr, nil
+}
+
+// googleErrorOf reads the standard Google error envelope ({"error":{"status","message"}}) of a failed call, short
+// enough to show the reader; "" when the body is anything else (the whole body stays in the server log).
+func googleErrorOf(body []byte) string {
+	var env struct {
+		Error struct {
+			Status  string `json:"status"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &env) != nil || env.Error.Message == "" {
+		return ""
+	}
+	if env.Error.Status == "" {
+		return truncate(env.Error.Message, 300)
+	}
+	return env.Error.Status + ": " + truncate(env.Error.Message, 300)
 }
 
 // truncate shortens s to at most n bytes for logging.

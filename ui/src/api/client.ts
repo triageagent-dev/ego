@@ -159,10 +159,11 @@ export async function evaluateTracesStreaming(
   onProgress: (message: string) => void,
   onTraceProgress: (traceId: string, status: string, partialResult?: TraceResult) => void,
   onComplete: (result: RunResult) => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/evaluate/stream`, await evaluateRequest(traceFiles, evalSetFile, evalConfig));
+    const response = await fetch(`${API_BASE_URL}/evaluate/stream`, { ...(await evaluateRequest(traceFiles, evalSetFile, evalConfig)), signal });
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -226,6 +227,8 @@ export async function evaluateTracesStreaming(
       }
     }
   } catch (error) {
+    // Stopping is the reader's own act, reported by whoever aborted.
+    if (signal?.aborted) return;
     if (error instanceof Error) {
       onError(error);
     } else {

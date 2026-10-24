@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Segmented } from 'antd';
 import { css } from '@emotion/react';
-import { Play, Pencil } from 'lucide-react';
+import { Play, Pencil, Loader2 } from 'lucide-react';
 import { NewGoldenForm } from './NewGoldenForm';
 import { MetricGroup, useMetricGroups } from './MetricSelector';
 import { SessionPicker } from './SessionPicker';
@@ -657,11 +657,12 @@ export const UploadView: React.FC = () => {
               type="primary"
               size="large"
               className="run-button"
-              onClick={actions.runEvaluation}
-              disabled={!canRunEvaluation}
-              loading={state.isEvaluating || state.isLoadingMetadata}
+              // While it runs the button is the way to the run's progress.
+              onClick={state.isEvaluating ? () => actions.setCurrentView('dashboard') : actions.runEvaluation}
+              disabled={!state.isEvaluating && !canRunEvaluation}
+              loading={state.isLoadingMetadata}
             >
-              <Play size={20} />
+              {state.isEvaluating ? <Loader2 size={20} className="animate-spin" /> : <Play size={20} />}
               {state.isEvaluating
                 ? (state.progressMessage || 'Running Evaluation...')
                 : state.isLoadingMetadata

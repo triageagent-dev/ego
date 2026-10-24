@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { TraceContext } from './TraceContext';
 import type { TraceState } from './TraceContext';
@@ -6,18 +6,22 @@ import type { ViewType, EvalConfig, EvalSet, EvalSetMetadata, EvalCase, LiveSess
 import { evaluateTracesStreaming, convertTraces, getConfig, healthCheck } from '../api/client';
 import { buildEvalConfig } from '../lib/eval-config';
 import { store, stored } from '../lib/stored';
+import { DEFAULT_JUDGE_MODEL, JUDGE_MODELS } from '../lib/judgeModels';
 
 interface TraceProviderProps {
   children: ReactNode;
 }
 
 export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
+  // The running evaluation's request: aborting it ends the server's work too.
+  const evaluation = useRef<AbortController | null>(null);
   const [state, setState] = useState<TraceState>({
     traceFiles: [],
     evalSetFile: null,
     selectedEvaluatorNames: [],
     // The evaluation defaults are the reader's own, kept per browser (settings, in the account menu).
-    judgeModel: stored('ego.eval.judgeModel') || 'gemini-2.5-flash',
+    // A remembered model that has left the list (retired by its provider) is dropped for the default.
+    judgeModel: JUDGE_MODELS.find((m) => m.value === stored('ego.eval.judgeModel'))?.value ?? DEFAULT_JUDGE_MODEL,
     threshold: (() => {
       const t = parseFloat(stored('ego.eval.threshold') ?? '');
       return t >= 0 && t <= 1 ? t : 0.8;
@@ -144,6 +148,10 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
           currentView: 'dashboard',
         }));
 
+        evaluation.current?.abort();
+        const controller = new AbortController();
+        evaluation.current = controller;
+
         try {
           const evalConfig: EvalConfig = buildEvalConfig({
             selectedEvaluatorNames: state.selectedEvaluatorNames,
@@ -255,7 +263,8 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
                 progressMessage: '',
                 errors: [error.message],
               }));
-            }
+            },
+            controller.signal
           );
         } catch (error) {
           setState((prev) => ({
@@ -265,6 +274,17 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
             errors: [error instanceof Error ? error.message : 'Unknown error occurred'],
           }));
         }
+      },
+
+      stopEvaluation: () => {
+        evaluation.current?.abort();
+        evaluation.current = null;
+        setState((prev) => ({
+          ...prev,
+          isEvaluating: false,
+          progressMessage: '',
+          errors: ['Evaluation stopped before it finished.'],
+        }));
       },
 
       setCurrentView: (view: ViewType) =>

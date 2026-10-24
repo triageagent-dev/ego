@@ -59,6 +59,12 @@ func ensureRunsSchema(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_run_results_run_id ON run_results(run_id)`); err != nil {
 		return fmt.Errorf("creating run_results.run_id index: %w", err)
 	}
+	// An evaluation that was running when the server stopped will never finish; leave it as what happened instead
+	// of running forever. Online runs stay open on purpose and are not touched.
+	if _, err := db.Exec(`UPDATE runs SET status = 'failed', error = 'interrupted by a server restart', finished_at = ?
+		WHERE status = 'running' AND json_extract(spec_json, '$.approach') = 'traces'`, nowRFC3339()); err != nil {
+		return fmt.Errorf("closing interrupted runs: %w", err)
+	}
 	return nil
 }
 
