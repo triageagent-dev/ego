@@ -37,6 +37,9 @@ const (
 // indexed query rather than a parse of ids.
 type Session struct {
 	ID string
+	// tenantKey is the tenant of the session's first trace for a named sender; it is not archived, so a session
+	// restored from the archive has none and is not checked.
+	tenantKey string
 	// Segmented is true for a segment of a declared thread. Only those are split, kept in the thread routing, swept
 	// and scored at close.
 	Segmented bool
@@ -236,7 +239,7 @@ func traceTenantLabel(spans []*tracepkg.Span, attr string) string {
 		attr = DefaultTenantAttr
 	}
 	for _, sp := range spans {
-		if v := sp.TagString(attr); v != "" {
+		if v := cleanLabel(sp.TagString(attr)); v != "" {
 			return v
 		}
 	}
@@ -254,7 +257,7 @@ func sessionTenants(s *Session) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, sp := range s.Spans {
-		label := sp.TagString(attr)
+		label := cleanLabel(sp.TagString(attr))
 		if label == "" {
 			continue
 		}
@@ -282,12 +285,12 @@ func spanIdentities(spans []*tracepkg.Span) (agents, models []string) {
 		*list = append(*list, v)
 	}
 	for _, sp := range spans {
-		add(&agents, seenAgent, sp.TagString(adk.GenAIAgentName))
+		add(&agents, seenAgent, cleanIdentity(sp.TagString(adk.GenAIAgentName)))
 		model := sp.TagString(adk.GenAIRequestModel)
 		if model == "" {
 			model = sp.TagString("gen_ai.response.model")
 		}
-		add(&models, seenModel, model)
+		add(&models, seenModel, cleanIdentity(model))
 	}
 	return agents, models
 }
@@ -1120,6 +1123,17 @@ func (s *SessionStore) IngestBound(sender, tenant string, body map[string]any) i
 			if !owned {
 				logx.Warnf("ingest: dropped spans for session %q: it belongs to another sender", name)
 				continue
+			}
+			// A session belongs to one tenant of its sender, the one its first trace named: a trace of another tenant
+			// that lands on the same id is refused, as another sender's is.
+			if sender != "" {
+				want := tenantKey(sender, traceTenantLabel(tr.AllSpans, s.usageTenantAttr))
+				if isNew {
+					session.tenantKey = want
+				} else if session.tenantKey != "" && session.tenantKey != want {
+					logx.Warnf("ingest: dropped spans for session %q: it belongs to another tenant", name)
+					continue
+				}
 			}
 			arrived := s.now()
 

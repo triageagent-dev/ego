@@ -100,7 +100,12 @@ func joinIndexList(v []string) string {
 	if len(v) == 0 {
 		return ""
 	}
-	return indexSep + strings.Join(v, indexSep) + indexSep
+	// A value never holds the separator, whatever its source: it would read back as two keys.
+	clean := make([]string, len(v))
+	for i, x := range v {
+		clean[i] = strings.ReplaceAll(x, indexSep, "")
+	}
+	return indexSep + strings.Join(clean, indexSep) + indexSep
 }
 
 func splitIndexList(s string) []string {

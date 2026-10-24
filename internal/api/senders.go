@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 // DefaultTenantAttr is the span attribute that carries a span's tenant label when --usage-tenant-attr names no
@@ -177,10 +178,48 @@ func (s *SenderStore) Resolve(token string) (SenderToken, bool) {
 	return s.tokens[id].SenderToken, true
 }
 
-// ValidTenantLabel checks the label a token is bound to: the part of a tenant key after "<sender>/".
+// maxLabelLen bounds a tenant label, in characters.
+const maxLabelLen = 128
+
+// cleanLabel makes a tenant label sent on spans safe to build keys and session ids from: letters, digits and . _ - @ +
+// stay, every other character (a colon, slash, bar, star, space, control or format character, the index separator)
+// becomes an underscore, and the label is cut at maxLabelLen. A key is "<sender>/<label>" and a session id
+// "<sender>:<label>:<name>", so a label that could hold "/", ":" or the separator would name another sender's or
+// tenant's key.
+func cleanLabel(s string) string {
+	s = strings.TrimSpace(s)
+	var b strings.Builder
+	n := 0
+	for _, r := range s {
+		if n >= maxLabelLen {
+			break
+		}
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("._-@+", r) {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+		n++
+	}
+	return b.String()
+}
+
+// cleanIdentity drops the control and format characters (the index separator among them) from an agent or model
+// name, which is listed in the session index and shown beside sessions.
+func cleanIdentity(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// ValidTenantLabel checks the label a token is bound to: the part of a tenant key after "<sender>/". It must be
+// what cleanLabel would leave unchanged, so it can neither be "*" nor hold a "/" or a ":".
 func ValidTenantLabel(label string) error {
-	if label == "" || len(label) > maxTenantKeyLen || strings.ContainsAny(label, " \t\n,|") || !printable(label) {
-		return fmt.Errorf("tenant must be 1-%d printable characters, with no spaces, commas or bars", maxTenantKeyLen)
+	if label == "" || cleanLabel(label) != label {
+		return fmt.Errorf("tenant must be 1-%d letters, digits or . _ - @ + (no spaces, slashes, colons or stars)", maxLabelLen)
 	}
 	return nil
 }

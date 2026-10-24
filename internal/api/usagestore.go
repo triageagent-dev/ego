@@ -106,6 +106,8 @@ func usageRowFromSpan(span *tracepkg.Span, sessionID, tenantAttr, sender, fallba
 		return usageRow{}, false
 	}
 	in, out, model := adk.ExtractTokenUsageFromAttrs(span.Tags)
+	// A sender's token counts are summed into totals: a negative or absurd value is held to what one call can be.
+	in, out = clampTokens(in), clampTokens(out)
 	if in == 0 && out == 0 {
 		return usageRow{}, false
 	}
@@ -122,25 +124,30 @@ func usageRowFromSpan(span *tracepkg.Span, sessionID, tenantAttr, sender, fallba
 		Name:             span.OperationName,
 		InputTokens:      in,
 		OutputTokens:     out,
-		CacheReadTokens:  tagInt(span, "gen_ai.usage.cache_read.input_tokens"),
+		CacheReadTokens:  clampTokens(tagInt(span, "gen_ai.usage.cache_read.input_tokens")),
 		CacheWriteTokens: cacheWriteTokens(span),
 		IsError:          span.TagString("otel.status_code") == "ERROR",
 	}, true
 }
 
+// maxCallTokens is the most tokens one model call is taken to have used, far above any context window.
+const maxCallTokens = 1 << 30
+
+func clampTokens(n int64) int64 { return max(0, min(n, maxCallTokens)) }
+
 // cacheWriteTokens reads the tokens written to the prompt cache; the convention's name for them changed between versions.
 func cacheWriteTokens(span *tracepkg.Span) int64 {
 	if n := tagInt(span, "gen_ai.usage.cache_creation.input_tokens"); n > 0 {
-		return n
+		return clampTokens(n)
 	}
-	return tagInt(span, "gen_ai.usage.cache_write.input_tokens")
+	return clampTokens(tagInt(span, "gen_ai.usage.cache_write.input_tokens"))
 }
 
 func tenantOf(span *tracepkg.Span, attr string) string {
 	if attr == "" {
 		return ""
 	}
-	return span.TagString(attr)
+	return cleanLabel(span.TagString(attr))
 }
 
 // FillUsageKinds names the kind of every kindless row in each trace after

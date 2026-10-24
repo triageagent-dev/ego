@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/triageagent-dev/ego/internal/logx"
 )
@@ -13,12 +14,16 @@ import (
 const (
 	maxTenantKeyLen  = 200
 	maxTenantNameLen = 80
+	// maxTenantNames bounds the names table, which a sender can grow one tenant at a time.
+	maxTenantNames = 10000
 )
 
 // TenantNames maps a tenant key to a name people recognise. A sender may label its tenants with ids (a workspace
 // id, say); an admin gives each one a display name here. The key stays the identity: grants, filters and storage
 // all use it, and the name is only what the switcher and the session badges show.
 type TenantNames struct {
+	// opMu serialises Set and Fill, so Fill's check and its write are one step against an admin's Set.
+	opMu    sync.Mutex
 	mu      sync.RWMutex
 	names   map[string]string
 	archive *SQLiteStore
@@ -37,9 +42,11 @@ func NewTenantNames(archive *SQLiteStore) (*TenantNames, error) {
 	return t, nil
 }
 
+// printable reports that s holds no control character and no format character (bidirectional overrides, zero-width
+// joiners and the like), which let one name pass for another.
 func printable(s string) bool {
 	for _, r := range s {
-		if unicode.IsControl(r) {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
 			return false
 		}
 	}
@@ -52,9 +59,16 @@ func (t *TenantNames) Set(key, name string) error {
 	if key == "" || len(key) > maxTenantKeyLen || !printable(key) {
 		return fmt.Errorf("key must be 1-%d printable characters", maxTenantKeyLen)
 	}
-	if len(name) > maxTenantNameLen || !printable(name) {
+	if utf8.RuneCountInString(name) > maxTenantNameLen || !printable(name) {
 		return fmt.Errorf("name must be at most %d printable characters", maxTenantNameLen)
 	}
+	t.opMu.Lock()
+	defer t.opMu.Unlock()
+	return t.setLocked(key, name)
+}
+
+// setLocked stores the name; the caller holds opMu.
+func (t *TenantNames) setLocked(key, name string) error {
 	if t.archive != nil {
 		var err error
 		if name == "" {
@@ -82,7 +96,29 @@ func (t *TenantNames) Fill(key, name string) {
 	if t == nil || t.Name(key) != "" {
 		return
 	}
-	if err := t.Set(key, name); err != nil {
+	key, name = strings.TrimSpace(key), strings.TrimSpace(name)
+	if key == "" || len(key) > maxTenantKeyLen || !printable(key) || !printable(name) {
+		logx.Debugf("tenant name from %q ignored: not printable", key)
+		return
+	}
+	// A name that is too long is cut, not dropped: the tenant still gets a name.
+	if r := []rune(name); len(r) > maxTenantNameLen {
+		name = string(r[:maxTenantNameLen])
+	}
+	t.opMu.Lock()
+	defer t.opMu.Unlock()
+	// The check again, now that no admin's Set can come between it and the write.
+	t.mu.RLock()
+	have, full := t.names[key] != "", len(t.names) >= maxTenantNames
+	t.mu.RUnlock()
+	if have {
+		return
+	}
+	if full {
+		logx.Debugf("tenant name from %q ignored: the names table is full", key)
+		return
+	}
+	if err := t.setLocked(key, name); err != nil {
 		logx.Debugf("tenant name from %q ignored: %v", key, err)
 	}
 }
