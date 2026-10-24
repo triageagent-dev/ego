@@ -9,6 +9,7 @@ import (
 
 	"github.com/triageagent-dev/ego/internal/adk"
 	"github.com/triageagent-dev/ego/internal/eval"
+	"github.com/triageagent-dev/ego/internal/judge"
 )
 
 // Metric is one jev_* metric: a typed question asked about every
@@ -223,7 +224,42 @@ func State(actual []adk.Invocation, i int, reference *adk.Invocation) map[string
 	if reference != nil {
 		state["reference_response"] = reference.FinalResponse.Text()
 	}
-	return state
+	return defangState(state)
+}
+
+// defangState makes the quoted trace text in the state unable to impersonate the markers the judge prompts use, as the
+// text judges' prompts do for what they quote. The state is data to the decision model, never its instructions.
+func defangState(v any) map[string]any {
+	out, _ := defangValue(v).(map[string]any)
+	return out
+}
+
+func defangValue(v any) any {
+	switch x := v.(type) {
+	case string:
+		return judge.Defang(x)
+	case map[string]any:
+		for k, e := range x {
+			x[k] = defangValue(e)
+		}
+		return x
+	case map[string]string:
+		for k, e := range x {
+			x[k] = judge.Defang(e)
+		}
+		return x
+	case []map[string]string:
+		for _, m := range x {
+			defangValue(m)
+		}
+		return x
+	case []map[string]any:
+		for _, m := range x {
+			defangValue(m)
+		}
+		return x
+	}
+	return v
 }
 
 // toolCalls pairs each tool call with its response (by ID, else by name in

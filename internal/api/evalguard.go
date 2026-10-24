@@ -52,8 +52,13 @@ type evalGuard struct {
 	dailyCap int64
 	day      string
 	spent    int64
-	slots    chan struct{}
+	// byUser is what each caller has used today, so one signed-in member cannot spend the whole day's budget.
+	byUser map[string]int64
+	slots  chan struct{}
 }
+
+// userShareDivisor: a caller who is not an admin may use a quarter of the day's budget.
+const userShareDivisor = 4
 
 func newEvalGuard(dailyCap int64) *evalGuard {
 	return &evalGuard{dailyCap: dailyCap, slots: make(chan struct{}, maxConcurrentEvals)}
@@ -71,27 +76,41 @@ func (g *evalGuard) setDailyCap(tokens int64) {
 
 func (g *evalGuard) rollLocked(now time.Time) {
 	if day := now.UTC().Format("2006-01-02"); day != g.day {
-		g.day, g.spent = day, 0
+		g.day, g.spent, g.byUser = day, 0, nil
 	}
 }
 
 // add records judge tokens used by one call.
-func (g *evalGuard) add(tokens int64) {
+func (g *evalGuard) add(tokens int64) { g.addFor("", tokens) }
+
+// addFor records judge tokens used by one call for user ("" when the caller is not known).
+func (g *evalGuard) addFor(user string, tokens int64) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.rollLocked(time.Now())
 	g.spent += tokens
+	if user != "" {
+		if g.byUser == nil {
+			g.byUser = map[string]int64{}
+		}
+		g.byUser[user] += tokens
+	}
 }
 
 // admit reserves a slot for one evaluation. The returned release must be called when it finishes. When the day's
 // cap is used up or all slots are busy it returns a status and message instead.
-func (g *evalGuard) admit(now time.Time) (release func(), status int, msg string) {
+func (g *evalGuard) admit(now time.Time, user string, admin bool) (release func(), status int, msg string) {
 	g.mu.Lock()
 	g.rollLocked(now)
 	exhausted := g.dailyCap > 0 && g.spent >= g.dailyCap
+	// An admin is not held to a share; any other known caller is.
+	overShare := !admin && user != "" && g.dailyCap > 0 && g.byUser[user] >= g.dailyCap/userShareDivisor
 	g.mu.Unlock()
 	if exhausted {
 		return nil, http.StatusTooManyRequests, "the daily judge token budget for interactive evaluation is used up; it resets at 00:00 UTC"
+	}
+	if overShare {
+		return nil, http.StatusTooManyRequests, "you have used your share of today's judge token budget for interactive evaluation; it resets at 00:00 UTC"
 	}
 	select {
 	case g.slots <- struct{}{}:

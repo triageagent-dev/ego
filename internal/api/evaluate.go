@@ -237,7 +237,7 @@ func parseEvaluateRequest(r *http.Request, sessions *SessionStore) (*evaluateReq
 // factory, shared by evaluateHandler and evaluateStreamHandler so each
 // distinct judgeModel named across a request's evaluators is only
 // constructed (and thus authenticated) once.
-func newJudgeModelGetter(ctx context.Context) func(string) (judge.Model, error) {
+func newJudgeModelGetter(ctx context.Context, user string) func(string) (judge.Model, error) {
 	judgeClients := map[string]judge.Model{}
 	return func(modelName string) (judge.Model, error) {
 		if modelName == "" {
@@ -250,7 +250,7 @@ func newJudgeModelGetter(ctx context.Context) func(string) (judge.Model, error) 
 		if err != nil {
 			return nil, fmt.Errorf("setting up judge model %s: %w", modelName, err)
 		}
-		m.WithUsageHook(interactiveEval.add)
+		m.WithUsageHook(func(tokens int64) { interactiveEval.addFor(user, tokens) })
 		judgeClients[modelName] = m
 		return m, nil
 	}
@@ -369,7 +369,8 @@ func evaluateHandler(store *SQLiteStore, sessions *SessionStore) http.HandlerFun
 			return
 		}
 
-		release, status, msg := interactiveEval.admit(time.Now())
+		user, admin := callerOf(r)
+		release, status, msg := interactiveEval.admit(time.Now(), user, admin)
 		if release == nil {
 			writeEvaluateError(w, status, msg)
 			return
@@ -377,7 +378,7 @@ func evaluateHandler(store *SQLiteStore, sessions *SessionStore) http.HandlerFun
 		defer release()
 
 		ctx := r.Context()
-		getJudgeModel := newJudgeModelGetter(ctx)
+		getJudgeModel := newJudgeModelGetter(ctx, user)
 		getVertexEvalClient := newVertexEvalClientGetter(ctx)
 
 		result := runResultDTO{Errors: req.loadErrors}
@@ -434,7 +435,8 @@ func evaluateStreamHandler(store *SQLiteStore, sessions *SessionStore) http.Hand
 			return
 		}
 
-		release, _, admitMsg := interactiveEval.admit(time.Now())
+		user, admin := callerOf(r)
+		release, _, admitMsg := interactiveEval.admit(time.Now(), user, admin)
 		if release == nil {
 			writeSSEData(w, map[string]any{"error": admitMsg})
 			flusher.Flush()
@@ -461,7 +463,7 @@ func evaluateStreamHandler(store *SQLiteStore, sessions *SessionStore) http.Hand
 				return
 			}
 
-			getJudgeModel := newJudgeModelGetter(ctx)
+			getJudgeModel := newJudgeModelGetter(ctx, user)
 			getVertexEvalClient := newVertexEvalClientGetter(ctx)
 			getDecisionClient := newDecisionClientGetter()
 			total := len(req.traces)
@@ -682,4 +684,15 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+// callerOf names who made a request, for the per-user share of the evaluation budget: the signed-in user or token
+// label, else the remote address, and whether the caller is an admin.
+func callerOf(r *http.Request) (user string, admin bool) {
+	if id, ok := identityFromContext(r.Context()); ok && id.Username != "" {
+		user = id.Username
+	} else {
+		user = sourceOf(r.RemoteAddr)
+	}
+	return user, roleInfoOrOpen(r.Context()).IsAdmin
 }

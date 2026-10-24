@@ -24,7 +24,7 @@ func TestUsageLimits_ReportsTheCapsAndWhatIsUsed(t *testing.T) {
 	interactiveEval = g
 	defer func() { interactiveEval = old }()
 	g.add(250)
-	release, _, _ := g.admit(time.Now())
+	release, _, _ := g.admit(time.Now(), "", true)
 	defer release()
 
 	store := NewSessionStore(nil)
