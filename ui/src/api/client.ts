@@ -101,7 +101,7 @@ export async function convertTraces(traceFiles: File[]): Promise<ConvertTracesRe
 
 // The evaluate request: session ids and the config as JSON when the server holds every trace (and the golden
 // eval set), else the files as a multipart upload.
-async function evaluateRequest(traceFiles: File[], evalSetFile: File | null, evalConfig: EvalConfig): Promise<RequestInit> {
+async function evaluateRequest(traceFiles: File[], evalSetFile: File | null, evalConfig: EvalConfig, traceIds?: string[]): Promise<RequestInit> {
   const sessionIds = namedSessions(traceFiles);
   if (sessionIds && (evalSetFile === null || evalSetFile instanceof SessionEvalSetFile)) {
     return {
@@ -111,6 +111,7 @@ async function evaluateRequest(traceFiles: File[], evalSetFile: File | null, eva
         config: evalConfig,
         session_ids: sessionIds,
         ...(evalSetFile instanceof SessionEvalSetFile ? { eval_set_session_id: evalSetFile.sessionId } : {}),
+        ...(traceIds ? { trace_ids: traceIds } : {}),
       }),
     };
   }
@@ -118,6 +119,7 @@ async function evaluateRequest(traceFiles: File[], evalSetFile: File | null, eva
   (await Promise.all(traceFiles.map(materialize))).forEach(file => formData.append('trace_files', file));
   if (evalSetFile) formData.append('eval_set_file', await materialize(evalSetFile));
   formData.append('config', JSON.stringify(evalConfig));
+  if (traceIds) formData.append('trace_ids', JSON.stringify(traceIds));
   return { method: 'POST', body: formData };
 }
 
@@ -160,10 +162,12 @@ export async function evaluateTracesStreaming(
   onTraceProgress: (traceId: string, status: string, partialResult?: TraceResult) => void,
   onComplete: (result: RunResult) => void,
   onError: (error: Error) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  // The traces to score when the reader picked some of the sessions' turns; all of them when absent.
+  traceIds?: string[]
 ): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/evaluate/stream`, { ...(await evaluateRequest(traceFiles, evalSetFile, evalConfig)), signal });
+    const response = await fetch(`${API_BASE_URL}/evaluate/stream`, { ...(await evaluateRequest(traceFiles, evalSetFile, evalConfig, traceIds)), signal });
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -458,7 +462,7 @@ export async function getUsageCalls(hours: number, limit = 25): Promise<UsageCal
 }
 
 export async function getOnlineStatus(): Promise<OnlineStatus> {
-  const response = await fetch(`${config.api.endpoints.online}/status`);
+  const response = await fetch(withTenant(`${config.api.endpoints.online}/status`));
   if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load online evaluation status: ${httpStatusLabel(response)}`);
   return unwrap<OnlineStatus>(response);

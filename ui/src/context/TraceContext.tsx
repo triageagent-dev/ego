@@ -17,6 +17,8 @@ export interface TraceState {
   threshold: number;
   trajectoryMatchType: string;
   traceMetadata: Map<string, TraceMetadata>;
+  // Traces (turns) of the chosen sessions the reader left out of the evaluation.
+  excludedTraceIds: Set<string>;
   isLoadingMetadata: boolean;
   apiKeyStatus: ApiKeyStatus | null;
 
@@ -54,6 +56,8 @@ export interface TraceContextType {
     setJudgeModel: (model: string) => void;
     setThreshold: (threshold: number) => void;
     setTrajectoryMatchType: (matchType: string) => void;
+    toggleTrace: (traceId: string) => void;
+    setExcludedTraces: (traceIds: string[]) => void;
     runEvaluation: () => Promise<void>;
     stopEvaluation: () => void;
     setCurrentView: (view: ViewType) => void;

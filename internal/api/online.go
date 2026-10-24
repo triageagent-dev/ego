@@ -786,6 +786,23 @@ func (e *OnlineEngine) statusFor(info RoleInfo) onlineStatusDTO {
 	}
 	st.OpenAlerts = len(e.alerts)
 	e.mu.Unlock()
+	if e.store != nil && info.TenantScoped() {
+		// The budget is the whole server's; a view of some tenants shows what those spent today.
+		now := e.now()
+		day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+		st.Budget.Reserved = online.Cost{}
+		st.Budget.Spent = online.Cost{}
+		if spent, err := e.store.OnlineSpentByTenantSince(day.UnixMilli()); err != nil {
+			logx.Warnf("online: reading today's spend per tenant: %v", err)
+		} else {
+			for tenant, c := range spent {
+				if info.AllowsAnyTenant([]string{tenant}) {
+					st.Budget.Spent.JudgeTokens += c.JudgeTokens
+					st.Budget.Spent.JevCalls += c.JevCalls
+				}
+			}
+		}
+	}
 	if e.store != nil {
 		since := e.now().Add(-24 * time.Hour).UnixMilli()
 		if counts, err := e.store.OnlineScoredCounts(since); err != nil {

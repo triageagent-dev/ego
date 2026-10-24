@@ -31,6 +31,27 @@ type evaluateByIDRequest struct {
 	Config           evalConfigDTO `json:"config"`
 	SessionIDs       []string      `json:"session_ids"`
 	EvalSetSessionID string        `json:"eval_set_session_id,omitempty"`
+	// TraceIDs limits the evaluation to these traces of the named sessions (the turns the reader picked); empty
+	// means every trace.
+	TraceIDs []string `json:"trace_ids,omitempty"`
+}
+
+// keepTraces drops every loaded trace whose id is not in ids; no ids keeps them all.
+func keepTraces(req *evaluateRequest, ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	kept := req.traces[:0:0]
+	for _, t := range req.traces {
+		if want[t.TraceID] {
+			kept = append(kept, t)
+		}
+	}
+	req.traces = kept
 }
 
 // traceInput is one trace file's name and text, uploaded or encoded from a stored session.
@@ -108,6 +129,17 @@ func parseEvaluateByID(r *http.Request, sessions *SessionStore) (*evaluateReques
 	}
 
 	req := &evaluateRequest{cfg: body.Config, traceFilenames: map[string]string{}}
+	seen := map[string]bool{}
+	for _, id := range body.SessionIDs {
+		if sum, ok := sessions.Summary(id); ok {
+			for _, k := range sum.Tenants {
+				if !seen[k] {
+					seen[k] = true
+					req.tenants = append(req.tenants, k)
+				}
+			}
+		}
+	}
 	for _, in := range inputs {
 		parsed, err := loader.ParseFile(in.Filename, in.Content, "")
 		if err != nil {
@@ -119,6 +151,7 @@ func parseEvaluateByID(r *http.Request, sessions *SessionStore) (*evaluateReques
 		}
 		req.traces = append(req.traces, parsed...)
 	}
+	keepTraces(req, body.TraceIDs)
 
 	if id := body.EvalSetSessionID; id != "" {
 		tr, ok := sessions.Trace(id)

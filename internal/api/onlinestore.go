@@ -178,6 +178,26 @@ func (s *SQLiteStore) OnlineSpentSince(sinceMs int64) (online.Cost, error) {
 	return c, err
 }
 
+// OnlineSpentByTenantSince is OnlineSpentSince per tenant, for a view limited to some of them.
+func (s *SQLiteStore) OnlineSpentByTenantSince(sinceMs int64) (map[string]online.Cost, error) {
+	rows, err := s.db.Query(`SELECT tenant, COALESCE(SUM(judge_tokens), 0), COALESCE(SUM(jev_calls), 0)
+		FROM online_evals WHERE at_ms >= ? GROUP BY tenant`, sinceMs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]online.Cost{}
+	for rows.Next() {
+		var tenant string
+		var c online.Cost
+		if err := rows.Scan(&tenant, &c.JudgeTokens, &c.JevCalls); err != nil {
+			return nil, err
+		}
+		out[tenant] = c
+	}
+	return out, rows.Err()
+}
+
 type onlineSampleRow struct {
 	Key    online.SeriesKey
 	Sample online.Sample

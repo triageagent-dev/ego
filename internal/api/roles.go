@@ -354,14 +354,13 @@ func (info RoleInfo) AllowsAnyAgent(agentNames []string) bool {
 // still running (no Summary yet) or whose agent could not be resolved is hidden too. A tenant-limited role sees
 // no run here: use runVisibleToRole with the run's tenant.
 func runVisibleForRole(run runDTO, info RoleInfo) bool {
-	return runVisibleToRole(run, info, "")
+	return runVisibleToRole(run, info, nil)
 }
 
-// runVisibleToRole is runVisibleForRole for a run that may belong to a tenant: an online evaluation run, whose
-// tenant online_evals records ("" for every other run). A tenant-limited role sees a run only when it is one of
-// its tenants' online runs; both limits must allow.
-func runVisibleToRole(run runDTO, info RoleInfo, tenant string) bool {
-	if info.TenantScoped() && !info.AllowsAnyTenant([]string{tenant}) {
+// runVisibleToRole is runVisibleForRole for a run that may belong to tenants (see runTenants). A tenant-limited
+// role sees a run only when it belongs to one of its tenants; both limits must allow.
+func runVisibleToRole(run runDTO, info RoleInfo, tenants []string) bool {
+	if info.TenantScoped() && !info.AllowsAnyTenant(tenants) {
 		return false
 	}
 	if !info.Scoped() {

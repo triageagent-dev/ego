@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Segmented } from 'antd';
+import { Button, Checkbox, Segmented } from 'antd';
 import { css } from '@emotion/react';
 import { Play, Pencil, Loader2 } from 'lucide-react';
 import { NewGoldenForm } from './NewGoldenForm';
@@ -305,6 +305,42 @@ const detailsHintStyle = css`
   font-size: 12px;
 `;
 
+const turnsHeadStyle = css`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+  font-weight: 600;
+`;
+
+const turnsListStyle = css`
+  max-height: 260px;
+  overflow-y: auto;
+`;
+
+const turnRowStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+`;
+
+const turnTimeStyle = css`
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-family: monospace;
+`;
+
+const turnTextStyle = css`
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+`;
+
 const fileBoxStyle = css`
   margin-top: 12px;
   padding: 10px;
@@ -401,7 +437,9 @@ export const UploadView: React.FC = () => {
   const canRunEvaluation =
     state.traceFiles.length > 0 &&
     state.selectedEvaluatorNames.length > 0 &&
-    !state.isLoadingMetadata;
+    !state.isLoadingMetadata &&
+    // Something must be left to score once turns were taken out.
+    (state.traceMetadata.size === 0 || state.traceMetadata.size > state.excludedTraceIds.size);
 
   const traceCount = state.traceFiles.length;
 
@@ -421,6 +459,29 @@ export const UploadView: React.FC = () => {
     </button>
   );
 
+  // The turns (traces) of the chosen sessions, to score all of them or only some.
+  const turns = Array.from(state.traceMetadata.values()).sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0));
+  const turnPicker = (
+    <div css={noteStyle}>
+      <div css={turnsHeadStyle}>
+        <span>Turns to score: {turns.length - state.excludedTraceIds.size} of {turns.length}</span>
+        <span>
+          <Button size="small" type="link" onClick={() => actions.setExcludedTraces([])}>all</Button>
+          <Button size="small" type="link" onClick={() => actions.setExcludedTraces(turns.map((m) => m.traceId))}>none</Button>
+        </span>
+      </div>
+      <div css={turnsListStyle}>
+        {turns.map((m) => (
+          <label key={m.traceId} css={turnRowStyle} title={m.userInputPreview}>
+            <Checkbox checked={!state.excludedTraceIds.has(m.traceId)} onChange={() => actions.toggleTrace(m.traceId)} />
+            <span css={turnTimeStyle}>{m.startTime ? formatStarted(new Date(m.startTime / 1000).toISOString()) : '–'}</span>
+            <span css={turnTextStyle}>{m.userInputPreview || m.traceId}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+
   const traceStatus = (
     <>
       {state.isLoadingMetadata && (
@@ -434,6 +495,7 @@ export const UploadView: React.FC = () => {
           ✓ {state.traceMetadata.size} trace(s) ready
         </div>
       )}
+      {!state.isLoadingMetadata && state.traceMetadata.size > 1 && turnPicker}
     </>
   );
 

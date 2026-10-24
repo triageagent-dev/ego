@@ -28,6 +28,7 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
     })(),
     trajectoryMatchType: stored('ego.eval.trajectoryMatchType') || 'EXACT',
     traceMetadata: new Map(),
+    excludedTraceIds: new Set(),
     isLoadingMetadata: false,
     apiKeyStatus: null,
     isEvaluating: false,
@@ -60,10 +61,10 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
       setTraceFiles: async (files: File[]) => {
         // No files is the choice cleared, not a request to read nothing.
         if (files.length === 0) {
-          setState((prev) => ({ ...prev, traceFiles: [], traceMetadata: new Map(), isLoadingMetadata: false, errors: [] }));
+          setState((prev) => ({ ...prev, traceFiles: [], traceMetadata: new Map(), excludedTraceIds: new Set(), isLoadingMetadata: false, errors: [] }));
           return;
         }
-        setState((prev) => ({ ...prev, traceFiles: files, isLoadingMetadata: true }));
+        setState((prev) => ({ ...prev, traceFiles: files, excludedTraceIds: new Set(), isLoadingMetadata: true }));
 
         try {
           const response = await convertTraces(files);
@@ -117,9 +118,21 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
         setState((prev) => ({ ...prev, trajectoryMatchType: matchType }));
       },
 
+      toggleTrace: (traceId: string) =>
+        setState((prev) => {
+          const next = new Set(prev.excludedTraceIds);
+          if (!next.delete(traceId)) next.add(traceId);
+          return { ...prev, excludedTraceIds: next };
+        }),
+
+      setExcludedTraces: (traceIds: string[]) =>
+        setState((prev) => ({ ...prev, excludedTraceIds: new Set(traceIds) })),
+
       runEvaluation: async () => {
         const initialRows = new Map();
-        const metadataArray = Array.from(state.traceMetadata.values());
+        const metadataArray = Array.from(state.traceMetadata.values()).filter((m) => !state.excludedTraceIds.has(m.traceId));
+        // Only named when some turns were left out: otherwise the server scores every trace of the sessions.
+        const traceIds = state.excludedTraceIds.size > 0 ? metadataArray.map((m) => m.traceId) : undefined;
 
         for (let i = 0; i < metadataArray.length; i++) {
           const metadata = metadataArray[i];
@@ -264,7 +277,8 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
                 errors: [error.message],
               }));
             },
-            controller.signal
+            controller.signal,
+            traceIds
           );
         } catch (error) {
           setState((prev) => ({
@@ -373,7 +387,7 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
           };
         }),
     }),
-    [state.traceFiles, state.traceMetadata, state.evalSetFile, state.selectedEvaluatorNames, state.judgeModel, state.threshold, state.trajectoryMatchType]
+    [state.traceFiles, state.traceMetadata, state.excludedTraceIds, state.evalSetFile, state.selectedEvaluatorNames, state.judgeModel, state.threshold, state.trajectoryMatchType]
   );
 
   return (

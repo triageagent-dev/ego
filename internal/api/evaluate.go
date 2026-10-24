@@ -163,6 +163,8 @@ type evaluateRequest struct {
 	// filename, used only for Runs's evalSetItemName (see runs.go);
 	// evaluation itself never needs it.
 	traceFilenames map[string]string
+	// tenants are the tenant keys of the stored sessions the traces come from; none for uploaded files.
+	tenants []string
 }
 
 // parseEvaluateRequest reads and validates the "trace_files"/"config"/ "eval_set_file" multipart form fields
@@ -230,7 +232,16 @@ func parseEvaluateRequest(r *http.Request, sessions *SessionStore) (*evaluateReq
 		}
 	}
 
-	return &evaluateRequest{cfg: cfg, traces: traces, evalSet: evalSet, loadErrors: loadErrors, traceFilenames: traceFilenames}, 0, ""
+	req := &evaluateRequest{cfg: cfg, traces: traces, evalSet: evalSet, loadErrors: loadErrors, traceFilenames: traceFilenames}
+	// The traces to score, when the reader picked some of those in the files: a JSON list of trace ids.
+	if raw := r.FormValue("trace_ids"); raw != "" {
+		var ids []string
+		if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+			return nil, http.StatusBadRequest, "invalid trace_ids JSON: " + err.Error()
+		}
+		keepTraces(req, ids)
+	}
+	return req, 0, ""
 }
 
 // newJudgeModelGetter returns a memoized per-model-name judge.Model

@@ -16,6 +16,8 @@ type runSpecSummaryDTO struct {
 	EvalSet    map[string]any `json:"evalSet,omitempty"`
 	EvalConfig map[string]any `json:"evalConfig,omitempty"`
 	Target     map[string]any `json:"target,omitempty"`
+	// Tenants are the tenants of the sessions an evaluation was started on.
+	Tenants []string `json:"tenants,omitempty"`
 }
 
 // resultCountsDTO mirrors ui/src/lib/types.ts's ResultCounts.
@@ -133,9 +135,24 @@ func listRunsHandler(store *SQLiteStore) http.HandlerFunc {
 // newest runs mostly belong to other tenants, so the page size cannot bound the scan.
 const tenantRunScan = 2000
 
-// ListRunsFor lists the runs info may see, newest first, at most limit. pick is the tenant chosen in the switcher: it
-// narrows the online runs to that tenant, but a run that belongs to no tenant (an evaluation started by hand) is not
-// hidden by it, since the choice only filters what has a tenant to filter on.
+// runTenants are the tenants a run belongs to: the sessions an evaluation was started on, else the tenant an online
+// run was made for (from its own spec, so it survives the sessions' rows being purged), else what online_evals
+// records. None for a run that cannot be attributed, such as one over uploaded files.
+func runTenants(run runDTO, online string) []string {
+	if len(run.Spec.Tenants) > 0 {
+		return run.Spec.Tenants
+	}
+	if t, _ := run.Spec.Target["tenant"].(string); t != "" {
+		return []string{t}
+	}
+	if online != "" {
+		return []string{online}
+	}
+	return nil
+}
+
+// ListRunsFor lists the runs info may see, newest first, at most limit. pick is the tenant chosen in the switcher:
+// only runs of that tenant are listed, so a run that cannot be attributed to a tenant shows under "all tenants" only.
 func (s *SQLiteStore) ListRunsFor(info RoleInfo, pick string, statuses []string, limit int, before string) ([]runDTO, error) {
 	picked := info
 	picked.Tenants = narrowTenants(info.Tenants, pick)
@@ -157,8 +174,8 @@ func (s *SQLiteStore) ListRunsFor(info RoleInfo, pick string, statuses []string,
 		if len(visible) == limit {
 			break
 		}
-		tenant := tenants[run.RunID]
-		if !runVisibleToRole(run, info, tenant) || (tenant != "" && !picked.AllowsAnyTenant([]string{tenant})) {
+		of := runTenants(run, tenants[run.RunID])
+		if !runVisibleToRole(run, info, of) || !picked.AllowsAnyTenant(of) {
 			continue
 		}
 		visible = append(visible, run)
@@ -172,13 +189,13 @@ func (s *SQLiteStore) GetRunFor(info RoleInfo, runID string) (run runDTO, ok boo
 	if err != nil || !ok {
 		return runDTO{}, false, err
 	}
-	tenant := ""
+	online := ""
 	if info.TenantScoped() {
-		if tenant, _, err = s.OnlineRunTenant(runID); err != nil {
+		if online, _, err = s.OnlineRunTenant(runID); err != nil {
 			return runDTO{}, false, err
 		}
 	}
-	if !runVisibleToRole(run, info, tenant) {
+	if !runVisibleToRole(run, info, runTenants(run, online)) {
 		return runDTO{}, false, nil
 	}
 	return run, true, nil
@@ -270,6 +287,7 @@ func runSpecFromRequest(req *evaluateRequest) runSpecSummaryDTO {
 		seen[name] = struct{}{}
 		filenames = append(filenames, name)
 	}
+	spec.Tenants = req.tenants
 	spec.Target = map[string]any{
 		"kind":        "traces",
 		"trace_count": len(req.traces),

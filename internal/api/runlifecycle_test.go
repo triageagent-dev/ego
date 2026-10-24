@@ -77,17 +77,15 @@ func TestInterruptedManualRunsAreClosedAtStart(t *testing.T) {
 	}
 }
 
-// The tenant picked in the switcher narrows the online runs but does not hide a run that has no tenant.
-func TestPickedTenantKeepsHandStartedRuns(t *testing.T) {
+// A run belongs to the tenants of the sessions it was started on: the switcher shows it under those and no others,
+// and a run that cannot be attributed shows under "all tenants" only.
+func TestPickedTenantListsRunsOfThatTenant(t *testing.T) {
 	store := newRunStore(t)
-	manual, _ := store.CreateRun(runSpecSummaryDTO{Approach: "traces"})
-	mine, _ := store.CreateRun(runSpecSummaryDTO{Approach: "online"})
-	other, _ := store.CreateRun(runSpecSummaryDTO{Approach: "online"})
-	for run, tenant := range map[string]string{mine.RunID: "s/mine", other.RunID: "s/other"} {
-		if err := store.InsertOnlineEval(onlineEvalRow{SessionID: "sess-" + tenant, TraceID: "t", Tenant: tenant, RunID: run}, "v", "m", nil); err != nil {
-			t.Fatal(err)
-		}
-	}
+	mine, _ := store.CreateRun(runSpecSummaryDTO{Approach: "traces", Tenants: []string{"s/mine"}})
+	other, _ := store.CreateRun(runSpecSummaryDTO{Approach: "traces", Tenants: []string{"s/other"}})
+	upload, _ := store.CreateRun(runSpecSummaryDTO{Approach: "traces"})
+	// An online run is attributed by its own spec even when its session rows are gone.
+	online, _ := store.CreateRun(runSpecSummaryDTO{Approach: "online", Target: map[string]any{"tenant": "s/mine"}})
 
 	ids := func(info RoleInfo, pick string) map[string]bool {
 		runs, err := store.ListRunsFor(info, pick, nil, 10, "")
@@ -100,14 +98,39 @@ func TestPickedTenantKeepsHandStartedRuns(t *testing.T) {
 		}
 		return got
 	}
-	if got := ids(RoleInfo{}, "s/mine"); len(got) != 2 || !got[manual.RunID] || !got[mine.RunID] {
-		t.Errorf("picked tenant shows %v, want the hand-started run and that tenant's", got)
+	if got := ids(RoleInfo{}, "s/mine"); len(got) != 2 || !got[mine.RunID] || !got[online.RunID] {
+		t.Errorf("picked tenant shows %v, want its two runs", got)
 	}
-	if got := ids(RoleInfo{}, ""); len(got) != 3 {
-		t.Errorf("no pick shows %v, want all three", got)
+	if got := ids(RoleInfo{}, "s/"); len(got) != 3 || got[upload.RunID] {
+		t.Errorf("picked sender shows %v, want the three runs of its tenants", got)
 	}
-	// A role limited to a tenant never sees a run that has none.
-	if got := ids(RoleInfo{Tenants: []string{"s/mine"}}, ""); len(got) != 1 || !got[mine.RunID] {
-		t.Errorf("limited role sees %v, want only its tenant's run", got)
+	if got := ids(RoleInfo{}, ""); len(got) != 4 || !got[upload.RunID] || !got[other.RunID] {
+		t.Errorf("no pick shows %v, want all four", got)
+	}
+	if got := ids(RoleInfo{Tenants: []string{"s/mine"}}, ""); len(got) != 2 || !got[mine.RunID] {
+		t.Errorf("limited role sees %v, want only its tenant's runs", got)
+	}
+}
+
+// Today's spend is counted per tenant, so a view of one tenant is not charged with the others' judge calls.
+func TestOnlineSpendIsPerTenant(t *testing.T) {
+	store := newRunStore(t)
+	for i, e := range []onlineEvalRow{
+		{SessionID: "a", Tenant: "s/a", JudgeTokens: 500, JevCalls: 2, AtMs: 10},
+		{SessionID: "b", Tenant: "s/a", JudgeTokens: 100, JevCalls: 1, AtMs: 20},
+		{SessionID: "c", Tenant: "s/b", JudgeTokens: 900, JevCalls: 7, AtMs: 30},
+		{SessionID: "d", Tenant: "s/b", JudgeTokens: 5000, JevCalls: 9, AtMs: 1},
+	} {
+		e.TraceID = "t"
+		if err := store.InsertOnlineEval(e, "v", "m", nil); err != nil {
+			t.Fatalf("row %d: %v", i, err)
+		}
+	}
+	got, err := store.OnlineSpentByTenantSince(5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["s/a"].JudgeTokens != 600 || got["s/a"].JevCalls != 3 || got["s/b"].JudgeTokens != 900 {
+		t.Errorf("spend = %+v, want s/a 600 tokens 3 calls and s/b 900 tokens (the older row left out)", got)
 	}
 }
