@@ -45,9 +45,9 @@ const MAX_TOOLS = 10;
 export const MAX_TURN_NODES = 400;
 export const BUILTIN = 'built-in';
 
-const modelId = (m: string) => `m:${m}`;
-const serverId = (s: string) => `s:${s || BUILTIN}`;
-const toolId = (s: string, t: string) => `t:${s || BUILTIN}/${t}`;
+export const modelId = (m: string) => `m:${m}`;
+export const serverId = (s: string) => `s:${s || BUILTIN}`;
+export const toolId = (s: string, t: string) => `t:${s || BUILTIN}/${t}`;
 const moreId = (s: string) => `t:${s || BUILTIN}/…`;
 export const turnKey = (r: TurnRow) => `${r.session}:${r.rootSpanId}`;
 export const turnNodeId = (r: TurnRow) => `turn:${turnKey(r)}`;

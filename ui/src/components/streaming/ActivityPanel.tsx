@@ -9,7 +9,9 @@ import { fmtDuration, shortCount, turnStats } from '../../lib/turns';
 import { useTurnDetail } from '../../lib/useTurnDetail';
 import type { ActivitySubject, TurnRow, TurnsResult } from '../../lib/types';
 import { errorStyle } from '../ui/page';
+import { AgentChord } from './AgentChord';
 import { AgentGraph } from './AgentGraph';
+import { AgentTreemap } from './AgentTreemap';
 import { TurnTimeline } from './TurnTimeline';
 
 const WINDOWS = [
@@ -32,6 +34,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
   const [subjects, setSubjects] = useState<ActivitySubject[] | null>(null);
   const [subjectKey, setSubjectKey] = useState(() => stored('ego.activity.agent') || '');
   const [minutes, setMinutes] = useState(() => Number(stored('ego.activity.minutes')) || 1440);
+  const [view, setView] = useState<View>(() => VIEWS.find((v) => v === stored('ego.activity.view')) ?? 'graph');
   const [data, setData] = useState<TurnsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<TurnRow | null>(null);
@@ -54,6 +57,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
   useEffect(() => store('ego.activity.agent', subjectKey), [subjectKey]);
   const subject = subjects?.find((r) => keyOf(r) === subjectKey) ?? null;
   useEffect(() => store('ego.activity.minutes', String(minutes)), [minutes]);
+  useEffect(() => store('ego.activity.view', view), [view]);
 
   const load = useCallback(async (current: () => boolean) => {
     if (!subject) return;
@@ -104,6 +108,11 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
             <button key={w.minutes} onClick={() => { setMinutes(w.minutes); setSelected(null); }} aria-pressed={minutes === w.minutes} css={[segBtnStyle, minutes === w.minutes && segOnStyle]}>{w.label}</button>
           ))}
         </span>
+        <span css={segStyle}>
+          {VIEWS.map((v) => (
+            <button key={v} onClick={() => setView(v)} aria-pressed={view === v} css={[segBtnStyle, view === v && segOnStyle]}>{v}</button>
+          ))}
+        </span>
         {stats && (
           <span css={noteInlineStyle}>
             {stats.turns.toLocaleString()} turn{stats.turns === 1 ? '' : 's'} · awake {pct(stats.awake)}
@@ -124,8 +133,13 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
           <div css={layoutStyle}>
             <div css={mainStyle}>
               <div css={graphBoxStyle}>
-                <AgentGraph graph={graph} path={path} turnNode={shownNode} selectedId={nodeId} onSelectNode={setNodeId} onPickTurn={setSelected} />
+                {view === 'graph' && <AgentGraph graph={graph} path={path} turnNode={shownNode} selectedId={nodeId} onSelectNode={setNodeId} onPickTurn={setSelected} />}
+                {view === 'chord' && <AgentChord rows={data.turns} graph={graph} selectedId={nodeId} onSelectNode={setNodeId} />}
+                {view === 'treemap' && <AgentTreemap graph={graph} selectedId={nodeId} onSelectNode={setNodeId} />}
               </div>
+              {view === 'chord' && <div css={legendStyle}><span>a ribbon joins two things that the same turns used · hover an arc to follow it, click to select</span></div>}
+              {view === 'treemap' && <div css={legendStyle}><span>a tile is as big as its calls and warms with the share that failed · click to select</span></div>}
+              {view === 'graph' && (
               <div css={legendStyle}>
                 <span><i style={{ background: '#a79ff0' }} />agent</span>
                 <span><i style={{ background: '#6b7280' }} />model, MCP server, tool and, small, a turn</span>
@@ -134,6 +148,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
                 <span><i style={{ background: 'transparent', boxShadow: '0 0 0 2px #f97316' }} />the turn on show</span>
                 <span>click a turn to see its path · drag, scroll to zoom, double-click to fit</span>
               </div>
+              )}
               <div css={stripStyle}>
                 <TurnTimeline compact turns={data.turns} segments={data.segments} fromMs={data.fromMs} toMs={data.toMs} selected={shown} onSelect={setSelected} />
               </div>
@@ -261,6 +276,9 @@ const noteInlineStyle = css`
 const failedStyle = css`
   color: var(--status-failure);
 `;
+
+const VIEWS = ['graph', 'chord', 'treemap'] as const;
+type View = (typeof VIEWS)[number];
 
 const legendStyle = css`
   display: flex;
