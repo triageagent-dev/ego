@@ -110,3 +110,53 @@ func TestLedgerClampsTokenValues(t *testing.T) {
 		}
 	}
 }
+
+// One sender cannot open more sessions or tenants than its limits; another sender is not affected.
+func TestSenderQuotasRefuseNewSessionsAndTenantsPastTheLimit(t *testing.T) {
+	oldOpen, oldTenants := maxOpenSessionsPerSender, maxTenantsPerSender
+	defer func() { maxOpenSessionsPerSender, maxTenantsPerSender = oldOpen, oldTenants }()
+	maxOpenSessionsPerSender, maxTenantsPerSender = 3, 2
+
+	store := NewSessionStore(nil)
+	store.IngestFor("a", labelledTracesBody("s1", "t001", "p1", "x"))
+	store.IngestFor("a", labelledTracesBody("s2", "t002", "p2", "y"))
+	// A third tenant is refused: two are the limit.
+	store.IngestFor("a", labelledTracesBody("s3", "t003", "p3", "z"))
+	// An existing session still takes spans.
+	if n := store.IngestFor("a", labelledTracesBody("s1", "t004", "p4", "x")); n == 0 {
+		t.Error("an existing session was refused")
+	}
+	// A third open session of an existing tenant is allowed; a fourth is over the limit of three.
+	store.IngestFor("a", labelledTracesBody("s4", "t005", "p5", "x"))
+	store.IngestFor("a", labelledTracesBody("s5", "t006", "p6", "x"))
+	got := 0
+	for _, sum := range store.List() {
+		if strings.HasPrefix(sum.SessionID, "a:") {
+			got++
+		}
+	}
+	if got != 3 {
+		t.Errorf("sender a has %d sessions, want the limit of 3", got)
+	}
+	// Another sender has its own limits.
+	store.IngestFor("b", labelledTracesBody("s1", "t007", "p7", "x"))
+	if _, ok := store.Summary("b:x:s1"); !ok {
+		t.Error("sender b was refused because of sender a")
+	}
+}
+
+func TestTenantNamesPerSenderAreBounded(t *testing.T) {
+	old := maxNamesPerSender
+	defer func() { maxNamesPerSender = old }()
+	maxNamesPerSender = 2
+	names, _ := NewTenantNames(nil)
+	for _, k := range []string{"s/a", "s/b", "s/c", "other/a"} {
+		names.Fill(k, "n-"+k)
+	}
+	if names.Name("s/c") != "" {
+		t.Error("a third name of one sender was kept")
+	}
+	if names.Name("other/a") == "" {
+		t.Error("another sender's name was refused")
+	}
+}

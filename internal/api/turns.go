@@ -281,6 +281,7 @@ func (s *SessionStore) Turns(sel subjectKey, window time.Duration, info RoleInfo
 
 // turnsHandler implements GET /api/activity/turns?agent=&tenant=&minutes=.
 func turnsHandler(store *SessionStore) http.HandlerFunc {
+	cache := newReadCache()
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -301,7 +302,27 @@ func turnsHandler(store *SessionStore) http.HandlerFunc {
 			}
 			minutes = n
 		}
+		info := roleInfoOrOpen(r.Context())
+		tenant := strings.TrimSpace(q.Get("tenant"))
+		key := roleKey(info) + "|" + agent + "|" + tenant + "|" + strconv.Itoa(minutes) + "|" + strconv.FormatUint(store.changes(), 10)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": store.Turns(subjectKey{agent, strings.TrimSpace(q.Get("tenant"))}, time.Duration(minutes)*time.Minute, roleInfoOrOpen(r.Context())), "error": nil})
+		if body, ok := cache.get(key); ok {
+			_, _ = w.Write(body)
+			return
+		}
+		if !cache.acquire() {
+			w.Header().Set("Retry-After", "2")
+			writeEvaluateError(w, http.StatusTooManyRequests, "busy: try again in a moment")
+			return
+		}
+		defer cache.release()
+		body, err := json.Marshal(map[string]any{"data": store.Turns(subjectKey{agent, tenant}, time.Duration(minutes)*time.Minute, info), "error": nil})
+		if err != nil {
+			writeEvaluateError(w, http.StatusInternalServerError, "failed to encode turns")
+			return
+		}
+		body = append(body, '\n')
+		cache.put(key, body)
+		_, _ = w.Write(body)
 	}
 }

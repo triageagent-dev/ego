@@ -441,11 +441,57 @@ type SessionStore struct {
 
 	// onComplete, when set, is called with a segment's ID once it is closed for good (not when it merely goes quiet),
 	// outside s.mu (online evaluation's hook). It must not block.
-	onComplete func(sessionID string)
+	onComplete  func(sessionID string)
+	quotaLogged map[string]time.Time
 	// persistMu serialises a flush of the archive with a purge of tenants.
 	persistMu sync.Mutex
 	// tenantNamer receives the display name a named sender gives its tenant (TenantNameAttr).
 	tenantNamer func(key, name string)
+}
+
+// Limits per named sender, in memory: open sessions and distinct tenants. Variables so a test can lower them.
+var (
+	maxOpenSessionsPerSender = 5000
+	maxTenantsPerSender      = 1000
+)
+
+// overSenderQuotaLocked reports that a trace of sender, for tenant key want and session id name, would open a session
+// or a tenant past the sender's limits, and says so in the log at most once a minute per sender. Must be called with
+// s.mu held.
+func (s *SessionStore) overSenderQuotaLocked(sender, want, name string) bool {
+	if _, exists := s.sessions[name]; exists {
+		return false
+	}
+	open, tenants := 0, map[string]bool{}
+	for _, sess := range s.sessions {
+		if sess.Sender != sender {
+			continue
+		}
+		if !sess.IsComplete {
+			open++
+		}
+		if sess.tenantKey != "" {
+			tenants[sess.tenantKey] = true
+		}
+	}
+	reason := ""
+	switch {
+	case open >= maxOpenSessionsPerSender:
+		reason = "open sessions"
+	case !tenants[want] && len(tenants) >= maxTenantsPerSender:
+		reason = "tenants"
+	default:
+		return false
+	}
+	now := s.now()
+	if s.quotaLogged == nil {
+		s.quotaLogged = map[string]time.Time{}
+	}
+	if last, ok := s.quotaLogged[sender]; !ok || now.Sub(last) > time.Minute {
+		s.quotaLogged[sender] = now
+		logx.Warnf("ingest: sender %q is over its limit of %s: new ones are refused", sender, reason)
+	}
+	return true
 }
 
 // SetTenantNamer registers the hook that keeps a sender's own name for its tenant. Call before serving.
@@ -505,6 +551,14 @@ func NewSessionStore(hub *sseHub) *SessionStore {
 // session, marking it (and only it) dirty for the next flushPersist. Must
 // be called with s.mu held, at every point a Session's persisted fields
 // (Spans/HasRootSpan/IsComplete/CompletedAt/EvalSetID/Invocations) change.
+// changes is a counter that moves whenever any session changes; an answer computed at one value is still right at
+// the same value.
+func (s *SessionStore) changes() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.changeSeq
+}
+
 func (s *SessionStore) markChangedLocked(session *Session) {
 	s.changeSeq++
 	session.changeSeq = s.changeSeq
@@ -1162,6 +1216,11 @@ func (s *SessionStore) IngestBound(sender, tenant string, body map[string]any) i
 				}
 			}
 
+			// One sender token must not exhaust the pod for every tenant: a new session or tenant past its sender's
+			// limits is refused, the sessions and tenants it already has keep working.
+			if sender != "" && s.overSenderQuotaLocked(sender, tenantKey(sender, traceTenantLabel(tr.AllSpans, s.usageTenantAttr)), name) {
+				continue
+			}
 			var session *Session
 			var isNew, owned bool
 			if declared {

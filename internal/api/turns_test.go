@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 )
@@ -92,5 +93,54 @@ func TestTurnsHandlerWindowIsInMinutes(t *testing.T) {
 		if got := get(query); got != want {
 			t.Errorf("%s = %d, want %d", query, got, want)
 		}
+	}
+}
+
+// An answer is reused while nothing changed, never after a change, and the gate refuses what exceeds it.
+func TestReadCacheReusesOnlyWhileNothingChanged(t *testing.T) {
+	store := NewSessionStore(nil)
+	before := store.changes()
+	if store.changes() != before {
+		t.Fatal("the change counter moved with no change")
+	}
+	store.Ingest(labelledTracesBody("s", "aaaa", "p1", "x"))
+	if store.changes() == before {
+		t.Error("the change counter did not move after an ingest, so a cached answer would be served stale")
+	}
+
+	cache := newReadCache()
+	cache.put("k", []byte("answer"))
+	if got, ok := cache.get("k"); !ok || string(got) != "answer" {
+		t.Errorf("a fresh answer was not reused: %q %v", got, ok)
+	}
+	if _, ok := cache.get("k2"); ok {
+		t.Error("another key hit")
+	}
+	cache.now = func() time.Time { return time.Now().Add(readCacheTTL + time.Second) }
+	if _, ok := cache.get("k"); ok {
+		t.Error("an answer older than the TTL was reused")
+	}
+
+	c := newReadCache()
+	for i := 0; i < readConcurrency; i++ {
+		if !c.acquire() {
+			t.Fatalf("place %d refused", i)
+		}
+	}
+	if c.acquire() {
+		t.Error("a place past the concurrency limit was given")
+	}
+	c.release()
+	if !c.acquire() {
+		t.Error("a released place was not given again")
+	}
+}
+
+func TestRoleKeySeparatesWhatRolesSee(t *testing.T) {
+	a := roleKey(RoleInfo{Role: RoleMember, Tenants: []string{"x/1"}})
+	b := roleKey(RoleInfo{Role: RoleMember, Tenants: []string{"x/2"}})
+	c := roleKey(RoleInfo{Role: RoleMember})
+	if a == b || a == c || b == c {
+		t.Errorf("roles that see different things share a cache key: %q %q %q", a, b, c)
 	}
 }

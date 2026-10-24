@@ -18,6 +18,9 @@ const (
 	maxTenantNames = 10000
 )
 
+// maxNamesPerSender bounds the names one sender can add, counted by the "<sender>/" prefix of the keys.
+var maxNamesPerSender = 1000
+
 // TenantNames maps a tenant key to a name people recognise. A sender may label its tenants with ids (a workspace
 // id, say); an admin gives each one a display name here. The key stays the identity: grants, filters and storage
 // all use it, and the name is only what the switcher and the session badges show.
@@ -117,6 +120,21 @@ func (t *TenantNames) Fill(key, name string) {
 	if full {
 		logx.Debugf("tenant name from %q ignored: the names table is full", key)
 		return
+	}
+	// One sender cannot take the table: its names are counted by the key prefix.
+	if sender, _, ok := strings.Cut(key, "/"); ok {
+		t.mu.RLock()
+		n := 0
+		for k := range t.names {
+			if strings.HasPrefix(k, sender+"/") {
+				n++
+			}
+		}
+		t.mu.RUnlock()
+		if n >= maxNamesPerSender {
+			logx.Debugf("tenant name from %q ignored: its sender has %d names", key, n)
+			return
+		}
 	}
 	if err := t.setLocked(key, name); err != nil {
 		logx.Debugf("tenant name from %q ignored: %v", key, err)

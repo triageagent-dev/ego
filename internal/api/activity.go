@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/logx"
@@ -157,6 +158,7 @@ func (s *SessionStore) Activity(f mcptools.SessionFilter, info RoleInfo) []Activ
 
 // activityHandler implements GET /api/activity?tenant=&since=.
 func activityHandler(store *SessionStore) http.HandlerFunc {
+	cache := newReadCache()
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -167,7 +169,26 @@ func activityHandler(store *SessionStore) http.HandlerFunc {
 			writeEvaluateError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		info := roleInfoOrOpen(r.Context())
+		key := roleKey(info) + "|" + filter.Tenant + "|" + r.URL.Query().Get("since") + "|" + strconv.FormatUint(store.changes(), 10)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": store.Activity(filter, roleInfoOrOpen(r.Context())), "error": nil})
+		if body, ok := cache.get(key); ok {
+			_, _ = w.Write(body)
+			return
+		}
+		if !cache.acquire() {
+			w.Header().Set("Retry-After", "2")
+			writeEvaluateError(w, http.StatusTooManyRequests, "busy: try again in a moment")
+			return
+		}
+		defer cache.release()
+		body, err := json.Marshal(map[string]any{"data": store.Activity(filter, info), "error": nil})
+		if err != nil {
+			writeEvaluateError(w, http.StatusInternalServerError, "failed to encode activity")
+			return
+		}
+		body = append(body, '\n')
+		cache.put(key, body)
+		_, _ = w.Write(body)
 	}
 }
