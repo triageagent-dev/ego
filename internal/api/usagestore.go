@@ -198,8 +198,8 @@ func (s *SQLiteStore) UsageCacheUnknown() (bool, error) {
 // cacheSplit is the cache part of one LLM call's input tokens.
 type cacheSplit struct{ read, write int64 }
 
-// FillUsageCache sets the cache split of the rows that predate it (span id -> split). A span with no cache attribute
-// gets zero, so a row is filled once and never read again.
+// FillUsageCache sets the cache split of the rows that predate it (span id -> split), in one transaction. A span with
+// no cache attribute gets zero, so a row is filled once. Call FinishUsageCache after the last batch.
 func (s *SQLiteStore) FillUsageCache(splits map[string]cacheSplit) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -217,12 +217,13 @@ func (s *SQLiteStore) FillUsageCache(splits map[string]cacheSplit) error {
 			return err
 		}
 	}
-	// Rows whose session left the archive have nothing to read: their input is priced as it always was.
-	if _, err := tx.Exec(`UPDATE llm_calls SET cache_read_tokens = 0, cache_write_tokens = 0 WHERE cache_read_tokens IS NULL`); err != nil {
-		tx.Rollback()
-		return err
-	}
 	return s.announce(topicUsage, tx.Commit())
+}
+
+// FinishUsageCache marks the rows no archived span matched as having no cache part, so they are not looked for again.
+func (s *SQLiteStore) FinishUsageCache() error {
+	_, err := s.db.Exec(`UPDATE llm_calls SET cache_read_tokens = 0, cache_write_tokens = 0 WHERE cache_read_tokens IS NULL`)
+	return err
 }
 
 // InsertUsage writes rows in one transaction, ignoring spans already

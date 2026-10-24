@@ -442,6 +442,8 @@ type SessionStore struct {
 	// onComplete, when set, is called with a segment's ID once it is closed for good (not when it merely goes quiet),
 	// outside s.mu (online evaluation's hook). It must not block.
 	onComplete func(sessionID string)
+	// persistMu serialises a flush of the archive with a purge of tenants.
+	persistMu sync.Mutex
 	// tenantNamer receives the display name a named sender gives its tenant (TenantNameAttr).
 	tenantNamer func(key, name string)
 }
@@ -530,6 +532,9 @@ func NewSessionStoreWithArchive(hub *sseHub, store *SQLiteStore, limits SessionL
 	return s
 }
 
+// migrationBatch is how many ledger rows a startup pass over the archive writes at a time.
+const migrationBatch = 5000
+
 // LoadPersisted restores every archived session, if a store is configured.
 // Each restored session gets a fresh incremental.Extractor - see
 // sessionSnapshot's doc comment for why that's fine. Call once at startup,
@@ -551,20 +556,35 @@ func (s *SessionStore) LoadPersisted() error {
 	if err != nil {
 		return fmt.Errorf("checking usage ledger: %w", err)
 	}
+	// Each pass below streams the archive and writes in batches, so memory stays flat on a large archive and a pass
+	// that is cut short (a restart) keeps what it has done: every pass marks its rows and runs again only for the
+	// rows still unmarked.
 	if empty {
-		var backfill []usageRow
+		var batch []usageRow
+		var werr error
+		flush := func() {
+			if werr == nil && len(batch) > 0 {
+				werr = s.store.InsertUsage(batch)
+			}
+			batch = batch[:0]
+		}
+		sessions := 0
 		if err := s.store.ForEachSnapshot(func(snap sessionSnapshot) {
 			for _, span := range snap.Spans {
 				if row, ok := usageRowFromSpan(span, snap.SessionID, s.usageTenantAttr, snap.Sender, traceTenantLabel(snap.Spans, s.usageTenantAttr)); ok {
 					row.Thread = snapThread(snap)
-					backfill = append(backfill, row)
+					batch = append(batch, row)
 				}
+			}
+			if sessions++; len(batch) >= migrationBatch {
+				flush()
+				logx.Infof("session archive: usage backfill, %d sessions read", sessions)
 			}
 		}); err != nil {
 			return fmt.Errorf("reading session archive for usage backfill: %w", err)
 		}
-		if err := s.store.InsertUsage(backfill); err != nil {
-			return fmt.Errorf("backfilling usage ledger: %w", err)
+		if flush(); werr != nil {
+			return fmt.Errorf("backfilling usage ledger: %w", werr)
 		}
 	}
 	// Split the input of rows written before the ledger kept the cache parts, from the archived spans.
@@ -572,17 +592,33 @@ func (s *SessionStore) LoadPersisted() error {
 		return fmt.Errorf("checking usage ledger cache split: %w", err)
 	} else if unknown {
 		splits := map[string]cacheSplit{}
+		var werr error
+		flush := func() {
+			if werr == nil && len(splits) > 0 {
+				werr = s.store.FillUsageCache(splits)
+			}
+			clear(splits)
+		}
+		sessions := 0
 		if err := s.store.ForEachSnapshot(func(snap sessionSnapshot) {
 			for _, span := range snap.Spans {
 				if row, ok := usageRowFromSpan(span, snap.SessionID, s.usageTenantAttr, snap.Sender, ""); ok {
 					splits[row.SpanID] = cacheSplit{row.CacheReadTokens, row.CacheWriteTokens}
 				}
 			}
+			if sessions++; len(splits) >= migrationBatch {
+				flush()
+				logx.Infof("session archive: usage cache split, %d sessions read", sessions)
+			}
 		}); err != nil {
 			return fmt.Errorf("reading session archive for the usage cache split: %w", err)
 		}
-		if err := s.store.FillUsageCache(splits); err != nil {
-			return fmt.Errorf("filling usage cache split: %w", err)
+		if flush(); werr != nil {
+			return fmt.Errorf("filling usage cache split: %w", werr)
+		}
+		// Rows whose session left the archive have nothing to read: their input is priced as it always was.
+		if err := s.store.FinishUsageCache(); err != nil {
+			return fmt.Errorf("finishing usage cache split: %w", err)
 		}
 	}
 	// Name kindless rows after their trace's root span, for rows written
@@ -591,17 +627,27 @@ func (s *SessionStore) LoadPersisted() error {
 		return fmt.Errorf("checking usage ledger kinds: %w", err)
 	} else if kindless {
 		roots := map[string]string{}
+		var werr error
+		flush := func() {
+			if werr == nil && len(roots) > 0 {
+				werr = s.store.FillUsageKinds(roots)
+			}
+			clear(roots)
+		}
 		if err := s.store.ForEachSnapshot(func(snap sessionSnapshot) {
 			for _, span := range snap.Spans {
 				if span.ParentSpanID == "" {
 					roots[span.TraceID] = span.OperationName
 				}
 			}
+			if len(roots) >= migrationBatch {
+				flush()
+			}
 		}); err != nil {
 			return fmt.Errorf("reading session archive for usage kinds: %w", err)
 		}
-		if err := s.store.FillUsageKinds(roots); err != nil {
-			return fmt.Errorf("filling usage kinds: %w", err)
+		if flush(); werr != nil {
+			return fmt.Errorf("filling usage kinds: %w", werr)
 		}
 	}
 
@@ -788,6 +834,9 @@ func (s *SessionStore) StartPersistence(interval time.Duration, stop <-chan stru
 // retried next tick, exactly as before this optimization existed (when
 // every tick unconditionally retried everything).
 func (s *SessionStore) flushPersist() error {
+	// A purge holds the same lock, so a snapshot taken before it cannot be written back after it.
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
 	if err := s.flushUsage(); err != nil {
 		return err
 	}

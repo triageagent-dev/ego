@@ -134,6 +134,14 @@ spec:
               containerPort: 4317
             - name: health
               containerPort: 9090
+          # A start that migrates a large archive can take minutes, and the health listener answers only once the
+          # archive is loaded: the other probes wait for this one, so a slow start is not a failed one.
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: health
+            periodSeconds: 5
+            failureThreshold: 120
           readinessProbe:
             httpGet:
               path: /api/health

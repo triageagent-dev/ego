@@ -40,6 +40,9 @@ func TestUsageLedgerKeepsTheCacheSplit(t *testing.T) {
 	if err := archive.FillUsageCache(map[string]cacheSplit{"old": {400, 0}}); err != nil {
 		t.Fatal(err)
 	}
+	if err := archive.FinishUsageCache(); err != nil {
+		t.Fatal(err)
+	}
 	if unknown, _ := archive.UsageCacheUnknown(); unknown {
 		t.Error("a row is still unknown after the fill")
 	}
