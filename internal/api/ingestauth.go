@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"crypto/subtle"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	"github.com/triageagent-dev/ego/internal/logx"
@@ -31,6 +33,58 @@ type ingestAuth struct {
 	rejectMu   sync.Mutex
 	rejectLast time.Time
 	rejected   int
+
+	failMu sync.Mutex
+	fails  map[string]failWindow
+}
+
+// failWindow counts the refused pushes of one source in the current minute.
+type failWindow struct {
+	start time.Time
+	n     int
+}
+
+const (
+	// failLimit refused pushes in one failWindowLen from one source make the next ones answer "slow down" instead of
+	// "unauthorized"; failTracked bounds the table of sources.
+	failLimit     = 30
+	failWindowLen = time.Minute
+	failTracked   = 4096
+)
+
+// recordFailure counts a refused push from source and reports that the source is over its limit.
+func (a *ingestAuth) recordFailure(source string) bool {
+	a.failMu.Lock()
+	defer a.failMu.Unlock()
+	now := time.Now()
+	if a.fails == nil {
+		a.fails = map[string]failWindow{}
+	}
+	w := a.fails[source]
+	if now.Sub(w.start) > failWindowLen {
+		w = failWindow{start: now}
+	}
+	w.n++
+	if len(a.fails) >= failTracked {
+		for k, v := range a.fails {
+			if now.Sub(v.start) > failWindowLen {
+				delete(a.fails, k)
+			}
+		}
+		if len(a.fails) >= failTracked {
+			clear(a.fails)
+		}
+	}
+	a.fails[source] = w
+	return w.n > failLimit
+}
+
+// sourceOf is the host part of a remote address.
+func sourceOf(addr string) string {
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		return h
+	}
+	return addr
 }
 
 // rejectLogEvery bounds the refusal log: a sender with a wrong token retries on every export.
@@ -122,6 +176,11 @@ func (a *ingestAuth) middleware(next http.Handler) http.Handler {
 		sender, tenant, ok := a.resolve(r.Header.Get("Authorization"))
 		if !ok {
 			a.logRejected("http", r.Header.Get("Authorization"))
+			if a.recordFailure(sourceOf(r.RemoteAddr)) {
+				w.Header().Set("Retry-After", "60")
+				http.Error(w, "too many refused pushes: slow down", http.StatusTooManyRequests)
+				return
+			}
 			w.Header().Set("WWW-Authenticate", `Bearer realm="ego-ingest"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -141,6 +200,9 @@ func (a *ingestAuth) interceptor() grpc.UnaryServerInterceptor {
 		sender, tenant, ok := a.resolve(header)
 		if !ok {
 			a.logRejected("grpc", header)
+			if p, ok := peer.FromContext(ctx); ok && a.recordFailure(sourceOf(p.Addr.String())) {
+				return nil, status.Error(codes.ResourceExhausted, "too many refused pushes: slow down")
+			}
 			return nil, status.Error(codes.Unauthenticated, "unauthorized")
 		}
 		return handler(withIngestSender(ctx, sender, tenant), req)

@@ -73,3 +73,29 @@ func TestSignedOutPageIsTheLogoLinkingToSignIn(t *testing.T) {
 		t.Errorf("POST = %d, want 405", rec.Code)
 	}
 }
+
+func TestLoopbackHostOnlyRefusesARebindingName(t *testing.T) {
+	h := loopbackHostOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	for host, want := range map[string]int{
+		"localhost:8001":     http.StatusOK,
+		"127.0.0.1:8001":     http.StatusOK,
+		"[::1]:8001":         http.StatusOK,
+		"localhost":          http.StatusOK,
+		"evil.example:8001":  http.StatusMisdirectedRequest,
+		"127.0.0.1.evil.org": http.StatusMisdirectedRequest,
+		"10.0.0.5:8001":      http.StatusMisdirectedRequest,
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("Host %q = %d, want %d", host, rec.Code, want)
+		}
+	}
+	for addr, want := range map[string]bool{"127.0.0.1:8001": true, "localhost:8001": true, "[::1]:8001": true, ":8001": false, "0.0.0.0:8001": false} {
+		if got := listensOnLoopback(addr); got != want {
+			t.Errorf("listensOnLoopback(%q) = %v, want %v", addr, got, want)
+		}
+	}
+}

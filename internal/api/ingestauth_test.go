@@ -168,3 +168,39 @@ func TestRefusedPushIsLoggedWithoutTheToken(t *testing.T) {
 		t.Errorf("not rate limited: %q", out)
 	}
 }
+
+// Refused pushes from one source are answered with "slow down" after a limit, a valid push from it still passes, and
+// another source is not affected.
+func TestFailedIngestAuthIsThrottledPerSource(t *testing.T) {
+	ts, _ := NewSenderStore(nil)
+	if _, err := ts.Create("acme", ""); err != nil {
+		t.Fatal(err)
+	}
+	token, _, _ := ts.NewToken("acme", "", "")
+	a := &ingestAuth{globalToken: "shared", senders: ts}
+	h := a.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	push := func(from, bearer string) int {
+		req := httptest.NewRequest(http.MethodPost, "/v1/traces", nil)
+		req.RemoteAddr = from + ":4000"
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for i := 0; i < failLimit; i++ {
+		if code := push("10.0.0.1", "wrong"); code != http.StatusUnauthorized {
+			t.Fatalf("refusal %d = %d, want 401", i, code)
+		}
+	}
+	if code := push("10.0.0.1", "wrong"); code != http.StatusTooManyRequests {
+		t.Errorf("past the limit = %d, want 429", code)
+	}
+	if code := push("10.0.0.1", token); code != http.StatusOK {
+		t.Errorf("a valid push from a throttled source = %d, want 200", code)
+	}
+	if code := push("10.0.0.2", "wrong"); code != http.StatusUnauthorized {
+		t.Errorf("another source = %d, want 401", code)
+	}
+}

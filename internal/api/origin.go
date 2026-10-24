@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -50,4 +51,36 @@ func originAllowed(r *http.Request, publicHost string) bool {
 		}
 	}
 	return false
+}
+
+// listensOnLoopback reports that addr ("host:port") is bound to a loopback address or to localhost.
+func listensOnLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// loopbackHostOnly answers only requests whose Host names the loopback interface (localhost, 127.0.0.1, ::1), and
+// refuses any other name with 421, so a DNS-rebinding page cannot reach a server that has no login.
+func loopbackHostOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		host = strings.Trim(host, "[]")
+		if !strings.EqualFold(host, "localhost") {
+			if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+				http.Error(w, "misdirected request", http.StatusMisdirectedRequest)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }

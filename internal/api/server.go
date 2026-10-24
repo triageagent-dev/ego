@@ -267,7 +267,13 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 				publicHost = u.Host
 			}
 		}
-		errCh <- newHTTPServer(addr, securityHeaders(originGuard(publicHost, topMux)), 120*time.Second, 0).ListenAndServe()
+		var handler http.Handler = securityHeaders(originGuard(publicHost, topMux))
+		// With no login on a loopback address every caller is an admin; a page on another domain that rebinds its name
+		// to 127.0.0.1 would pass the origin check, so only a loopback name is answered.
+		if sessionSecret == "" && listensOnLoopback(addr) {
+			handler = loopbackHostOnly(handler)
+		}
+		errCh <- newHTTPServer(addr, handler, 120*time.Second, 0).ListenAndServe()
 	}()
 
 	sigCh := make(chan os.Signal, 1)
