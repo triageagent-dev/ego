@@ -3,7 +3,7 @@
 # instead of the "dev" placeholder a plain `go build` gets. Set the VERSION
 # env var to match the image tag before running `ko build`, e.g.:
 #   VERSION=0.7.0 ko build --platform=linux/amd64 --bare --tags=0.7.0 ./cmd/ego
-defaultBaseImage: cgr.dev/chainguard/static
+defaultBaseImage: cgr.dev/chainguard/static@sha256:17367e4d3ae2b46c3290858e483fac09be085c92b372360fe3bf6a6150848fde
 builds:
   - id: ego
     main: ./cmd/ego

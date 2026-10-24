@@ -2,7 +2,7 @@
 
 # Build stages run on the builder's own platform and the Go binary is cross-compiled, so a multi-arch build
 # does not run npm and the Go compiler under emulation (the UI assets are the same for every platform).
-FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS ui
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS ui
 WORKDIR /build/ui
 # UI_BASE_PATH: set when this image is served under a path prefix behind a
 # reverse proxy (e.g. "/ego/") instead of at domain root. Vite's --base
@@ -16,7 +16,7 @@ RUN npm ci
 COPY ui/ ./
 RUN VITE_API_BASE_URL="${UI_BASE_PATH%/}" npm run build -- --base="${UI_BASE_PATH}"
 
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS build
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
@@ -39,7 +39,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
     -ldflags "-s -w -X github.com/triageagent-dev/ego/internal/api.Version=${VERSION}" \
     -o /ego ./cmd/ego
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 WORKDIR /app
 COPY --from=build /ego /usr/local/bin/ego
 

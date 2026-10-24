@@ -33,7 +33,10 @@ fi
 export GH_TOKEN
 gh release view "$tag" >/dev/null 2>&1 && { echo "release $tag already exists" >&2; exit 1; }
 
-push() { git -c credential.helper= -c "credential.helper=!f() { echo username=$GH_USER; echo password=$GH_TOKEN; }; f" push "$@"; }
+# The helper reads the account and token from the environment when git runs it: written into the command line, the
+# token would show in the process list for as long as the push takes.
+export GH_USER
+push() { git -c credential.helper= -c 'credential.helper=!f() { echo username=$GH_USER; echo password=$GH_TOKEN; }; f' push "$@"; }
 
 echo "== UI"
 (cd ui && npm ci --silent && npm run build)
