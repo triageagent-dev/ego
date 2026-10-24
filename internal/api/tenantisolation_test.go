@@ -8,7 +8,7 @@ import (
 func TestCleanLabelKeepsKeysAndIdsUnambiguous(t *testing.T) {
 	for in, want := range map[string]string{
 		"acme":                  "acme",
-		"01a169c0-14a2.x_y@z+1": "01a169c0-14a2.x_y@z+1",
+		"0a1b2c3d-4e5f.x_y@z+1": "0a1b2c3d-4e5f.x_y@z+1",
 		"core/acme":             "core_acme",
 		"a:b":                   "a_b",
 		"*":                     "_",
@@ -30,7 +30,7 @@ func TestCleanLabelKeepsKeysAndIdsUnambiguous(t *testing.T) {
 			t.Errorf("ValidTenantLabel(%q) accepted", bad)
 		}
 	}
-	for _, ok := range []string{"t1", "demo-1", "01a169c0-14a2", "a.b_c@d+e"} {
+	for _, ok := range []string{"t1", "demo-1", "0a1b2c3d-4e5f", "a.b_c@d+e"} {
 		if err := ValidTenantLabel(ok); err != nil {
 			t.Errorf("ValidTenantLabel(%q) = %v", ok, err)
 		}
