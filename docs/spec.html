@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ego Specification</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAwIj48ZyB0cmFuc2Zvcm09InJvdGF0ZSgtOTAgMTAwIDEwMCkiPjxjaXJjbGUgY3g9IjEwMCIgY3k9IjEwMCIgcj0iODQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzljNGEyNiIgc3Ryb2tlLXdpZHRoPSIxNiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtZGFzaGFycmF5PSI0MjIgNTI4Ii8+PGNpcmNsZSBjeD0iMTAwIiBjeT0iMTAwIiByPSI1NiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjM2Y2NDc4IiBzdHJva2Utd2lkdGg9IjE2IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1kYXNoYXJyYXk9IjI2NCAzNTIiLz48L2c+PC9zdmc+">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --paper:      #F0EEE6;
+  --surface:    #FFFFFF;
+  --surface-2:  #E4E0D4;
+  --ink:        #191919;
+  --ink-2:      #3D3B36;
+  --muted:      #736F65;
+  --rule:       #D9D5C8;
+  --rule-strong:#B3AE9E;
+  --accent:     #9C4A26;
+  --accent-soft:#EBDBBC;
+  --alt:        #3F6478;
+  --alt-soft:   #D3DEE3;
+  --serif: 'Source Serif 4', Georgia, serif;
+  --sans:  'Instrument Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono:  'IBM Plex Mono', ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html { background: var(--paper); scroll-behavior: smooth; font-size: 17px; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 400 16px/1.62 var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); }
+code { font: 400 .8em var(--mono); background: var(--surface-2); padding: .08em .35em; border-radius: 3px; hyphens: none; -webkit-hyphens: none; white-space: nowrap; }
+
+.shell { display: grid; grid-template-columns: 17rem minmax(0,1fr); max-width: 78rem; margin: 0 auto; align-items: start; }
+.sidebar { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; border-right: 1px solid var(--rule); padding: 2.5rem 1.4rem 3rem 1.75rem; }
+.sidebar h2 { font: 500 .68rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 .7rem .6rem; }
+.sidebar h2.group { margin-top: 1.6rem; }
+.sidebar nav { display: flex; flex-direction: column; }
+.sidebar a { display: flex; align-items: baseline; gap: .7rem; padding: .45rem .6rem; border-radius: 6px; text-decoration: none; color: var(--ink); font: 500 .9rem var(--sans); }
+.sidebar a:hover, .sidebar a.on { background: var(--surface); }
+.sidebar a.on .n { color: var(--accent); }
+.sidebar .n { font: 400 .74rem var(--mono); color: var(--muted); width: 1.1rem; flex: none; }
+.sidebar .chev { margin-left: auto; color: var(--rule-strong); align-self: center; flex: none; }
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { position: static; max-height: none; overflow: visible; border-right: 0; border-bottom: 1px solid var(--rule); padding: 1.5rem 1.25rem; }
+  .sidebar nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
+  .sidebar .chev { display: none; }
+}
+
+main { padding: 3.5rem 3.5rem 6rem; min-width: 0; }
+@media (max-width: 900px) { main { padding: 2rem 16px 4rem; } }
+.eyebrow { font: 500 .72rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 1.2rem; }
+h1 { font: 700 clamp(2.1rem, 4.4vw, 3rem)/1.12 var(--serif); letter-spacing: -.018em; text-wrap: balance; margin: 0 0 1.2rem; }
+.standfirst strong { font-weight: 500; color: var(--ink); }
+.standfirst { font: 400 1.06rem/1.62 var(--sans); color: var(--ink-2); margin: 0 0 1.4rem; }
+
+section { margin-top: 4.5rem; scroll-margin-top: 1.5rem; }
+.sechead { display: grid; grid-template-columns: 3rem 1fr; align-items: baseline; border-bottom: 1px solid var(--rule-strong); padding-bottom: .6rem; margin-bottom: 1.6rem; }
+.ord { font: 400 .85rem var(--mono); color: var(--accent); }
+.sechead h2 { font: 600 1.65rem/1.25 var(--serif); letter-spacing: -.012em; margin: 0; }
+.faq { border-bottom: 1px solid var(--rule); }
+.faq summary { font: 600 1.02rem/1.4 var(--sans); padding: .9rem 0; cursor: pointer; list-style-position: outside; }
+.faq[open] summary { padding-bottom: .5rem; }
+h3 { font: 600 1.02rem/1.4 var(--sans); margin: 2.2rem 0 .6rem; }
+p { margin: 0 0 1.1rem; }
+ul { margin: 0 0 1.1rem; padding-left: 1.3em; }
+li { margin-bottom: .45rem; }
+p, li, figcaption, .standfirst { text-align: justify; hyphens: auto; -webkit-hyphens: auto; }
+@media (max-width: 640px) { p, li, figcaption, .standfirst { text-align: left; } }
+
+figure { margin: 2rem 0 2.2rem; }
+figure svg { width: 100%; height: auto; display: block; }
+figcaption { font: 400 .85rem/1.55 var(--sans); color: var(--muted); margin-top: .8rem; }
+.figscroll { overflow-x: auto; }
+.figscroll svg { min-width: 640px; }
+
+.tablewrap { overflow-x: auto; margin: 1.4rem 0 2rem; }
+table { border-collapse: collapse; width: 100%; font: 400 .85rem/1.5 var(--sans); color: var(--ink-2); }
+th { font: 500 .66rem var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--rule-strong); vertical-align: bottom; }
+td { padding: .6rem .7rem; border-bottom: 1px solid var(--rule); vertical-align: top; text-align: left; }
+tr:hover td { background: var(--surface); }
+td code { white-space: normal; }
+td.k { font: 400 .78rem var(--mono); color: var(--ink); }
+
+pre { background: #191919; border: 1px solid #191919; border-radius: 8px; padding: 1rem 1.2rem; overflow-x: auto; margin: 1rem 0 1.6rem; }
+pre code { background: none; padding: 0; font: 400 .8rem/1.6 var(--mono); white-space: pre; color: #F0EEE6; }
+
+/* svg vocabulary */
+.box   { fill: var(--surface); stroke: var(--rule-strong); stroke-width: 1; }
+.box.hot { stroke: var(--accent); stroke-width: 1.6; }
+.box.cool { stroke: var(--alt); stroke-width: 1.4; }
+.box.ghost { fill: none; stroke: var(--rule-strong); stroke-dasharray: 4 4; }
+.box.warn { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+.well  { fill: var(--surface-2); stroke: none; }
+.bound { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 5; }
+.e     { fill: none; stroke: var(--muted); stroke-width: 1.4; }
+.e.a   { stroke: var(--accent); stroke-width: 1.8; }
+.e.b   { stroke: var(--alt); stroke-width: 1.6; }
+.e.d   { stroke-dasharray: 5 4; }
+.t     { font: 600 13px var(--sans); fill: var(--ink); }
+.ts    { font: 400 11.5px var(--sans); fill: var(--muted); }
+.tl    { font: 400 11.5px var(--sans); fill: var(--ink-2); }
+.m     { font: 500 10.5px var(--mono); letter-spacing: .1em; fill: var(--muted); }
+.mb    { font: 500 10.5px var(--mono); letter-spacing: .1em; fill: var(--alt); }
+.ma    { font: 500 10.5px var(--mono); letter-spacing: .06em; fill: var(--accent); }
+.mi    { font: 400 11.5px var(--mono); fill: var(--ink); }
+.c     { text-anchor: middle; }
+.r     { text-anchor: end; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+<aside class="sidebar">
+  <h2>Specification</h2>
+  <nav id="menu">
+    <a href="#s1"><span class="n">01</span>Architecture<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+    <a href="#s2"><span class="n">02</span>Ingest and sessions<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+    <a href="#s3"><span class="n">03</span>Senders and tenants<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+    <a href="#s4"><span class="n">04</span>Metrics and judges<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+    <a href="#s5"><span class="n">05</span>Online evaluation<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+    <a href="#s6"><span class="n">06</span>The RSI loop<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+    <a href="#s7"><span class="n">07</span>Activity and usage<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+    <a href="#s8"><span class="n">08</span>MCP<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+    <a href="#s9"><span class="n">09</span>Access and roles<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+    <a href="#s10"><span class="n">10</span>Hardening and limits<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+    <a href="#s11"><span class="n">11</span>Configuration<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+    <a href="#s12"><span class="n">12</span>Deployment and releases<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+  </nav>
+  <h2 class="group">Notes</h2>
+  <nav>
+    <a href="#s13"><span class="n">13</span>Not supported<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+    <a href="#s14"><span class="n">14</span>FAQ<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></a>
+  </nav>
+</aside>
+
+<main>
+<header>
+  <p class="eyebrow">Specification · ego repository · v0.1.61</p>
+  <h1>ego</h1>
+  <p class="standfirst">Reality testing for <strong>AI agents</strong>. ego reads the <strong>OpenTelemetry traces</strong> an agent already emits and scores its behavior without running it again. When scores drop it <strong>diagnoses</strong> the cause, hands the diagnosis to the agent over <strong>MCP</strong>, records what the agent changed and checks that the scores recovered. It ships as one static <strong>Go binary</strong>: a REST API, a web UI, OTLP receivers and an MCP server.</p>
+</header>
+
+<figure class="figscroll">
+  <svg viewBox="0 -20 880 400" role="img" aria-label="ego architecture: senders feed the OTLP receivers, which resolve sender and tenant and fill the session store; online and interactive evaluation read it and use the judges; the UI, REST API and MCP read the results.">
+    <defs>
+      <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#9C4A26"/></marker>
+      <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3F6478"/></marker>
+      <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#736F65"/></marker>
+    </defs>
+    <text class="m" x="16" y="8">SENDERS</text>
+    <text class="m" x="196" y="8">INGEST</text>
+    <text class="m" x="376" y="8">STORE</text>
+    <text class="m" x="556" y="8">EVALUATE</text>
+    <text class="mb" x="736" y="8">READ</text>
+
+    <rect class="box" x="16" y="30" width="152" height="64" rx="8"/><text class="t" x="30" y="56">Agents</text><text class="ts" x="30" y="74">OTel SDKs, Collectors</text>
+    <rect class="box" x="16" y="130" width="152" height="64" rx="8"/><text class="t" x="30" y="156">Claude Code</text><text class="ts" x="30" y="174">native claude_code spans</text>
+    <rect class="box" x="16" y="230" width="152" height="64" rx="8"/><text class="t" x="30" y="256">Trace files</text><text class="ts" x="30" y="274">Jaeger, OTLP JSON, JSONL</text>
+
+    <rect class="box" x="196" y="30" width="152" height="64" rx="8"/><text class="t" x="210" y="56">OTLP receivers</text><text class="ts" x="210" y="74">HTTP :4318, gRPC :4317</text>
+    <rect class="box" x="196" y="130" width="152" height="64" rx="8"/><text class="t" x="210" y="156">Sender and tenant</text><text class="ts" x="210" y="174">token, label, name</text>
+    <rect class="box" x="196" y="230" width="152" height="64" rx="8"/><text class="t" x="210" y="256">Loader, converter</text><text class="ts" x="210" y="274">traces to invocations</text>
+
+    <rect class="box hot" x="376" y="30" width="152" height="64" rx="8"/><text class="t" x="390" y="56">Session store</text><text class="ts" x="390" y="74">sessions, threads</text>
+    <rect class="box" x="376" y="130" width="152" height="64" rx="8"/><text class="t" x="390" y="156">SQLite archive</text><text class="ts" x="390" y="174">sessions, ledger, scores</text>
+    <rect class="box" x="376" y="230" width="152" height="64" rx="8"/><text class="t" x="390" y="256">Runs, eval sets</text><text class="ts" x="390" y="274">every run is kept</text>
+
+    <rect class="box" x="556" y="30" width="152" height="64" rx="8"/><text class="t" x="570" y="56">Online evaluation</text><text class="ts" x="570" y="74">sample, score, detect</text>
+    <rect class="box" x="556" y="130" width="152" height="64" rx="8"/><text class="t" x="570" y="156">Findings, labels</text><text class="ts" x="570" y="174">diagnose, correct, verify</text>
+    <rect class="box" x="556" y="230" width="152" height="64" rx="8"/><text class="t" x="570" y="256">Interactive evaluation</text><text class="ts" x="570" y="274">POST /api/evaluate</text>
+
+    <rect class="box cool" x="736" y="30" width="128" height="64" rx="8"/><text class="t" x="750" y="56">Web UI, REST</text><text class="ts" x="750" y="74">:8001, live feed</text>
+    <rect class="box cool" x="736" y="130" width="128" height="64" rx="8"/><text class="t" x="750" y="156">MCP</text><text class="ts" x="750" y="174">POST /mcp, stdio</text>
+    <rect class="box ghost" x="736" y="230" width="128" height="64" rx="8"/><text class="t" x="750" y="256">Judges</text><text class="ts" x="750" y="274">Gemini, Vertex, Jev</text>
+    <rect class="box ghost" x="556" y="316" width="152" height="46" rx="8"/><text class="t" x="570" y="338">Sinks</text><text class="ts" x="570" y="354">Discord, webhook, event</text>
+
+    <path class="e a" d="M168 62H192" marker-end="url(#aa)"/>
+    <path class="e a" d="M168 162H192" marker-end="url(#aa)"/>
+    <path class="e" d="M168 262H192" marker-end="url(#am)"/>
+    <path class="e a" d="M348 62H372" marker-end="url(#aa)"/>
+    <path class="e a" d="M272 94V126" marker-end="url(#aa)"/>
+    <path class="e a" d="M348 162H360V62" />
+    <path class="e a" d="M452 94V126" marker-end="url(#aa)"/>
+    <path class="e" d="M348 262H372" marker-end="url(#am)"/>
+    <path class="e a" d="M528 62H552" marker-end="url(#aa)"/>
+    <path class="e a" d="M632 94V126" marker-end="url(#aa)"/>
+    <path class="e" d="M556 262H532" marker-end="url(#am)"/>
+    <path class="e b" d="M708 62H732" marker-end="url(#ab)"/>
+    <path class="e b" d="M708 162H732" marker-end="url(#ab)"/>
+    <path class="e d" d="M708 262H732" marker-end="url(#am)"/>
+    <path class="e d" d="M632 194V312" marker-end="url(#am)"/>
+  </svg>
+  <figcaption>Figure 1. Components. One process holds every solid box. The judges and the sinks, drawn dashed, are outside services.</figcaption>
+</figure>
+
+<!-- 01 -->
+<section id="s1">
+  <div class="sechead"><span class="ord">01</span><h2>Architecture</h2></div>
+  <p>ego is one process. <code>ego serve</code> listens on <code>:8001</code> for the REST API, the web UI, the live feed and the MCP endpoint, on <code>:4318</code> for OTLP/HTTP, on <code>:4317</code> for OTLP/gRPC, and on <code>:9090</code> for health. The UI is built into the binary. The image carries nothing else, so there is no runtime to install and no SDK to add to an agent.</p>
+  <p>Every receiver feeds the same session store through the same conversion path. Sessions live in memory up to a bound and are archived to one SQLite file, written without CGO. The archive holds sessions, the session index, runs and their result rows, eval sets, role bindings, sender tokens, the token usage ledger, online scores, alerts, findings, corrections and labels. Older sessions are read back from the archive when someone asks for them.</p>
+  <p>The commands are <code>run</code> (score trace files from the command line), <code>serve</code>, <code>mcp</code> (the tool registry over standard input and output, as a client of a running <code>serve</code>), <code>auth mint-token</code> and <code>version</code>.</p>
+  <h3>Persistence and replicas</h3>
+  <p>Persistence is optional. Without a session database, ego keeps the newest sessions in memory only and the run history, online evaluation and every view that needs the archive answer 503. One SQLite file allows one replica, so ego does not scale out; a restart is a short gap in intake until the pod is back. Large migrations at start run in batches and the chart has a long startup probe for them.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Concern</th><th>Behaviour</th></tr>
+    <tr><td class="k">Memory</td><td>The newest completed sessions stay in memory (<code>--session-memory</code>, default 200); older ones are read from the archive by id</td></tr>
+    <tr><td class="k">Retention</td><td><code>--session-retention</code>, default 720 hours; stale sessions are deleted daily and the file is compacted</td></tr>
+    <tr><td class="k">Live feed</td><td>A WebSocket per open page with a heartbeat every 15 s; a debounced <code>changed</code> message per topic makes the usage, quality and runs views read again. Server-Sent Events remain as a fallback for curl</td></tr>
+    <tr><td class="k">Re-execution</td><td>None. ego scores recorded traces; it never calls the agent</td></tr>
+  </table></div>
+</section>
+
+<!-- 02 -->
+<section id="s2">
+  <div class="sechead"><span class="ord">02</span><h2>Ingest and sessions</h2></div>
+  <p>Traces arrive as OTLP over HTTP (<code>POST /v1/traces</code>, gzip accepted) or gRPC, or as files in Jaeger JSON, OTLP JSON or JSONL, which the loader tells apart on its own. Three attribute conventions are understood: ADK (<code>gcp.vertex.agent.*</code>), the OpenTelemetry GenAI semantic conventions and OpenInference. The converter turns a trace into invocations: the user input, the tool calls, and the final answer. The answer is the last call of the agent that opened the invocation, so a verifier or guard that speaks later is not scored as the answer.</p>
+  <h3>Sessions</h3>
+  <p>Spans group into sessions by <code>ego.session_name</code>, then <code>gen_ai.conversation.id</code>, then a synthetic name, always under the sender and the tenant label. A session completes after 30 s of quiet (3 s after a root span) and is queued for online scoring then. A late span reopens it, and a session already scored is not scored twice. A session holds at most 10000 spans.</p>
+  <h3>Always-on agents: threads and segments</h3>
+  <p>For an agent that wakes every few minutes for weeks, a session id names the agent and not a unit of work. A sender that declares the resource attribute <code>ego.thread</code> gets three levels. The <strong>thread</strong> is the declared value. A <strong>segment</strong> is what ego stores, lists, scores and cites as a session: a run of whole traces whose first one keeps the thread's id and whose n-th is <code>&lt;thread&gt;~n</code>. A <strong>turn</strong> is one trace, and a segment never cuts one. A trace goes to the segment its first span chose, so late spans still land in it. Segmentation is opt-in; every session without the attribute behaves as described above.</p>
+  <div class="tablewrap"><table>
+    <tr><th>A segment closes when</th><th>Setting</th><th>Default</th></tr>
+    <tr><td class="k">its last span ended long ago, on the next trace or from a sweep</td><td><code>--segment-idle</code></td><td>30m</td></tr>
+    <tr><td class="k">it holds this many spans, checked between traces</td><td><code>--segment-max-spans</code></td><td>2000</td></tr>
+    <tr><td class="k">its first span is this old</td><td><code>--segment-max-age</code></td><td>6h</td></tr>
+  </table></div>
+  <p>A closed segment takes no new trace and is scored once, with the end of the previous segment as fenced context for the Gemini judges. A single runaway trace is capped at 50000 spans. <code>GET /api/threads</code> and the <code>list_threads</code> tool give one row per declared thread.</p>
+  <h3>Claude Code</h3>
+  <p>Claude Code's native traces (<code>claude_code.*</code> spans) are translated to GenAI attributes at ingest: sessions come from <code>session.id</code>, the agent from <code>service.name</code>, and tokens count cache reads and writes in the input. A tool call that failed or was rejected is a failed step. The cache parts are kept in the usage ledger so a cost estimate is not inflated by an agent that mostly reads its prompt from the cache.</p>
+</section>
+
+<!-- 03 -->
+<section id="s3">
+  <div class="sechead"><span class="ord">03</span><h2>Senders and tenants</h2></div>
+  <p>A token identifies a <strong>sender</strong>. A sender sends many <strong>tenants</strong>, labelled on its spans, and the tenant key is <code>&lt;sender&gt;/&lt;label&gt;</code>. Two senders can both send a tenant called <code>acme</code> and stay apart. The label is read from the span or resource attribute named by <code>--usage-tenant-attr</code>; a span with no label belongs to <code>default</code>. The shared <code>--otlp-token</code> names no sender, so its tenants are bare labels.</p>
+  <figure class="figscroll">
+    <svg viewBox="0 0 880 300" role="img" aria-label="How a span gets its tenant. A token names the sender. A free token takes the label from the span attribute; a bound token forces its own tenant. The key is sender slash label.">
+      <defs><marker id="tm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#736F65"/></marker><marker id="ta" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#9C4A26"/></marker></defs>
+      <text class="m" x="24" y="24">INGEST TOKEN</text>
+      <text class="m" x="336" y="24">THE SPAN</text>
+      <text class="ma" x="648" y="24">TENANT KEY</text>
+      <rect class="box" x="24" y="44" width="232" height="72" rx="8"/><text class="t" x="40" y="70">Sender token</text><text class="ts" x="40" y="88">names the sender; many labels</text><text class="ts" x="40" y="104">spans carry their own label</text>
+      <rect class="box" x="24" y="164" width="232" height="72" rx="8"/><text class="t" x="40" y="190">Tenant-bound token</text><text class="ts" x="40" y="208">names the sender and one tenant</text><text class="ts" x="40" y="224">the label on the span is ignored</text>
+      <rect class="box" x="336" y="44" width="232" height="72" rx="8"/><text class="t" x="352" y="70">Label from the span</text><text class="ts" x="352" y="88">attribute set by --usage-tenant-attr</text><text class="ts" x="352" y="104">none: default</text>
+      <rect class="box" x="336" y="164" width="232" height="72" rx="8"/><text class="t" x="352" y="190">Label from the token</text><text class="ts" x="352" y="208">every span of the token is forced</text><text class="ts" x="352" y="224">to that tenant; /mcp reads it only</text>
+      <rect class="box hot" x="648" y="84" width="208" height="112" rx="8"/><text class="t" x="664" y="114">sender / label</text><text class="ts" x="664" y="134">the identity of the tenant</text><text class="ts" x="664" y="154">name: ego.tenant.name from</text><text class="ts" x="664" y="170">the sender, else set by an admin</text>
+      <path class="e a" d="M256 80H332" marker-end="url(#ta)"/>
+      <path class="e a" d="M256 200H332" marker-end="url(#ta)"/>
+      <path class="e a" d="M568 80H610V120H644" marker-end="url(#ta)"/>
+      <path class="e a" d="M568 200H610V160H644" marker-end="url(#ta)"/>
+      <text class="ts" x="24" y="278">A label is letters, digits and . _ - @ +, at most 128 characters; anything else becomes _.</text>
+    </svg>
+    <figcaption>Figure 2. How a span gets its tenant.</figcaption>
+  </figure>
+  <h3>Names</h3>
+  <p>A tenant key identifies a tenant but is hard to read. A sender can say the display name in the span or resource attribute <code>ego.tenant.name</code>. The first name seen is kept while the tenant has none, only a named sender can set one, a name is at most 80 characters with no control or format characters, and an admin's name always wins. A bound token takes its name when the admin mints it.</p>
+  <h3>Senders and tokens</h3>
+  <p>An admin creates senders and mints their tokens with <code>POST /api/admin/senders/{id}/tokens</code>. The body names the token's label and, for a bound token, the tenant and its display name. Each sender is limited to 5000 open sessions, 1000 tenants and 1000 names. A failed token check counts against its source, and a source with more than 30 failures in a minute is answered 429 (gRPC <code>ResourceExhausted</code>).</p>
+  <h3>Removing tenants</h3>
+  <p><code>POST /api/admin/purge-tenants</code> removes tenants that no longer exist. The body lists tenant keys, never patterns, and has a dry-run flag. It deletes the sessions whose tenants are all among the keys, their usage and online-score rows, and the names. A session that also belongs to another tenant stays, and so do the labels people gave. The caller is written to the log.</p>
+</section>
+
+<!-- 04 -->
+<section id="s4">
+  <div class="sechead"><span class="ord">04</span><h2>Metrics and judges</h2></div>
+  <p>Every result says whether an algorithm or a model produced it. Algorithms run locally with no key. The other families call a judge: Gemini through the GenAI client, the Vertex AI Managed Evaluation service through Application Default Credentials, or Jev, the decision model.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Family</th><th>Metrics</th><th>Needs</th></tr>
+    <tr><td class="k">Algorithm</td><td><code>tool_trajectory_avg_score</code>, <code>response_match_score</code> (ROUGE-1)</td><td>A golden eval set</td></tr>
+    <tr><td class="k">Gemini judge</td><td><code>final_response_match_v2</code>, <code>hallucinations_v1</code>, <code>rubric_based_final_response_quality_v1</code>, <code>rubric_based_tool_use_quality_v1</code></td><td>A judge model; rubrics for the rubric metrics; a golden set for the match metric. Each reports its rationale and per-sentence or per-rubric verdicts</td></tr>
+    <tr><td class="k">Vertex managed</td><td><code>safety_v1</code>, <code>multi_turn_task_success_v1</code>, <code>multi_turn_trajectory_quality_v1</code>, <code>multi_turn_tool_use_quality_v1</code></td><td>Application Default Credentials, a project and a location. The multi-turn metrics judge a whole conversation in one call</td></tr>
+    <tr><td class="k">Jev decision</td><td><code>jev_task_resolved</code>, <code>jev_grounded</code>, <code>jev_tool_use_appropriate</code>, <code>jev_matches_reference</code>, <code>jev_response_kind</code>, custom <code>jev:&lt;key&gt;</code> questions</td><td>The Jev endpoint and key; fast and cheap, a first pass over many sessions</td></tr>
+  </table></div>
+  <p>The default judge model is <code>gemini-3-flash-preview</code>, and each evaluator can name another. Quoted trace text in a judge prompt is fenced, block markers inside it are defanged, and every call opens with a notice that the quoted text is data. A judge call is capped at 8192 output tokens.</p>
+  <h3>Interactive evaluation</h3>
+  <p><code>POST /api/evaluate</code> and its streaming twin score traces against an optional golden eval set. The request names stored sessions by id or uploads files, and a golden set can be built from a session. The streaming form reports progress per trace and per metric, can be stopped from the page, and a request can limit itself to chosen turns of the sessions. A run is recorded when it starts and closes as succeeded, cancelled or failed with its reason, so the run list shows it while it works. A run still marked running after a restart is closed as failed.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Limit</th><th>Value</th></tr>
+    <tr><td class="k">Concurrent evaluations</td><td>4</td></tr>
+    <tr><td class="k">Per request</td><td>50 trace files, 20 evaluators, 8 judge samples, 50 rubrics per evaluator</td></tr>
+    <tr><td class="k">Daily judge tokens</td><td>One cap for all callers (<code>--eval-daily-tokens</code>, default 5,000,000 per UTC day; 429 when used up). One user can take a quarter of it; admins are exempt</td></tr>
+    <tr><td class="k">Vertex and Jev</td><td>Report no token counts, so only the concurrency and request caps limit them</td></tr>
+    <tr><td class="k">Vertex call</td><td>Each call is bounded to 3 minutes; Google's status and message are shown when it fails</td></tr>
+  </table></div>
+</section>
+
+<!-- 05 -->
+<section id="s5">
+  <div class="sechead"><span class="ord">05</span><h2>Online evaluation</h2></div>
+  <p>A one-off run scores traces when someone supplies them. Online evaluation adds a continuous loop over the traces ego already holds: <strong>sample, score, detect, notify</strong>. It takes no side in what produced the traces. The call kind is <code>gen_ai.agent.name</code>, else the root span name, and nothing in the code names a producer.</p>
+  <figure class="figscroll">
+    <svg viewBox="0 0 880 260" role="img" aria-label="The online evaluation pipeline: a session closes, is sampled, is scored under the daily budget, is stored, a detector compares the window with the baseline, and alerts are sent.">
+      <defs><marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#9C4A26"/></marker></defs>
+      <text class="m" x="16" y="24">PIPELINE</text>
+      <rect class="box" x="16" y="40" width="130" height="60" rx="8"/><text class="t c" x="81" y="66">Session closes</text><text class="ts c" x="81" y="84">or a segment</text>
+      <rect class="box" x="170" y="40" width="130" height="60" rx="8"/><text class="t c" x="235" y="66">Sample</text><text class="ts c" x="235" y="84">lanes, dedup, rate</text>
+      <rect class="box hot" x="324" y="40" width="130" height="60" rx="8"/><text class="t c" x="389" y="66">Score</text><text class="ts c" x="389" y="84">profile of the kind</text>
+      <rect class="box" x="478" y="40" width="130" height="60" rx="8"/><text class="t c" x="543" y="66">Store</text><text class="ts c" x="543" y="84">scores, hourly run</text>
+      <rect class="box" x="632" y="40" width="110" height="60" rx="8"/><text class="t c" x="687" y="66">Detect</text><text class="ts c" x="687" y="84">every 10 min</text>
+      <rect class="box" x="766" y="40" width="98" height="60" rx="8"/><text class="t c" x="815" y="66">Notify</text><text class="ts c" x="815" y="84">sinks</text>
+      <path class="e a" d="M146 70H166" marker-end="url(#pa)"/><path class="e a" d="M300 70H320" marker-end="url(#pa)"/><path class="e a" d="M454 70H474" marker-end="url(#pa)"/><path class="e a" d="M608 70H628" marker-end="url(#pa)"/><path class="e a" d="M742 70H762" marker-end="url(#pa)"/>
+      <text class="m" x="16" y="136">CADENCE AND LIMITS</text>
+      <rect class="well" x="16" y="148" width="130" height="92" rx="6"/><text class="mi" x="28" y="170">30 s quiet</text><text class="ts" x="28" y="190">plain session</text><text class="ts" x="28" y="206">segment: when closed</text>
+      <rect class="well" x="170" y="148" width="130" height="92" rx="6"/><text class="mi" x="182" y="170">6 per kind per hour</text><text class="ts" x="182" y="190">base lane; the boost</text><text class="ts" x="182" y="206">lane has its own</text>
+      <rect class="well" x="324" y="148" width="130" height="92" rx="6"/><text class="mi" x="336" y="170">daily budget</text><text class="ts" x="336" y="190">judge tokens, Jev calls</text><text class="ts" x="336" y="206">stops until 00:00 UTC</text>
+      <rect class="well" x="478" y="148" width="130" height="92" rx="6"/><text class="mi" x="490" y="170">one run per hour</text><text class="ts" x="490" y="190">per tenant and kind</text><text class="ts" x="490" y="206">in the runs list</text>
+      <rect class="well" x="632" y="148" width="110" height="92" rx="6"/><text class="mi" x="644" y="170">drop &gt; 2.5 SE</text><text class="ts" x="644" y="190">at least minDrop</text><text class="ts" x="644" y="206">and minSamples</text>
+      <rect class="well" x="766" y="148" width="98" height="92" rx="6"/><text class="mi" x="778" y="170">digest 08:00</text><text class="ts" x="778" y="190">UTC, to Discord</text>
+    </svg>
+    <figcaption>Figure 3. The loop with its cadences.</figcaption>
+  </figure>
+  <h3>Sampling</h3>
+  <p>A profile matches the kind of a session, and only a matching session is scored. The sampler reads each session's features: kind, tenant, service, <code>service.version</code>, model, error spans, tokens, latency and a fingerprint of the kind, the normalised first input and the tool-call names. Four rules decide what happens next.</p>
+  <ul>
+    <li><strong>Interest.</strong> A session with error spans, with tokens or latency above the kind's rolling mean plus three deviations on a log scale, or running a version or model not seen for the kind in 24 hours, goes in the boost lane. A change starts a burst: the next <code>afterChangeSessions</code> sessions of the kind are boosted.</li>
+    <li><strong>Trivial.</strong> A session with no tool calls, a first message of at most 40 characters and a last reply of at most 100 is skipped before the rate buckets and counted as trivial. A session with error spans or unreadable text is never skipped this way.</li>
+    <li><strong>Dedup.</strong> A fingerprint scored inside <code>dedupWindow</code> without an interest reason is skipped.</li>
+    <li><strong>Rate and budget.</strong> Two token buckets per tenant and kind, one per lane, then a daily cap on judge tokens and on Jev calls. The scheduler reserves an estimate before scoring and books the actual cost after. Vertex metrics and metrics that need a golden set are refused, because the budget cannot meter the first and no golden answer exists for the second.</li>
+  </ul>
+  <p>Every decision is counted by reason at <code>GET /api/online/status</code>.</p>
+  <h3>Configuration</h3>
+  <p>Profiles live in a JSON file, <code>--online-config</code>. Evaluators have the shape of the interactive request, with <code>numSamples</code> defaulting to 1, since one judge sample per invocation is the cost lever. <code>maxInvocations</code> scores only the last N invocations of a long session, and a profile may also match a service or a tenant, the most specific winning. Live traffic has no golden answers, so profiles use reference-free metrics.</p>
+<pre><code>{
+  "budget":   { "judgeTokensPerDay": 2000000, "jevCallsPerDay": 1000 },
+  "sampling": { "perKindPerHour": 6, "boostPerKindPerHour": 6,
+                "afterChangeSessions": 20, "dedupWindow": "6h" },
+  "profiles": [
+    { "kind": "rca", "maxInvocations": 3,
+      "evaluators": [ { "name": "jev_grounded" },
+                      { "name": "hallucinations_v1", "numSamples": 1 } ] }
+  ],
+  "detector": { "window": "6h", "baseline": "168h", "minSamples": 12, "minDrop": 0.1 },
+  "sinks":    [ { "type": "discord", "urlEnv": "EGO_DISCORD_WEBHOOK" } ]
+}</code></pre>
+  <h3>Detection and alerts</h3>
+  <p>Every 10 minutes, for each tenant, kind and metric, the detector compares the scores in the window with those in the baseline before it. A regression needs at least <code>minSamples</code> on both sides, a drop of the mean of at least <code>minDrop</code>, and a drop above 2.5 standard errors (Welch). One bad score never alerts. When one <code>service.version</code> or model holds at least half of the current samples and under a tenth of the baseline, it is named as the suspected change.</p>
+  <p>An alert is open, updated when the drop grows by another <code>minDrop</code>, and resolved after two checks in a row with the drop under half of <code>minDrop</code>, so it does not flap. Discord gets open, update and resolve with the baseline and current means, the suspect and the three worst sessions. The webhook carries <code>ego.quality.v1</code> events, and the event sink posts <code>EvalQualityDegraded</code> and <code>EvalQualityRecovered</code> to a receiver that takes that shape. A daily digest goes to Discord at 08:00 UTC.</p>
+</section>
+
+<!-- 06 -->
+<section id="s6">
+  <div class="sechead"><span class="ord">06</span><h2>The RSI loop</h2></div>
+  <p>Online evaluation ends at a notification and a person reads it. The rest of the loop lets the agent that produced the traces read the verdicts, change itself, and have ego check that the change worked. ego never changes an agent. It diagnoses from the traces it holds, records what the agent says it changed, and reports whether the scores recovered.</p>
+  <figure class="figscroll">
+    <svg viewBox="0 0 880 250" role="img" aria-label="The loop: sample, score, detect, diagnose, correct, verify. Verify either resolves the finding or reopens it. People label judge scores.">
+      <defs><marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#9C4A26"/></marker><marker id="rb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3F6478"/></marker></defs>
+      <text class="m" x="16" y="24">ego</text><text class="mb" x="520" y="24">THE AGENT, OVER MCP</text>
+      <rect class="box" x="16" y="40" width="120" height="56" rx="8"/><text class="t c" x="76" y="66">Sample</text><text class="ts c" x="76" y="82">per kind</text>
+      <rect class="box" x="156" y="40" width="120" height="56" rx="8"/><text class="t c" x="216" y="66">Score</text><text class="ts c" x="216" y="82">profile</text>
+      <rect class="box" x="296" y="40" width="120" height="56" rx="8"/><text class="t c" x="356" y="66">Detect</text><text class="ts c" x="356" y="82">alert</text>
+      <rect class="box hot" x="436" y="40" width="130" height="56" rx="8"/><text class="t c" x="501" y="66">Diagnose</text><text class="ts c" x="501" y="82">finding</text>
+      <rect class="box cool" x="586" y="40" width="130" height="56" rx="8"/><text class="t c" x="651" y="66">Correct</text><text class="ts c" x="651" y="82">register_correction</text>
+      <rect class="box" x="736" y="40" width="128" height="56" rx="8"/><text class="t c" x="800" y="66">Verify</text><text class="ts c" x="800" y="82">every detector tick</text>
+      <path class="e a" d="M136 68H152" marker-end="url(#ra)"/><path class="e a" d="M276 68H292" marker-end="url(#ra)"/><path class="e a" d="M416 68H432" marker-end="url(#ra)"/><path class="e b" d="M566 68H582" marker-end="url(#rb)"/><path class="e b" d="M716 68H732" marker-end="url(#rb)"/>
+      <path class="e a d" d="M800 96V150H501V100" marker-end="url(#ra)"/><text class="ts" x="560" y="144">failed: the finding reopens with the attempt kept</text>
+      <rect class="box ghost" x="156" y="176" width="260" height="56" rx="8"/><text class="t" x="172" y="200">People label judge scores</text><text class="ts" x="172" y="218">agree or disagree, with a score of their own</text>
+      <path class="e d" d="M286 176V100" marker-end="url(#rb)"/>
+      <text class="ts" x="436" y="210">verified: the finding is resolved</text>
+    </svg>
+    <figcaption>Figure 4. Sample to verify. Labels from people change what the loop treats as the score.</figcaption>
+  </figure>
+  <h3>Findings</h3>
+  <p>A findings pass diagnoses low-scoring series with one judge call. It runs for each open alert, refreshed when the drop grows, and in a sweep every <code>findings.every</code> over series with at least <code>findings.minSessions</code> sessions in <code>findings.window</code> and a mean under <code>findings.minScore</code>. A finding holds the failure mode, a summary, a suggested correction and the evidence sessions, selected and fenced as data. The call is metered against the daily judge budget. Without a judge model, or when its answer is unusable, the finding is written from the evidence alone. States are open, corrected, resolved and stale.</p>
+  <h3>Corrections</h3>
+  <p>A correction records what the agent or a person changed, with the <code>service.version</code> that carries it. It marks its finding corrected and starts a sampler burst, as a new version does. On every detector tick it is verified against the scores since it was registered, at its version when given. Verified resolves the finding. Failed reopens it with the attempt in its history. A tenant and kind hold at most 20 pending corrections, and <code>what</code> is capped at 2000 characters.</p>
+  <h3>Labels and the score of record</h3>
+  <p>A label is a person's verdict on one metric of one session: agree or disagree, with an optional score and note, stored with the judge's score at that time and the caller's identity. Every aggregate read of scores joins each score with its newest label. A person's score replaces the judge's, an agreement keeps the judge's score and marks it confirmed, and a disagreement without a score leaves the session out. The judge's row is never rewritten. A sender's ingest token is refused by the label endpoint, so an agent cannot write the score of record on itself.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Mechanism</th><th>Behaviour</th></tr>
+    <tr><td class="k">Agreement</td><td>agree over agree plus disagree, over the last 7 days, counting the newest label of each session and metric; reported per metric in the status and the daily digest</td></tr>
+    <tr><td class="k">Gate</td><td>Per tenant, a metric with agreement under <code>findings.minAgreement</code> (default 0.7) over at least 10 of that tenant's labels writes no findings for it. Other tenants are unaffected</td></tr>
+    <tr><td class="k">Anchor re-scoring</td><td>Every <code>findings.recalibrateEvery</code> (default 24h), up to 20 labelled sessions per metric are scored again with the profile that scored them, against the budget. The mean absolute difference to the label is reported as drift, and nothing acts on it</td></tr>
+  </table></div>
+  <p>The agent's side is one skill, served by the server as the MCP prompt <code>rsi_loop</code>: check the findings, read their evidence, make one change per finding, register it, and come back for the verdict.</p>
+</section>
+
+<!-- 07 -->
+<section id="s7">
+  <div class="sechead"><span class="ord">07</span><h2>Activity and usage</h2></div>
+  <h3>Sessions and runs</h3>
+  <p>The Sessions view pages from the server, newest first, with a cursor and a total. Its filters (time range, tenant, agent, complete, LLM calls only, search) run against an index table in the archive, and the caller's role is checked on every row. A search reads memory and the newest 2000 archived rows that mention the text. A session shows its spans with attributes and errors, and its online scores with thumbs for labels. The Runs view lists every evaluation and groups them by eval set or agent, with pass rate and metric trends.</p>
+  <h3>Activity of an agent</h3>
+  <p>An agent that works in turns, one root span per prompt or message, has an Activity view. <code>GET /api/activity</code> lists the agents with turns, one row per agent and tenant, from sessions that hold <code>claude_code.interaction</code> spans or declared a thread. <code>GET /api/activity/turns</code> returns one row per turn across the agent's newest 80 sessions, oldest first, at most 3000 rows: start, duration, model requests and tool calls, the time of the model, of the tools and of the wait for approval, tokens with the cached part, which tool calls failed and what followed what. The window runs from 1 minute to 30 days.</p>
+  <div class="tablewrap"><table>
+    <tr><th>View</th><th>Shows</th></tr>
+    <tr><td class="k">Graph</td><td>A force graph of the agent: the agent in the middle, the models it called and the MCP servers whose tools it used around it, each server's tools beyond (its busiest ten, the rest in one node). A node is as large as its calls and ringed in red by its share of failures. A turn picked on the strip lights its path in the order of its steps</td></tr>
+    <tr><td class="k">Chord</td><td>The call flow: models and tools on a circle, grouped by server, with bundled links for what followed what. Hover a dot to see what led to it and what came after it</td></tr>
+    <tr><td class="k">Treemap</td><td>Models, and each server with its tools, as tiles sized by calls, errors or time and warmed by their share of failed calls</td></tr>
+  </table></div>
+  <h3>Token usage</h3>
+  <p>The usage ledger is built from <code>gen_ai.usage.*</code> on LLM spans and grouped by call kind, tenant, model and service. Each row also carries the cache read and cache write tokens, parts of the input. The UI prices Claude models with the cache read at a tenth and the cache write at 1.25 times the input rate, and marks a cost as an approximation: billing is computed from the traces and is not exact. A failed request that reported no tokens has no ledger row, so it counts as an error span and not as a failed call. <code>GET /api/usage/limits</code> shows the caps in force and what is used, read only.</p>
+  <h3>Alerts flag</h3>
+  <p>The red flag in the sidebar lists the latest alert of each tab, five at most: a session with a failed LLM call, a daily budget at 90% or more, a run that failed or had under half its decided results pass, and the latest low online score or open alert. Tenant-limited roles get their tenants' only. The quality, usage and runs views all follow the tenant chosen in the switcher.</p>
+</section>
+
+<!-- 08 -->
+<section id="s8">
+  <div class="sechead"><span class="ord">08</span><h2>MCP</h2></div>
+  <p>One tool registry serves two transports. <code>ego mcp</code> on standard input and output is a REST client of a running server. <code>serve</code> mounts the same tools at <code>POST /mcp</code> (streamable HTTP, stateless; <code>GET</code> answers 405, and a body over 1 MiB is refused with 413) and runs them in process against the stores, so a role's agent and tenant limits apply to every tool. No tool is defined twice.</p>
+  <p><code>/mcp</code> sits behind the same login and roles as the API. A sender's ingest token also authenticates there, and only there, as a member limited to its own tenants. It is the token the agent already sends its traces with, so one token sends traces and reads verdicts. The shared OTLP token does not, because it names no sender.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Group</th><th>Tools</th></tr>
+    <tr><td class="k">Sessions</td><td><code>list_sessions</code> (agent, tenant, since, query, complete, scored, thread), <code>list_threads</code>, <code>summarize_session</code>, <code>get_session_spans</code> (an operation, ancestors, status, message and attributes per span, with <code>errors_only</code>)</td></tr>
+    <tr><td class="k">Usage and runs</td><td><code>get_usage</code> (the ledger grouped by kind, tenant, model or service), <code>list_metrics</code>, <code>list_runs</code>, <code>get_run_results</code></td></tr>
+    <tr><td class="k">Quality</td><td><code>get_quality</code>, <code>explain_regression</code>, <code>explain_session</code></td></tr>
+    <tr><td class="k">Correction loop</td><td><code>get_findings</code>, <code>register_correction</code>, <code>list_corrections</code>, <code>label_session</code> (its author is the caller's own identity)</td></tr>
+    <tr><td class="k">Admin</td><td><code>list_role_bindings</code>, <code>set_role_binding</code>, <code>delete_role_binding</code>, <code>run_findings</code>; over stdio only with <code>--admin-tools</code></td></tr>
+    <tr><td class="k">Local</td><td><code>evaluate_traces</code> reads trace files under <code>--trace-dir</code> and exists on stdio only</td></tr>
+  </table></div>
+  <p>The evidence a tool returns is read from the stored online results: the per-sentence verdicts of <code>hallucinations_v1</code> (unsupported, contradictory and disputed first), per-rubric verdicts, trajectory comparisons and the rationale of the <code>jev_*</code> decisions. A tool that needs online evaluation answers an error when it is not configured. The prompt <code>rsi_loop</code> is registered on both transports.</p>
+</section>
+
+<!-- 09 -->
+<section id="s9">
+  <div class="sechead"><span class="ord">09</span><h2>Access and roles</h2></div>
+  <p>Authentication is active only with a session secret. Sign-in is GitHub OAuth restricted to an organisation and gives a signed session cookie. API tokens come from <code>ego auth mint-token</code>, and a raw GitHub token is accepted when its owner is a member of the organisation. Cookies and API tokens are different kinds, each with an id and an issue time. A token carries the role it was minted with. An admin can revoke one token or everything issued to a subject, and logging out revokes the cookie.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Role</th><th>Can</th></tr>
+    <tr><td class="k">admin</td><td>Everything, including role bindings, senders and tokens, tenant names, purge, revocations and a findings sweep</td></tr>
+    <tr><td class="k">member</td><td>Read, run evaluations, save eval sets, register corrections, label</td></tr>
+    <tr><td class="k">viewer</td><td>Read; 403 on every write</td></tr>
+  </table></div>
+  <p>A binding names a user or a GitHub team and may be limited. An <strong>agent scope</strong> limits sessions, traces, runs and the live feed to named agents and fails closed: views that cannot be attributed to an agent, such as usage, quality and eval sets, are closed to it. A session with several agents is visible to a role scoped to any one of them. A <strong>tenant limit</strong> (keys, <code>&lt;sender&gt;/*</code> or <code>*</code>) narrows the same views to those tenants, and a tenant-limited role reads runs only for the online runs of its tenants. Unknown team membership is refused and never takes the default role. <code>--default-role none</code> gives nobody access without a grant. The whole feature is inert when no session secret is set.</p>
+  <p>A bound ingest token, on <code>/mcp</code>, reads only its own tenant. Nobody who holds an ingest token can write labels.</p>
+</section>
+
+<!-- 10 -->
+<section id="s10">
+  <div class="sechead"><span class="ord">10</span><h2>Hardening and limits</h2></div>
+  <div class="tablewrap"><table>
+    <tr><th>Area</th><th>Behaviour</th></tr>
+    <tr><td class="k">Listening</td><td><code>serve</code> binds 127.0.0.1 by default. Without a session secret it refuses other addresses unless <code>--no-auth</code> is given, and then accepts only loopback Host headers, so a missing secret cannot silently open it</td></tr>
+    <tr><td class="k">Browsers</td><td>Cross-origin POST, PUT and DELETE and WebSocket upgrades are refused. Logout is POST only. A content security policy and frame denial are set on every response</td></tr>
+    <tr><td class="k">Ingest</td><td>Bearer token per sender or the shared token; a refused push is logged once a minute without the token; failed checks are throttled per source</td></tr>
+    <tr><td class="k">Quotas</td><td>Per sender: 5000 open sessions, 1000 tenants, 1000 names. A session carries one tenant and refuses a trace of another</td></tr>
+    <tr><td class="k">Identifiers</td><td>Tenant labels, agent names and display names are cleaned to a safe alphabet and length on the way in, so a sender cannot inject separators or markup into an index or a notification. Chat notifications strip markup and mentions</td></tr>
+    <tr><td class="k">Judge prompts</td><td>Quoted trace text is fenced and defanged, and every call starts with a notice that quoted text is data. This lowers the risk of prompt injection and does not remove it. Jev prompts are defanged for the state they carry</td></tr>
+    <tr><td class="k">Evaluation</td><td>Bounded in concurrency, request size, output tokens and a daily judge-token cap, with a per-user share</td></tr>
+    <tr><td class="k">Supply chain</td><td>Base images pinned by digest, <code>govulncheck</code> in CI, release checksums with a signed bundle, and an install script that checks the download against them</td></tr>
+  </table></div>
+</section>
+
+<!-- 11 -->
+<section id="s11">
+  <div class="sechead"><span class="ord">11</span><h2>Configuration</h2></div>
+  <p>Every flag of <code>ego serve</code> can be set from the environment as <code>EGO_&lt;NAME&gt;</code>. The settings that matter most:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Variable</th><th>Flag</th><th>Purpose</th></tr>
+    <tr><td class="k">EGO_SESSION_DB_PATH</td><td><code>--session-db</code></td><td>SQLite file; enables persistence, runs, online evaluation</td></tr>
+    <tr><td class="k">EGO_SESSION_MEMORY</td><td><code>--session-memory</code></td><td>Completed sessions kept in memory</td></tr>
+    <tr><td class="k">EGO_SESSION_RETENTION</td><td><code>--session-retention</code></td><td>Delete sessions older than this</td></tr>
+    <tr><td class="k">EGO_SESSION_SECRET</td><td><code>--session-secret</code></td><td>Signs cookies and tokens; enables authentication</td></tr>
+    <tr><td class="k">EGO_GITHUB_*, EGO_PUBLIC_URL</td><td><code>--github-*</code>, <code>--public-url</code></td><td>GitHub OAuth for an organisation</td></tr>
+    <tr><td class="k">EGO_ADMIN_GITHUB_USERS, EGO_DEFAULT_ROLE</td><td><code>--admin-github-users</code>, <code>--default-role</code></td><td>Who is an admin; the role of anyone with no binding</td></tr>
+    <tr><td class="k">EGO_OTLP_TOKEN</td><td><code>--otlp-token</code></td><td>Shared bearer token for the receivers; sender tokens work too, and with neither a push is refused</td></tr>
+    <tr><td class="k">EGO_USAGE_TENANT_ATTR</td><td><code>--usage-tenant-attr</code></td><td>Span attribute the tenant label is read from</td></tr>
+    <tr><td class="k">EGO_EVAL_DAILY_TOKENS</td><td><code>--eval-daily-tokens</code></td><td>Judge tokens interactive evaluation may use per UTC day</td></tr>
+    <tr><td class="k">EGO_SEGMENT_*</td><td><code>--segment-idle</code>, <code>--segment-max-spans</code>, <code>--segment-max-age</code></td><td>When a thread's segment closes</td></tr>
+    <tr><td class="k">EGO_ONLINE_CONFIG</td><td><code>--online-config</code></td><td>Online evaluation profiles, budget, detector and sinks</td></tr>
+    <tr><td class="k">EGO_LOG_LEVEL, EGO_AUDIT_LOG</td><td><code>--log-level</code>, <code>--audit-log</code></td><td>Log threshold; log the user name of every sign-in, off by default</td></tr>
+    <tr><td class="k">EGO_SERVER_URL, EGO_SESSION_TOKEN</td><td><code>--server-url</code>, <code>--session-token</code></td><td>For <code>ego mcp</code>, which talks to a running server</td></tr>
+  </table></div>
+  <p>The judge uses a Gemini key or, with <code>GOOGLE_GENAI_USE_VERTEXAI=true</code>, Application Default Credentials. Vertex managed evaluation needs <code>GOOGLE_CLOUD_PROJECT</code> and, optionally, <code>GOOGLE_CLOUD_LOCATION</code>.</p>
+</section>
+
+<!-- 12 -->
+<section id="s12">
+  <div class="sechead"><span class="ord">12</span><h2>Deployment and releases</h2></div>
+  <p>ego runs from the binary on a laptop, or in Kubernetes from a Helm chart. The image is a static binary on a minimal base with no shell. The chart renders the online evaluation config into a ConfigMap, runs a single replica with a persistent volume for the database, sets a startup probe that tolerates long migrations, and exposes the API through a gateway route. A new root-level API path must be added to the route's list of root paths or the gateway answers 404.</p>
+  <p>Each tagged release publishes through CI: binaries for Linux and macOS on amd64 and arm64 with <code>checksums.txt</code> and its signature bundle, a signed multi-arch container image, and the Helm chart as an OCI artifact. <code>ego version</code> prints the installed version, and the install script verifies its download against the checksums. CI on every push and pull request builds the UI, then runs <code>go build</code>, <code>go vet</code>, <code>gofmt</code>, the tests, the vulnerability scan and a container build.</p>
+</section>
+
+<!-- 13 -->
+<section id="s13">
+  <div class="sechead"><span class="ord">13</span><h2>Not supported</h2></div>
+  <div class="tablewrap"><table>
+    <tr><th>Item</th><th>State</th></tr>
+    <tr><td class="k">Log ingestion</td><td>Not supported yet. Frameworks that keep message content in log records instead of span attributes are not read</td></tr>
+    <tr><td class="k">Performance metrics</td><td>Token and latency percentiles are not in the evaluate response yet</td></tr>
+    <tr><td class="k">Evaluate all sessions against a golden one in one call</td><td>Not supported yet. The UI does the same through the evaluate request with session ids</td></tr>
+    <tr><td class="k">Custom evaluators</td><td>An evaluator over a standard input and output JSON contract, and per-request judge credentials, are not supported yet</td></tr>
+    <tr><td class="k">Trace waterfall</td><td>Not supported yet, nor a span store with its own retention</td></tr>
+    <tr><td class="k">User-simulator quality</td><td>Out of scope. It needs a conversation scenario that exists only for live simulator runs; ego scores recorded traces</td></tr>
+    <tr><td class="k">Response evaluation score</td><td>Out of scope. There is no Vertex predefined metric to call</td></tr>
+    <tr><td class="k">Several replicas</td><td>Out of scope while the archive is one SQLite file</td></tr>
+  </table></div>
+  <p>Two simplifications are known. The ROUGE-1 tokenizer does not stem and does not split unspaced scripts, so response match runs lower on inflected English and means nothing for those scripts. A GitHub organisation member who is removed from the organisation keeps a cookie for up to 12 hours.</p>
+</section>
+
+<!-- 14 -->
+<section id="s14">
+  <div class="sechead"><span class="ord">14</span><h2>FAQ</h2></div>
+  <details class="faq"><summary>Does ego call my agent?</summary><p>No. It reads traces that already exist. The only outbound calls are to the judges, and only when a metric needs one.</p></details>
+  <details class="faq"><summary>Which agents work with it?</summary><p>Any that emits OpenTelemetry traces with GenAI, OpenInference or ADK attributes, and Claude Code through its own spans. Nothing in ego names a framework.</p></details>
+  <details class="faq"><summary>Why does a session not appear in online scoring?</summary><p>Its kind has no profile, it was sampled out by dedup or the rate buckets, it was trivial, or the daily budget was used up. The status endpoint counts every decision by reason.</p></details>
+  <details class="faq"><summary>Who can change what the loop treats as the score?</summary><p>People with a member role or above, by labelling. The judge's own score stays stored. An agent cannot label itself, because its ingest token is refused by the label endpoint.</p></details>
+  <details class="faq"><summary>How do two senders keep their tenants apart?</summary><p>The tenant key starts with the sender. Two senders that both send a tenant called <code>acme</code> have two tenants, <code>one/acme</code> and <code>two/acme</code>, and a role limited to one never sees the other.</p></details>
+</section>
+</main>
+</div>
+
+<script>
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('.sidebar a'));
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section[id]'));
+  if (!('IntersectionObserver' in window)) return;
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      links.forEach(function (a) { a.classList.remove('on'); });
+      var a = byId[e.target.id];
+      if (a) a.classList.add('on');
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(function (s) { io.observe(s); });
+})();
+</script>
+</body>
+</html>
