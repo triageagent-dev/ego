@@ -345,9 +345,10 @@ export const TraceTable: React.FC<TraceTableProps> = ({
         const metricResult = record.metricResults.get(metricName);
 
         if (!metricResult) {
+          // Nothing more is coming once the evaluation is over or was stopped.
           return (
             <div className="metric-cell">
-              <Loader2 size={14} className="animate-spin" />
+              {isEvaluating ? <Loader2 size={14} className="animate-spin" /> : <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>not run</span>}
             </div>
           );
         }
