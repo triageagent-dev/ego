@@ -12,6 +12,7 @@ import { errorStyle } from '../ui/page';
 import { AgentChord } from './AgentChord';
 import { AgentGraph } from './AgentGraph';
 import { AgentTreemap } from './AgentTreemap';
+import { WEIGHTS, type Weight } from '../../lib/treemapWeight';
 import { TurnTimeline } from './TurnTimeline';
 
 const WINDOWS = [
@@ -58,6 +59,8 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
   const subject = subjects?.find((r) => keyOf(r) === subjectKey) ?? null;
   useEffect(() => store('ego.activity.minutes', String(minutes)), [minutes]);
   useEffect(() => store('ego.activity.view', view), [view]);
+  const [weight, setWeight] = useState<Weight>(() => WEIGHTS.find((x) => x === stored('ego.activity.weight')) ?? 'calls');
+  useEffect(() => store('ego.activity.weight', weight), [weight]);
 
   const load = useCallback(async (current: () => boolean) => {
     if (!subject) return;
@@ -113,6 +116,13 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
             <button key={v} onClick={() => setView(v)} aria-pressed={view === v} css={[segBtnStyle, view === v && segOnStyle]}>{v}</button>
           ))}
         </span>
+        {view === 'treemap' && (
+          <span css={segStyle} title="what the size of a tile means">
+            {WEIGHTS.map((x) => (
+              <button key={x} onClick={() => setWeight(x)} aria-pressed={weight === x} css={[segBtnStyle, weight === x && segOnStyle]}>{x}</button>
+            ))}
+          </span>
+        )}
         {stats && (
           <span css={noteInlineStyle}>
             {stats.turns.toLocaleString()} turn{stats.turns === 1 ? '' : 's'} · awake {pct(stats.awake)}
@@ -135,10 +145,10 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
               <div css={graphBoxStyle}>
                 {view === 'graph' && <AgentGraph graph={graph} path={path} turnNode={shownNode} selectedId={nodeId} onSelectNode={setNodeId} onPickTurn={setSelected} />}
                 {view === 'chord' && <AgentChord rows={data.turns} graph={graph} selectedId={nodeId} onSelectNode={setNodeId} />}
-                {view === 'treemap' && <AgentTreemap graph={graph} selectedId={nodeId} onSelectNode={setNodeId} />}
+                {view === 'treemap' && <AgentTreemap graph={graph} weight={weight} selectedId={nodeId} onSelectNode={setNodeId} />}
               </div>
-              {view === 'chord' && <div css={legendStyle}><span>a ribbon joins two things that the same turns used · hover an arc to follow it, click to select</span></div>}
-              {view === 'treemap' && <div css={legendStyle}><span>a tile is as big as its calls and warms with the share that failed · click to select</span></div>}
+              {view === 'chord' && <div css={legendStyle}><span>a line joins a step to the one that came after it · hover a dot: blue led to it, violet came after · click to select</span></div>}
+              {view === 'treemap' && <div css={legendStyle}><span>a tile is as big as its {weight} and warms with the share of calls that failed · click to select</span></div>}
               {view === 'graph' && (
               <div css={legendStyle}>
                 <span><i style={{ background: '#a79ff0' }} />agent</span>

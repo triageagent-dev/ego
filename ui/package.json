@@ -14,7 +14,6 @@
     "@emotion/styled": "^11.14.1",
     "antd": "^6.6.7",
     "chart.js": "^4.5.1",
-    "d3-chord": "^3.0.1",
     "d3-drag": "^3.0.0",
     "d3-force": "^3.0.0",
     "d3-hierarchy": "^3.1.2",
@@ -31,7 +30,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/d3-chord": "^3.0.6",
     "@types/d3-drag": "^3.0.7",
     "@types/d3-force": "^3.0.10",
     "@types/d3-hierarchy": "^3.1.7",

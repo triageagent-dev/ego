@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"encoding/json"
 	"net/http"
 	"sort"
@@ -67,6 +68,50 @@ type TurnRow struct {
 	ToolCalls   map[string]ToolCount `json:"toolCalls,omitempty"`
 	// ModelCalls counts the model requests by model.
 	ModelCalls map[string]ToolCount `json:"modelCalls,omitempty"`
+	// Flow counts what followed what in the turn: each model request and tool call, in time order, joined to the
+	// one after it.
+	Flow []FlowEdge `json:"flow,omitempty"`
+}
+
+// FlowEdge says that step From was followed by step To, N times in a turn. A step is named as the graph names its
+// nodes: "m:<model>" for a model request, "t:<server>/<tool>" for a tool call ("built-in" for no server).
+type FlowEdge struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	N    int    `json:"n"`
+}
+
+// maxFlowEdges bounds the distinct transitions kept for one turn.
+const maxFlowEdges = 64
+
+type flowStep struct {
+	at int64
+	id string
+}
+
+// flowOf joins the steps of a turn, in the order they began, into the transitions between them.
+func flowOf(steps []flowStep) []FlowEdge {
+	if len(steps) < 2 {
+		return nil
+	}
+	sort.SliceStable(steps, func(i, j int) bool { return steps[i].at < steps[j].at })
+	counts := map[[2]string]int{}
+	var order [][2]string
+	for i := 1; i < len(steps); i++ {
+		k := [2]string{steps[i-1].id, steps[i].id}
+		if counts[k] == 0 {
+			if len(order) == maxFlowEdges {
+				continue
+			}
+			order = append(order, k)
+		}
+		counts[k]++
+	}
+	out := make([]FlowEdge, 0, len(order))
+	for _, k := range order {
+		out = append(out, FlowEdge{From: k[0], To: k[1], N: counts[k]})
+	}
+	return out
 }
 
 // TurnSegment places one session of the subject on the same time axis as the turns.
@@ -160,6 +205,7 @@ func turnOf(session string, part int, root *tracepkg.Span) (TurnRow, bool) {
 		PromptChars: int(tagInt(root, "user_prompt_length")),
 	}
 	var toolUs, approvalUs int64
+	var steps []flowStep
 	var walk func(sp *tracepkg.Span)
 	walk = func(sp *tracepkg.Span) {
 		switch {
@@ -181,6 +227,7 @@ func turnOf(session string, part int, root *tracepkg.Span) (TurnRow, bool) {
 				mc.Failed++
 			}
 			row.ModelCalls[m] = mc
+			steps = append(steps, flowStep{sp.StartTime, "m:" + m})
 		case isToolCallSpan(sp):
 			row.Tools++
 			toolUs += sp.Duration
@@ -198,6 +245,7 @@ func turnOf(session string, part int, root *tracepkg.Span) (TurnRow, bool) {
 				row.FailedTools++
 			}
 			row.ToolCalls[name] = c
+			steps = append(steps, flowStep{sp.StartTime, "t:" + cmp.Or(server, "built-in") + "/" + name})
 		case sp.OperationName == opToolWait:
 			approvalUs += sp.Duration
 		}
@@ -212,6 +260,7 @@ func turnOf(session string, part int, root *tracepkg.Span) (TurnRow, bool) {
 	if row.Requests == 0 && row.Tools == 0 && !strings.HasPrefix(root.OperationName, claudeCodeInteraction) {
 		return TurnRow{}, false
 	}
+	row.Flow = flowOf(steps)
 	row.ApprovalMs = approvalUs / 1000
 	if t := toolUs - approvalUs; t > 0 {
 		row.ToolMs = t / 1000

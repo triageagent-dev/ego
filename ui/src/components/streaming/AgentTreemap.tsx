@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { hierarchy, treemap, treemapSquarify, type HierarchyRectangularNode } from 'd3-hierarchy';
 import { BUILTIN, type Graph } from '../../lib/agentGraph';
 import { fmtDuration } from '../../lib/turns';
+import { weightOf, type Weight } from '../../lib/treemapWeight';
 
-// The treemap of what an agent uses: the models, and each MCP server with its tools, as tiles as big as the calls
-// they took. A tile warms from grey to amber and red with its share of failed calls. A click selects it.
+// The treemap of what an agent uses: the models, and each MCP server with its tools, as tiles as big as the weight
+// chosen: their calls, their failed calls or the time they took. A tile warms from grey to amber and red with its
+// share of failed calls. A click selects it.
 
 const NEUTRAL = '#6b7280';
 const WARN = '#f59e0b';
@@ -40,9 +42,10 @@ function tilesOf(graph: Graph): Tile {
 }
 
 export function AgentTreemap({
-  graph, selectedId, onSelectNode,
+  graph, weight, selectedId, onSelectNode,
 }: {
   graph: Graph;
+  weight: Weight;
   selectedId?: string | null;
   onSelectNode?: (id: string | null) => void;
 }) {
@@ -62,14 +65,16 @@ export function AgentTreemap({
   const leaves = useMemo(() => {
     if (w === 0 || h === 0) return null;
     const root = hierarchy(tilesOf(graph))
-      .sum((d) => (d.children ? 0 : Math.max(1, d.calls)))
+      .sum((d) => (d.children ? 0 : weightOf(d, weight)))
       .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+    if (!root.value) return null;
     treemap<Tile>().tile(treemapSquarify).size([w, h]).paddingInner(2).paddingOuter(2).paddingTop((d) => (d.depth === 1 ? 18 : 2))(root);
     return root as HierarchyRectangularNode<Tile>;
-  }, [graph, w, h]);
+  }, [graph, weight, w, h]);
 
   return (
     <div ref={boxRef} style={{ width: '100%', height: '100%' }}>
+      {!leaves && w > 0 && <p style={{ color: 'var(--text-muted)', fontSize: 12, padding: 16 }}>{weight === 'errors' ? 'no failures in this window' : 'nothing to size the tiles by in this window'}</p>}
       {leaves && (
         <svg width={w} height={h} role="img" aria-label="what the agent uses, by calls">
           {leaves.descendants().filter((d) => d.depth > 0).map((d) => {
@@ -95,7 +100,7 @@ export function AgentTreemap({
                   {(group || (width > 46 && height > 22)) && (
                     <text x={6} y={group ? 13 : 15} fontSize={group ? 11 : 12} fill={group ? '#9aa3b2' : '#e5e7eb'} fontWeight={group ? 600 : 400}>
                       {t.name}
-                      {!group && width > 90 && height > 36 && <tspan x={6} dy={14} fill="#8b93a1" fontSize={11}>{t.calls.toLocaleString()} call{t.calls === 1 ? '' : 's'}</tspan>}
+                      {!group && width > 90 && height > 36 && <tspan x={6} dy={14} fill="#8b93a1" fontSize={11}>{weight === 'errors' ? `${t.failed.toLocaleString()} failed` : weight === 'time' ? fmtDuration(t.ms) : `${t.calls.toLocaleString()} call${t.calls === 1 ? '' : 's'}`}</tspan>}
                     </text>
                   )}
                 </g>

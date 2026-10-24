@@ -655,6 +655,8 @@ export interface TurnRow {
   promptChars?: number;
   toolCalls?: Record<string, TurnCount>;
   modelCalls?: Record<string, TurnCount>;
+  // What followed what in the turn, named as the graph names its nodes.
+  flow?: { from: string; to: string; n: number }[];
 }
 
 // How often a tool or a model was called in a turn, how often it failed and how long the calls took; server names the

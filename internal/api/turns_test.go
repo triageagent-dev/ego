@@ -144,3 +144,30 @@ func TestRoleKeySeparatesWhatRolesSee(t *testing.T) {
 		t.Errorf("roles that see different things share a cache key: %q %q %q", a, b, c)
 	}
 }
+
+func TestTurnOfRecordsWhatFollowedWhat(t *testing.T) {
+	llm := func(id string, at int64) *tracepkg.Span {
+		return ccSpan(id, "claude_code.llm_request", at, 10, map[string]any{"gen_ai.request.model": "m"})
+	}
+	tool := func(id string, at int64, name string) *tracepkg.Span {
+		return ccSpan(id, "claude_code.tool", at, 10, map[string]any{"gen_ai.tool.name": name})
+	}
+	// Out of time order on purpose: the order is the one the steps began in.
+	root := ccSpan("root", "claude_code.interaction", 0, 100, nil,
+		tool("t2", 40, "mcp__core__say"), llm("l1", 0), tool("t1", 20, "Bash"), llm("l2", 30), llm("l3", 60))
+	got, _ := turnOf("s", 0, root)
+	want := map[[2]string]int{
+		{"m:m", "t:built-in/Bash"}: 1,
+		{"t:built-in/Bash", "m:m"}: 1,
+		{"m:m", "t:core/say"}:      1,
+		{"t:core/say", "m:m"}:      1,
+	}
+	if len(got.Flow) != len(want) {
+		t.Fatalf("flow = %+v, want %d edges", got.Flow, len(want))
+	}
+	for _, e := range got.Flow {
+		if want[[2]string{e.From, e.To}] != e.N {
+			t.Errorf("unexpected edge %+v in %+v", e, got.Flow)
+		}
+	}
+}
