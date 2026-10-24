@@ -1,8 +1,11 @@
 name: CI
 
-# Manual only: the included Actions minutes ran out, so nothing runs on a push. `make test`, `go vet ./...` and
-# `gofmt -l .` are the gate; scripts/release-local.sh runs them before it publishes.
+# Runs on every push to main and on pull requests. `make test`, `go vet ./...` and `gofmt -l .` are the same gate
+# locally, and scripts/release-local.sh runs them before it publishes.
 on:
+  push:
+    branches: ["main"]
+  pull_request:
   workflow_dispatch:
 
 permissions:

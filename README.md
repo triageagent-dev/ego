@@ -475,16 +475,16 @@ root-level `/api/...` endpoint needs an entry in `httpRoute.rootPaths`, or the g
 
 ### Releasing
 
-**Releasing:** from a clean checkout of the commit, `make release-local RELEASE_TAG=vX.Y.Z` (or
-`scripts/release-local.sh vX.Y.Z`). It runs the checks, builds the four binaries, tags the commit, pushes the multi-arch
-image and the Helm chart to ghcr.io, and creates the GitHub release with the binaries and `checksums.txt`. Releases
-are built on a maintainer's machine because the Actions minutes ran out, so nothing runs on a push or a tag; the
-*CI* and *Release* workflows are manual (`workflow_dispatch`). Releases made this way carry no cosign signatures, which
-need the workflow's identity; the ones before v0.1.51 are signed keyless (`cosign verify-blob --bundle
-checksums.txt.bundle --certificate-identity-regexp "https://github.com/triageagent-dev/ego/" --certificate-oidc-issuer
-https://token.actions.githubusercontent.com checksums.txt`, and `cosign verify` on the image). The chart is not signed.
-New GHCR packages are private until their visibility is changed under the package settings, which has to be done once
-for the image and once for the chart before the repository is opened up.
+**Releasing:** push a version tag (`git tag vX.Y.Z && git push origin vX.Y.Z`). The *Release* workflow runs the
+checks, builds the four binaries, pushes the multi-arch image and the Helm chart to ghcr.io and creates the GitHub
+release with the binaries and `checksums.txt`. The checksums file and the image are signed keyless with the workflow's
+identity (`cosign verify-blob --bundle checksums.txt.bundle --certificate-identity-regexp
+"https://github.com/triageagent-dev/ego/" --certificate-oidc-issuer https://token.actions.githubusercontent.com
+checksums.txt`, and `cosign verify` on the image). The chart is not signed. The fallback when Actions cannot run is
+`make release-local RELEASE_TAG=vX.Y.Z` (`scripts/release-local.sh`) from a clean checkout of the commit: the same
+steps on a maintainer's machine, without the signatures; releases v0.1.51 to v0.1.59 were made this way. Use one path
+or the other for a tag, never both. New GHCR packages are private until their visibility is changed under the package
+settings, once for the image and once for the chart.
 
 ## License
 

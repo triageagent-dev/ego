@@ -17,6 +17,6 @@ published from the same tag; update to the newest one.
 - The OTLP receivers always require a bearer token; with none configured they refuse every push.
 - `ego serve` listens on loopback by default and refuses other addresses without a login (`--session-secret`) unless
   `--no-auth` says so.
-- Releases are built from a tagged commit, in CI up to v0.1.50 and on a maintainer's machine after that.
-  The checksums file and the container image of the CI-built releases carry keyless cosign signatures; see the README
-  for how to verify them. Later releases and the Helm chart are not signed yet.
+- Releases are built from a tagged commit. Those built in CI (up to v0.1.50, and from v0.1.60 on) carry keyless
+  cosign signatures on the checksums file and the container image; see the README for how to verify them. v0.1.51 to
+  v0.1.59 were built on a maintainer's machine and are not signed. The Helm chart is not signed yet.

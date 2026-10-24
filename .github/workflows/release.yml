@@ -1,10 +1,12 @@
 name: Release
 
-# Releases are published from a maintainer's machine (scripts/release-local.sh, `make release-local`): the
-# included Actions minutes ran out, and a tag push here would publish the same version a second time. To use this
-# workflow again, add `push: tags: ["v*.*.*"]` back under `on:` and stop using the script.
-# Run by hand it builds the binaries without publishing anything.
+# Publishes on a version tag push: binaries with checksums on a GitHub release, the multi-arch image on ghcr.io and
+# the Helm chart as an OCI artifact, with keyless cosign signatures from the workflow's OIDC identity.
+# scripts/release-local.sh (`make release-local`) does the same from a maintainer's machine, minus the signatures;
+# use one or the other for a tag, never both. Run by hand this workflow builds the binaries without publishing.
 on:
+  push:
+    tags: ["v*.*.*"]
   workflow_dispatch:
 
 permissions:
