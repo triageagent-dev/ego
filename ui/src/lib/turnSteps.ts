@@ -21,6 +21,11 @@ export interface TurnStep {
   tokensIn?: number;
   tokensOut?: number;
   cached?: number;
+  // Tool calls: the tokens the call put into the context for the model request after it, found as that request's
+  // input less the one before it and less the reply the earlier request gave. With several calls between the same
+  // two requests the growth is split by the length of their results (or evenly) and marked shared.
+  ctxAdded?: number;
+  ctxShared?: boolean;
 }
 
 export interface TurnDetail {
@@ -133,5 +138,28 @@ export function resolveTurn(spans: SessionSpan[], rootSpanId: string): TurnDetai
       approvalUs: wait ? wait.duration : undefined,
     };
   });
+  addContext(steps, found);
   return { startUs: root.span.start_time, durationUs: root.span.duration, operation: root.span.operation_name, steps };
+}
+
+// Gives each tool call the growth of the context it caused, from the model requests on either side of it.
+function addContext(steps: TurnStep[], nodes: Node[]) {
+  let prev = -1;
+  for (let i = 0; i < steps.length; i++) {
+    if (steps[i].kind !== 'model') continue;
+    const group: number[] = [];
+    for (let j = prev + 1; j < i; j++) if (steps[j].kind === 'tool') group.push(j);
+    if (prev >= 0 && group.length > 0) {
+      const grown = (steps[i].tokensIn ?? 0) - (steps[prev].tokensIn ?? 0) - (steps[prev].tokensOut ?? 0);
+      if (grown > 0) {
+        const size = group.map((j) => str(nodes[j].span.tags['gen_ai.tool.call.result'])?.length ?? 0);
+        const total = size.reduce((a, b) => a + b, 0);
+        group.forEach((j, k) => {
+          steps[j].ctxAdded = Math.round(total > 0 ? (grown * size[k]) / total : grown / group.length);
+          steps[j].ctxShared = group.length > 1;
+        });
+      }
+    }
+    prev = i;
+  }
 }

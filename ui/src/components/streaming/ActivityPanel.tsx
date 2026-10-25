@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { css } from '@emotion/react';
 import { getActivity, getActivityTurns } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
 import { stored, store } from '../../lib/stored';
+import { ZOOM } from '../../lib/zoom';
 import { useSelectedTenant } from '../../lib/tenant';
 import { buildGraph, pathOf, turnNodeId, type Graph } from '../../lib/agentGraph';
 import { fmtDuration, shortCount, turnStats } from '../../lib/turns';
@@ -24,6 +25,10 @@ const WINDOWS = [
   { label: '7d', minutes: 10080 },
   { label: '30d', minutes: 43200 },
 ];
+
+const SIDE_WIDTH = 360;
+const SIDE_MIN = 260;
+const clampSide = (w: number) => Math.round(Math.min(Math.max(SIDE_MIN, w), Math.min(900, (window.innerWidth / ZOOM) * 0.6)));
 
 const keyOf = (s: ActivitySubject) => `${s.agent}\n${s.tenant ?? ''}`;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -59,6 +64,23 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
   const subject = subjects?.find((r) => keyOf(r) === subjectKey) ?? null;
   useEffect(() => store('ego.activity.minutes', String(minutes)), [minutes]);
   useEffect(() => store('ego.activity.view', view), [view]);
+  const [sideW, setSideW] = useState(() => clampSide(Number(stored('ego.activity.side')) || SIDE_WIDTH));
+  useEffect(() => store('ego.activity.side', sideW === SIDE_WIDTH ? '' : String(sideW)), [sideW]);
+  // The pointer moves in screen pixels, the layout is drawn ZOOM times larger.
+  const dragSide = (e: ReactPointerEvent) => {
+    e.preventDefault();
+    const x0 = e.clientX;
+    const w0 = sideW;
+    const move = (ev: PointerEvent) => setSideW(clampSide(w0 - (ev.clientX - x0) / ZOOM));
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      document.body.style.userSelect = '';
+    };
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
   const [weight, setWeight] = useState<Weight>(() => WEIGHTS.find((x) => x === stored('ego.activity.weight')) ?? 'calls');
   useEffect(() => store('ego.activity.weight', weight), [weight]);
 
@@ -140,7 +162,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
         data.turns.length === 0 ? (
           <p css={noteStyle}>no turns in this window</p>
         ) : (
-          <div css={layoutStyle}>
+          <div css={layoutStyle} style={{ '--side-w': `${sideW}px` } as CSSProperties}>
             <div css={mainStyle}>
               <div css={graphBoxStyle}>
                 {view === 'graph' && <AgentGraph graph={graph} path={path} turnNode={shownNode} selectedId={nodeId} onSelectNode={setNodeId} onPickTurn={setSelected} />}
@@ -165,6 +187,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
             </div>
 
             <aside css={sideStyle}>
+              <div css={sideGripStyle} onPointerDown={dragSide} onDoubleClick={() => setSideW(SIDE_WIDTH)} title="drag to change the width, double-click to reset" />
               <div css={sideScrollStyle}>
               {node && (
                 <section css={sectionStyle}>
@@ -207,6 +230,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
                           </span>
                           <span css={stepTimeStyle}>{fmtDuration(st.durationUs / 1000)}</span>
                           {st.approvalUs ? <span css={stepNoteStyle}>{fmtDuration(st.approvalUs / 1000)} waiting to be approved</span> : null}
+                          {st.kind === 'tool' && st.ctxAdded ? <span css={stepNoteStyle}>{st.ctxShared ? '~' : ''}+{shortCount(st.ctxAdded)} tokens into the context{st.ctxShared ? ', shared with the calls beside it' : ''}</span> : null}
                           {st.kind === 'model' && (st.tokensIn || st.tokensOut) ? <span css={stepNoteStyle}>↓{shortCount(st.tokensIn ?? 0)} ↑{shortCount(st.tokensOut ?? 0)}{st.cached ? `, ${shortCount(st.cached)} from cache` : ''}</span> : null}
                           {st.failed && st.message && <span css={stepFailNoteStyle}>✗ {st.message}</span>}
                         </li>
@@ -331,7 +355,7 @@ const linkStyle = css`
 
 const layoutStyle = css`
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) var(--side-w, 360px);
   gap: 12px;
   align-items: stretch;
 
@@ -369,6 +393,23 @@ const sideStyle = css`
     position: sticky;
     top: 8px;
     min-height: 0;
+  }
+`;
+
+const sideGripStyle = css`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -10px;
+  width: 8px;
+  z-index: 1;
+  cursor: col-resize;
+  touch-action: none;
+  border-radius: 4px;
+  &:hover { background: var(--border-default); }
+
+  @media (max-width: 1100px) {
+    display: none;
   }
 `;
 
