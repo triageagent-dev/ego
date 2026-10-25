@@ -21,6 +21,7 @@ import { tenantName, useSelectedTenant, useTenantNames } from '../../lib/tenant'
 import type { OnlineAlert, OnlineCorrection, OnlineFinding, OnlineFindingState, OnlineSeriesPoint, OnlineStatus } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
 import { store, stored } from '../../lib/stored';
+import { TurnQualityView, useTurnQuality } from './TurnQuality';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend);
 
@@ -87,6 +88,7 @@ export const QualityView: React.FC = () => {
   const [notConfigured, setNotConfigured] = useState(false);
   const tenant = useSelectedTenant();
   useTenantNames();
+  const turnQuality = useTurnQuality(hours);
 
   const load = useCallback(async (current: () => boolean) => {
     try {
@@ -250,8 +252,8 @@ export const QualityView: React.FC = () => {
       {status && (
         <>
           <div css={tilesStyle}>
-            <Tile label="Ego score" value={egoScore === null ? '–' : `${Math.round(egoScore * 100)}%`}
-              sub={egoScore === null ? 'nothing scored in this window' : `mean of ${scoreCount.toLocaleString()} scores, last ${RANGES.find(r => r.hours === hours)?.label ?? `${hours}h`}`} />
+            <Tile label="Ego score" value={egoScore !== null ? `${Math.round(egoScore * 100)}%` : turnQuality.turns > 0 ? pct(turnQuality.ok / turnQuality.turns) : '–'}
+              sub={egoScore === null ? (turnQuality.turns > 0 ? `from turns: ${turnQuality.ok.toLocaleString()} of ${turnQuality.turns.toLocaleString()} without a failure` : 'nothing scored in this window') : `mean of ${scoreCount.toLocaleString()} scores, last ${RANGES.find(r => r.hours === hours)?.label ?? `${hours}h`}`} />
             <Tile label="Judge tokens today" value={formatTokens(status.budget.spent.judgeTokens)}
               sub={status.budget.caps.judgeTokensPerDay ? `of ${formatTokens(status.budget.caps.judgeTokensPerDay)} cap` : 'no Gemini judges'} />
             <Tile label="Jev calls today" value={String(status.budget.spent.jevCalls)}
@@ -280,6 +282,8 @@ export const QualityView: React.FC = () => {
               </div>
             )}
           </div>
+
+          <TurnQualityView q={turnQuality} hours={hours} />
 
           <div css={chartsGridStyle}>
           <section css={cardStyle}>
