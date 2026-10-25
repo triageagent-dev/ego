@@ -38,9 +38,9 @@ type Backend interface {
 	SetRoleBinding(ctx context.Context, in RoleBindingInput) (RoleBinding, error)
 	DeleteRoleBinding(ctx context.Context, id string) (map[string]bool, error)
 
-	// Activity answers get_activity: the record of the agents that work in turns, from their turns, for the
+	// EgoScore answers get_ego_score: the score of the agents that work in turns, from their turns, for the
 	// caller's tenants.
-	Activity(ctx context.Context, q ActivityQuery) ([]ActivitySummary, error)
+	EgoScore(ctx context.Context, q ActivityQuery) ([]TurnScore, error)
 
 	// Quality answers get_quality for the caller's tenants.
 	Quality(ctx context.Context, kind string, hours int) (*Quality, error)

@@ -359,7 +359,7 @@ func (b *REST) DeleteRoleBinding(ctx context.Context, id string) (map[string]boo
 
 // The quality and explain endpoints answer in the tools' own shape, so they decode straight into it.
 
-func (b *REST) Activity(ctx context.Context, q ActivityQuery) ([]ActivitySummary, error) {
+func (b *REST) EgoScore(ctx context.Context, q ActivityQuery) ([]TurnScore, error) {
 	v := url.Values{"hours": {strconv.Itoa(q.Hours)}}
 	if q.Agent != "" {
 		v.Set("agent", q.Agent)
@@ -367,8 +367,8 @@ func (b *REST) Activity(ctx context.Context, q ActivityQuery) ([]ActivitySummary
 	if q.Tenant != "" {
 		v.Set("tenant", q.Tenant)
 	}
-	var out []ActivitySummary
-	if err := b.get(ctx, "/api/activity/summary?"+v.Encode(), &out); err != nil {
+	var out []TurnScore
+	if err := b.get(ctx, "/api/activity/score?"+v.Encode(), &out); err != nil {
 		return nil, err
 	}
 	return out, nil

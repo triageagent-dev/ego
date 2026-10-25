@@ -3,6 +3,8 @@ package api
 import (
 	"math"
 	"testing"
+
+	"github.com/triageagent-dev/ego/internal/mcptools"
 )
 
 func TestSummarizeTurns(t *testing.T) {
@@ -47,5 +49,24 @@ func TestSummarizeNoTurns(t *testing.T) {
 	s := summarizeTurns(TurnsResult{Agent: "spot", FromMs: 0, ToMs: 1000}, 24)
 	if s.Turns != 0 || s.Success != nil || len(s.Tools) != 0 || s.Hourly == nil {
 		t.Fatalf("%+v", s)
+	}
+}
+
+func TestScoreOfListsOnlyFailingTools(t *testing.T) {
+	sum := mcptools.ActivitySummary{Agent: "spot", Turns: 10, ToolCalls: 40, FailedToolCalls: 10, Tools: []mcptools.ToolRecord{
+		{Tool: "a", Calls: 20, Failed: 6}, {Tool: "b", Calls: 10, Failed: 3}, {Tool: "c", Calls: 6, Failed: 1},
+		{Tool: "d", Calls: 4}, {Tool: "e", Calls: 2, Failed: 1}, {Tool: "f", Calls: 2, Failed: 1}, {Tool: "g", Calls: 2, Failed: 1},
+	}}
+	sc := scoreOf(sum)
+	if sc.ErrorRate != 0.25 || len(sc.FailingTools) != maxFailingTools || sc.FailingTools[0].Tool != "a" {
+		t.Fatalf("%+v", sc)
+	}
+	for _, f := range sc.FailingTools {
+		if f.Failed == 0 {
+			t.Fatalf("a tool without failures listed: %+v", f)
+		}
+	}
+	if none := scoreOf(mcptools.ActivitySummary{Agent: "x"}); none.ErrorRate != 0 || none.FailingTools == nil {
+		t.Fatalf("%+v", none)
 	}
 }

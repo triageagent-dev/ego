@@ -142,7 +142,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/tenants", tenantsHandler(store, tenantNames))
 	mux.HandleFunc("/api/threads", threadsHandler(store))
 	mux.HandleFunc("/api/activity/turns", turnsHandler(store))
-	mux.HandleFunc("/api/activity/summary", activitySummaryHandler(store))
+	mux.HandleFunc("/api/activity/score", egoScoreHandler(store))
 	mux.HandleFunc("/api/activity", activityHandler(store))
 	mux.HandleFunc("/api/usage", usageHandler(archive))
 	mux.HandleFunc("/api/usage/calls", usageCallsHandler(archive))

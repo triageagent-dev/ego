@@ -170,8 +170,8 @@ func (s *SessionStore) ActivitySummaries(q mcptools.ActivityQuery, info RoleInfo
 	return out
 }
 
-// activitySummaryHandler implements GET /api/activity/summary?agent=&tenant=&hours=.
-func activitySummaryHandler(store *SessionStore) http.HandlerFunc {
+// egoScoreHandler implements GET /api/activity/score?agent=&tenant=&hours=: the score of each agent from its turns.
+func egoScoreHandler(store *SessionStore) http.HandlerFunc {
 	cache := newReadCache()
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -201,13 +201,52 @@ func activitySummaryHandler(store *SessionStore) http.HandlerFunc {
 			return
 		}
 		defer cache.release()
-		body, err := json.Marshal(map[string]any{"data": store.ActivitySummaries(q, info), "error": nil})
+		body, err := json.Marshal(map[string]any{"data": turnScores(store, info, q), "error": nil})
 		if err != nil {
-			writeEvaluateError(w, http.StatusInternalServerError, "failed to encode the activity summary")
+			writeEvaluateError(w, http.StatusInternalServerError, "failed to encode the ego score")
 			return
 		}
 		body = append(body, '\n')
 		cache.put(key, body)
 		_, _ = w.Write(body)
 	}
+}
+
+const (
+	maxScoreAgents  = 20
+	maxFailingTools = 5
+)
+
+// turnScores scores each agent the query names, or every agent the caller may see that worked in turns during the
+// window: the compact answer an agent reads about itself.
+func turnScores(store *SessionStore, info RoleInfo, q mcptools.ActivityQuery) []mcptools.TurnScore {
+	out := []mcptools.TurnScore{}
+	if store == nil {
+		return out
+	}
+	for _, s := range store.ActivitySummaries(q, info) {
+		if s.Turns == 0 {
+			continue
+		}
+		out = append(out, scoreOf(s))
+		if len(out) == maxScoreAgents {
+			break
+		}
+	}
+	return out
+}
+
+// scoreOf is the compact score of one agent's summary: the tools that failed are the only ones listed.
+func scoreOf(s mcptools.ActivitySummary) mcptools.TurnScore {
+	t := mcptools.TurnScore{Agent: s.Agent, Tenant: s.Tenant, Hours: s.Hours, Turns: s.Turns, Score: s.Success,
+		ToolCalls: s.ToolCalls, FailedToolCalls: s.FailedToolCalls, FailingTools: []mcptools.ToolRecord{}}
+	if s.ToolCalls > 0 {
+		t.ErrorRate = float64(s.FailedToolCalls) / float64(s.ToolCalls)
+	}
+	for _, tool := range s.Tools {
+		if tool.Failed > 0 && len(t.FailingTools) < maxFailingTools {
+			t.FailingTools = append(t.FailingTools, tool)
+		}
+	}
+	return t
 }

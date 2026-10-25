@@ -334,6 +334,21 @@ type Quality struct {
 	Budget *BudgetUse `json:"budget,omitempty"`
 }
 
+// TurnScore is the ego score of one agent from its turns, for an agent no judge scores. Score is the share of turns
+// without a failure, 0 to 1; ErrorRate the share of its tool calls that failed; FailingTools the tools that failed
+// most, worst first.
+type TurnScore struct {
+	Agent           string       `json:"agent"`
+	Tenant          string       `json:"tenant,omitempty"`
+	Hours           int          `json:"hours"`
+	Turns           int          `json:"turns"`
+	Score           *float64     `json:"score,omitempty"`
+	ToolCalls       int          `json:"tool_calls"`
+	FailedToolCalls int          `json:"failed_tool_calls"`
+	ErrorRate       float64      `json:"error_rate"`
+	FailingTools    []ToolRecord `json:"failing_tools"`
+}
+
 // MetricSeries is one metric's hourly means over the window.
 type MetricSeries struct {
 	Tenant string        `json:"tenant"`

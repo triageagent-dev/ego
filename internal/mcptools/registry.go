@@ -227,21 +227,26 @@ func Tools(b Backend, o Options) []server.ServerTool {
 				mcp.Description("Window in hours, 1 to 720.")),
 		), Handler: getQualityHandler(b)},
 
-		server.ServerTool{Tool: mcp.NewTool("get_activity",
-			mcp.WithDescription("How an agent that works in turns (an always-on agent) did over a window, from its turns, "+
-				"with no judge involved: how many turns ended without a failure (success), the tool calls and how many "+
-				"failed, the model requests, the tokens and the share read from cache, how long a turn takes, how much "+
-				"of the window the agent was awake, the record of each tool (worst first) and the turns per hour. Use "+
-				"it to see your own slips: a tool that keeps failing, a drop in success. For why a turn failed, read it "+
-				"with get_session_spans and errors_only. Scoped to the tenants you may see; with no agent, every agent "+
-				"that worked in turns."),
+		server.ServerTool{Tool: mcp.NewTool("get_ego_score",
+			mcp.WithDescription("Your own ego score, read from your turns: how often your work ends without a failure and "+
+				"which tools keep failing. It needs no judge and costs no model call, so it is the score of an always-on "+
+				"agent that online evaluation does not rate (get_quality has nothing for it). A turn is one wake or one "+
+				"prompt, the work between being woken and finishing; a turn fails when any of its spans failed or any of "+
+				"its tool calls failed or was rejected. For each agent in the window: turns; score, the share of turns "+
+				"without a failure, 0 to 1 (1 is a clean window); tool_calls and failed_tool_calls, with error_rate their "+
+				"share; and failing_tools, at most five tools that failed, worst first, each with calls, failed, "+
+				"failure_rate and avg_ms. Call it at the start of a wake or after a run of errors to see whether a tool "+
+				"is the cause: a tool with a high failure_rate is broken or misused, so stop retrying it blindly. Then "+
+				"read why with get_session_spans (errors_only) and write down what you will do differently. Compare a "+
+				"short window with a long one (hours 1 and 24) to tell a fresh failure from a steady one. Scoped to the "+
+				"tenants you may see; with no agent, every agent that worked in turns in the window, at most 20."),
 			mcp.WithString("agent",
 				mcp.Description("Only this exact agent name (gen_ai.agent.name). Omit for every agent you may see.")),
 			mcp.WithString("tenant",
 				mcp.Description("Only this tenant key, or \"<sender>/*\" for every tenant of one sender.")),
 			mcp.WithNumber("hours", mcp.DefaultNumber(defaultActivityHours),
 				mcp.Description("Window in hours, 1 to 720.")),
-		), Handler: getActivityHandler(b)},
+		), Handler: getEgoScoreHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("explain_regression",
 			mcp.WithDescription("Explain a quality alert: the alert, the version or model it is attributed to, and its "+
@@ -452,7 +457,7 @@ func listThreadsHandler(b Backend) server.ToolHandlerFunc {
 	}
 }
 
-func getActivityHandler(b Backend) server.ToolHandlerFunc {
+func getEgoScoreHandler(b Backend) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		q := ActivityQuery{
 			Agent:  strings.TrimSpace(req.GetString("agent", "")),
@@ -462,12 +467,12 @@ func getActivityHandler(b Backend) server.ToolHandlerFunc {
 		if q.Hours < 1 || q.Hours > maxActivityHours {
 			return toolError(fmt.Errorf("hours must be between 1 and %d", maxActivityHours))
 		}
-		out, err := b.Activity(ctx, q)
+		out, err := b.EgoScore(ctx, q)
 		if err != nil {
 			return toolError(err)
 		}
 		if out == nil {
-			out = []ActivitySummary{}
+			out = []TurnScore{}
 		}
 		return mcp.NewToolResultStructuredOnly(out), nil
 	}

@@ -254,8 +254,8 @@ func (b *mcpBackend) DeleteRoleBinding(ctx context.Context, id string) (map[stri
 	return map[string]bool{"deleted": true}, nil
 }
 
-func (b *mcpBackend) Activity(ctx context.Context, q mcptools.ActivityQuery) ([]mcptools.ActivitySummary, error) {
-	return b.sessions.ActivitySummaries(q, roleInfoOrOpen(ctx)), nil
+func (b *mcpBackend) EgoScore(ctx context.Context, q mcptools.ActivityQuery) ([]mcptools.TurnScore, error) {
+	return turnScores(b.sessions, roleInfoOrOpen(ctx), q), nil
 }
 
 func (b *mcpBackend) Quality(ctx context.Context, kind string, hours int) (*mcptools.Quality, error) {
