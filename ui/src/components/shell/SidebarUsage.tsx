@@ -7,6 +7,7 @@ import { useLiveData } from '../../lib/connection';
 import { useSelectedTenant } from '../../lib/tenant';
 import { useTraceContext } from '../../context/TraceContext';
 import { useTurnQuality } from '../quality/TurnQuality';
+import { useEgoSelection } from '../../lib/egoSelection';
 
 interface Usage {
   tokens: number;
@@ -77,18 +78,20 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
   const tenant = useSelectedTenant();
   const [figures, setFigures] = useState<Figures>({});
   // An agent that works in turns has no judge score until online evaluation scores it: its turns stand in.
-  const turnQuality = useTurnQuality(24);
+  const turnQuality = useTurnQuality();
+  const { hours } = useEgoSelection();
+  const windowName = hours === 24 ? '24 hours' : hours === 24 * 7 ? '7 days' : '30 days';
 
   // The tenant is read by the requests, which narrow by it.
   const load = useCallback(async (current: () => boolean) => {
-    const [u, o, e] = await Promise.allSettled([getUsage(24), getOnlineStatus(), getOnlineSeries(24)]);
+    const [u, o, e] = await Promise.allSettled([getUsage(24), getOnlineStatus(), getOnlineSeries(hours)]);
     if (!current()) return;
     setFigures({
       usage: u.status === 'fulfilled' ? usageTotals(u.value) : undefined,
       scored: o.status === 'fulfilled' ? o.value.sessionsScored24h : undefined,
       ego: e.status === 'fulfilled' ? egoScore(e.value) : undefined,
     });
-  }, [tenant]);
+  }, [tenant, hours]);
 
   useLiveData(['usage', 'quality'], load);
 
@@ -100,9 +103,9 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
   }
   if (figures.scored != null) day.push(['scored', short(figures.scored), 'sessions scored by online evaluation (quality)']);
   const ego: Row[] = [];
-  if (figures.ego != null) ego.push(['score', `${Math.round(figures.ego * 100)}%`, 'mean online score of the last 24 hours, over every metric']);
+  if (figures.ego != null) ego.push(['score', `${Math.round(figures.ego * 100)}%`, `mean online score of the last ${windowName}, over every metric`]);
   else if (turnQuality.turns > 0 && turnQuality.subject) {
-    ego.push(['score', `${Math.round((turnQuality.ok / turnQuality.turns) * 100)}%`, `${turnQuality.ok} of ${turnQuality.turns} turns of ${turnQuality.subject.agent} ended without a failure in the last 24 hours`]);
+    ego.push(['score', `${Math.round((turnQuality.ok / turnQuality.turns) * 100)}%`, `${turnQuality.ok} of ${turnQuality.turns} turns of ${turnQuality.subject.agent} ended without a failure in the last ${windowName}`]);
   }
   if (ego.length === 0 && day.length === 0) return null;
 
@@ -117,7 +120,7 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
   return (
     <div css={[boxStyle, collapsed && collapsedBoxStyle]}>
       {ego.length > 0 && (
-        <button css={sectionStyle} onClick={() => actions.setCurrentView('quality')} title="Last 24 hours. Open ego.">
+        <button css={sectionStyle} onClick={() => actions.setCurrentView('quality')} title={`Last ${windowName}. Open ego.`}>
           <span css={headingStyle}>ego</span>
           {rowsOf(ego)}
         </button>

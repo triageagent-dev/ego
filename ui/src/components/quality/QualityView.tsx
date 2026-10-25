@@ -20,8 +20,8 @@ import { parseHash, sessionLink } from '../shell/routes';
 import { tenantName, useSelectedTenant, useTenantNames } from '../../lib/tenant';
 import type { OnlineAlert, OnlineCorrection, OnlineFinding, OnlineFindingState, OnlineSeriesPoint, OnlineStatus } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
-import { store, stored } from '../../lib/stored';
 import { TurnQualityView, useTurnQuality } from './TurnQuality';
+import { EGO_RANGES, setEgoHours, useEgoSelection } from '../../lib/egoSelection';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend);
 
@@ -30,11 +30,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointEleme
 // caps, what the sampler did, open regressions, and hourly mean scores per
 // call kind. The per-run detail lives in Runs ("online · <kind>").
 
-const RANGES: { label: string; hours: number }[] = [
-  { label: '24h', hours: 24 },
-  { label: '7d', hours: 24 * 7 },
-  { label: '30d', hours: 24 * 30 },
-];
+const RANGES = EGO_RANGES;
 
 // Same categorical slots as the Usage view.
 const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9'];
@@ -67,15 +63,9 @@ function hourLabel(ms: number): string {
 }
 
 export const QualityView: React.FC = () => {
-  // The range is remembered per browser; 24 hours until a reader picks another.
-  const [hours, setHoursState] = useState(() => {
-    const h = Number(stored('ego.quality.hours'));
-    return RANGES.some(r => r.hours === h) ? h : 24;
-  });
-  const setHours = (h: number) => {
-    store('ego.quality.hours', String(h));
-    setHoursState(h);
-  };
+  // The range is shared with the sidebar and remembered per browser; 24 hours until a reader picks another.
+  const { hours } = useEgoSelection();
+  const setHours = setEgoHours;
   const [status, setStatus] = useState<OnlineStatus | null>(null);
   const [series, setSeries] = useState<OnlineSeriesPoint[]>([]);
   const [alerts, setAlerts] = useState<OnlineAlert[]>([]);
@@ -88,7 +78,7 @@ export const QualityView: React.FC = () => {
   const [notConfigured, setNotConfigured] = useState(false);
   const tenant = useSelectedTenant();
   useTenantNames();
-  const turnQuality = useTurnQuality(hours);
+  const turnQuality = useTurnQuality();
 
   const load = useCallback(async (current: () => boolean) => {
     try {
@@ -285,6 +275,7 @@ export const QualityView: React.FC = () => {
 
           <TurnQualityView q={turnQuality} hours={hours} scoreIsTurns={egoScore === null && turnQuality.turns > 0} />
 
+          {series.length > 0 && (
           <div css={chartsGridStyle}>
           <section css={cardStyle}>
             <h2 css={cardTitleStyle}>Ego score{active ? `, ${active}` : ''}</h2>
@@ -358,8 +349,11 @@ export const QualityView: React.FC = () => {
             )}
           </section>
           </div>
+          )}
 
+          {(series.length > 0 || agreementChart.labels.length > 0) && (
           <div css={chartsGridStyle}>
+          {series.length > 0 && (
           <section css={cardStyle}>
             <h2 css={cardTitleStyle}>Score by metric{active ? `, ${active}` : ''}</h2>
             {!byMetric || byMetric.labels.length === 0 ? (
@@ -386,7 +380,8 @@ export const QualityView: React.FC = () => {
               </ChartBox>
             )}
           </section>
-
+          )}
+          {agreementChart.labels.length > 0 && (
           <section css={cardStyle}>
             <h2 css={cardTitleStyle}>Judge agreement, last 7 days</h2>
             {agreementChart.labels.length === 0 ? (
@@ -413,7 +408,9 @@ export const QualityView: React.FC = () => {
               </ChartBox>
             )}
           </section>
+          )}
           </div>
+          )}
 
           <section css={cardStyle} id="ego-alerts">
             <h2 css={cardTitleStyle}>Alerts</h2>

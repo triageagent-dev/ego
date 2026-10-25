@@ -3,7 +3,7 @@ import { css } from '@emotion/react';
 import { Bar } from 'react-chartjs-2';
 import { getActivity, getActivityTurns } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
-import { stored, store } from '../../lib/stored';
+import { setEgoAgent, useEgoSelection } from '../../lib/egoSelection';
 import { tenantName, useSelectedTenant } from '../../lib/tenant';
 import { fmtDuration, shortCount, turnStats, type TurnStats } from '../../lib/turns';
 import type { ActivitySubject, TurnsResult } from '../../lib/types';
@@ -30,10 +30,10 @@ export interface TurnQuality {
 
 const keyOf = (s: ActivitySubject) => `${s.agent}\n${s.tenant ?? ''}`;
 
-export function useTurnQuality(hours: number): TurnQuality {
+export function useTurnQuality(): TurnQuality {
   const tenant = useSelectedTenant();
+  const { hours, agent: key } = useEgoSelection();
   const [subjects, setSubjects] = useState<ActivitySubject[]>([]);
-  const [key, setKey] = useState(() => stored('ego.activity.agent') || '');
   const [data, setData] = useState<TurnsResult | null>(null);
 
   useEffect(() => {
@@ -64,7 +64,7 @@ export function useTurnQuality(hours: number): TurnQuality {
   return {
     subjects,
     subject,
-    pick: (s) => { setKey(keyOf(s)); store('ego.activity.agent', keyOf(s)); },
+    pick: (s) => setEgoAgent(keyOf(s)),
     data,
     stats,
     ok: stats ? stats.turns - stats.failedTurns : 0,

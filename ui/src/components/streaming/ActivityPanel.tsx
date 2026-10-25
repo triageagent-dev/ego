@@ -3,6 +3,7 @@ import { css } from '@emotion/react';
 import { getActivity, getActivityTurns } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
 import { stored, store } from '../../lib/stored';
+import { setEgoAgent } from '../../lib/egoSelection';
 import { ZOOM } from '../../lib/zoom';
 import { useSelectedTenant } from '../../lib/tenant';
 import { buildGraph, pathOf, turnNodeId, type Graph } from '../../lib/agentGraph';
@@ -60,7 +61,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
     // The picked tenant narrows the agents: load again when it changes.
   }, [tenant]);
 
-  useEffect(() => store('ego.activity.agent', subjectKey), [subjectKey]);
+  useEffect(() => { if (subjectKey) setEgoAgent(subjectKey); }, [subjectKey]);
   const subject = subjects?.find((r) => keyOf(r) === subjectKey) ?? null;
   useEffect(() => store('ego.activity.minutes', String(minutes)), [minutes]);
   useEffect(() => store('ego.activity.view', view), [view]);
