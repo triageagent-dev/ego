@@ -168,13 +168,17 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
                 <TurnTimeline compact turns={data.turns} segments={data.segments} fromMs={data.fromMs} toMs={data.toMs} selected={shown} onSelect={setSelected} />
               </div>
               <div css={graphBoxStyle}>
-                {view === 'tree' && <AgentTree graph={graph} path={path} selectedId={nodeId} onSelectNode={setNodeId} />}
-                {view === 'chord' && <AgentChord rows={data.turns} graph={graph} selectedId={nodeId} onSelectNode={setNodeId} />}
-                {view === 'treemap' && <AgentTreemap graph={graph} weight={weight} selectedId={nodeId} onSelectNode={setNodeId} />}
+                <div css={graphBodyStyle}>
+                  {view === 'tree' && <AgentTree graph={graph} path={path} selectedId={nodeId} onSelectNode={setNodeId} />}
+                  {view === 'chord' && <AgentChord rows={data.turns} graph={graph} selectedId={nodeId} onSelectNode={setNodeId} />}
+                  {view === 'treemap' && <AgentTreemap graph={graph} weight={weight} selectedId={nodeId} onSelectNode={setNodeId} />}
+                </div>
+                <div css={legendStyle}>
+                  {view === 'chord' && <span>a line joins a step to the one that came after it · hover a dot: blue led to it, violet came after · click to select</span>}
+                  {view === 'treemap' && <span>a tile is as big as its {weight} and warms with the share of calls that failed · click to select</span>}
+                  {view === 'tree' && <span>a bar is as long as the calls, the red part is the share that failed · pick a turn on the strip to see what it used · click a row to select</span>}
+                </div>
               </div>
-              {view === 'chord' && <div css={legendStyle}><span>a line joins a step to the one that came after it · hover a dot: blue led to it, violet came after · click to select</span></div>}
-              {view === 'treemap' && <div css={legendStyle}><span>a tile is as big as its {weight} and warms with the share of calls that failed · click to select</span></div>}
-              {view === 'tree' && <div css={legendStyle}><span>a bar is as long as the calls, the red part is the share that failed · pick a turn on the strip to see what it used · click a row to select</span></div>}
             </div>
 
             <aside css={sideStyle}>
@@ -311,7 +315,10 @@ const legendStyle = css`
   display: flex;
   flex-wrap: wrap;
   gap: 4px 18px;
-  margin: 8px 0 10px;
+  margin: 0;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border-default);
+  background: var(--card-surface);
   color: var(--text-muted);
   font-size: 11.5px;
 
@@ -362,10 +369,18 @@ const mainStyle = css`
 const graphBoxStyle = css`
   height: calc(100vh / 1.15 - 250px);
   min-height: 420px;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
   background: var(--bg-primary);
+`;
+
+const graphBodyStyle = css`
+  flex: 1;
+  min-height: 0;
+  position: relative;
 `;
 
 const stripStyle = css`
