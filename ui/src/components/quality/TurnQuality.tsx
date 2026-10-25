@@ -4,7 +4,7 @@ import { Bar } from 'react-chartjs-2';
 import { getActivity, getActivityTurns } from '../../api/client';
 import { useLiveData } from '../../lib/connection';
 import { stored, store } from '../../lib/stored';
-import { useSelectedTenant } from '../../lib/tenant';
+import { tenantName, useSelectedTenant } from '../../lib/tenant';
 import { fmtDuration, shortCount, turnStats, type TurnStats } from '../../lib/turns';
 import type { ActivitySubject, TurnsResult } from '../../lib/types';
 import { ChartBox } from '../ui/ChartBox';
@@ -123,10 +123,28 @@ export function TurnQualityView({ q, hours }: { q: TurnQuality; hours: number })
 
   if (q.subjects.length === 0 || !subject) return null;
   const windowLabel = hours === 24 ? '24h' : hours === 24 * 7 ? '7d' : '30d';
+  // Two tenants can run an agent of the same name: they are told apart by the tenant.
+  const label = (x: ActivitySubject) => (q.subjects.filter((o) => o.agent === x.agent).length > 1 ? `${x.agent} · ${x.tenant ? tenantName(x.tenant) : 'no tenant'}` : x.agent);
+  // The picker stays when the agent picked has no turns, so another can be chosen.
+  const head = (
+    <div css={headStyle}>
+      <h2 css={cardTitleStyle}>Turns, {label(subject)}</h2>
+      {q.subjects.length > 1 && (
+        <div css={segmentStyle} role="group" aria-label="Agent">
+          {q.subjects.map((x) => (
+            <button key={keyOf(x)} css={[segBtnStyle, keyOf(x) === keyOf(subject) && segActiveStyle]} onClick={() => q.pick(x)}>
+              {label(x)}
+            </button>
+          ))}
+        </div>
+      )}
+      {data?.truncated && <span css={noteStyle}>newest turns only</span>}
+    </div>
+  );
   if (!stats || stats.turns === 0) {
     return (
       <section css={cardStyle}>
-        <h2 css={cardTitleStyle}>Turns, {subject.agent}</h2>
+        {head}
         <p css={emptyStyle}>No turns in the last {windowLabel}.</p>
       </section>
     );
@@ -135,19 +153,7 @@ export function TurnQualityView({ q, hours }: { q: TurnQuality; hours: number })
   return (
     <>
       <section css={cardStyle}>
-        <div css={headStyle}>
-          <h2 css={cardTitleStyle}>Turns, {subject.agent}</h2>
-          {q.subjects.length > 1 && (
-            <div css={segmentStyle} role="group" aria-label="Agent">
-              {q.subjects.map((s) => (
-                <button key={keyOf(s)} css={[segBtnStyle, keyOf(s) === keyOf(subject) && segActiveStyle]} onClick={() => q.pick(s)}>
-                  {s.agent}
-                </button>
-              ))}
-            </div>
-          )}
-          {data?.truncated && <span css={noteStyle}>newest turns only</span>}
-        </div>
+        {head}
         <div css={tilesStyle}>
           <Tile label="Turn success" value={pct(q.ok / stats.turns)} sub={`${q.ok.toLocaleString()} of ${stats.turns.toLocaleString()} turns without a failure`} />
           <Tile label="Failed tool calls" value={stats.failedToolCalls.toLocaleString()} sub={`of ${stats.toolCalls.toLocaleString()} tool calls (${pct(failedShare)})`} />
