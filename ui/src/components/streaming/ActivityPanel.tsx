@@ -165,6 +165,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
             </div>
 
             <aside css={sideStyle}>
+              <div css={sideScrollStyle}>
               {node && (
                 <section css={sectionStyle}>
                   <div css={headStyle}>
@@ -214,6 +215,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
                   )}
                 </section>
               )}
+              </div>
             </aside>
           </div>
         )
@@ -331,7 +333,7 @@ const layoutStyle = css`
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
 
   @media (max-width: 1100px) {
     grid-template-columns: minmax(0, 1fr);
@@ -358,14 +360,30 @@ const stripStyle = css`
   padding: 4px 10px 0;
 `;
 
+// The side column is as tall as the graph and the strip beside it; what it holds scrolls inside.
 const sideStyle = css`
-  position: sticky;
-  top: 8px;
+  position: relative;
+  min-height: 200px;
+
+  @media (max-width: 1100px) {
+    position: sticky;
+    top: 8px;
+    min-height: 0;
+  }
+`;
+
+const sideScrollStyle = css`
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: calc(100vh / 1.15 - 70px);
   overflow-y: auto;
+
+  @media (max-width: 1100px) {
+    position: static;
+    max-height: calc(100vh / 1.15 - 70px);
+  }
 `;
 
 const sectionStyle = css`
