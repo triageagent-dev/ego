@@ -79,7 +79,8 @@ function bucketLabel(ms: number, day: boolean): string {
   return day ? `${d.getMonth() + 1}/${d.getDate()}` : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:00`;
 }
 
-export function TurnQualityView({ q, hours }: { q: TurnQuality; hours: number }) {
+// scoreIsTurns is true when the page's ego score tile already shows the share of turns without a failure.
+export function TurnQualityView({ q, hours, scoreIsTurns }: { q: TurnQuality; hours: number; scoreIsTurns: boolean }) {
   const { data, stats, subject } = q;
 
   // Turns per hour (per day over a week), those that ended without a failure and those that did not.
@@ -166,7 +167,7 @@ export function TurnQualityView({ q, hours }: { q: TurnQuality; hours: number })
       <section css={cardStyle}>
         {head}
         <div css={tilesStyle}>
-          <Tile label="Turn success" value={pct(q.ok / stats.turns)} sub={`${q.ok.toLocaleString()} of ${stats.turns.toLocaleString()} turns without a failure`} />
+          {!scoreIsTurns && <Tile label="Turn success" value={pct(q.ok / stats.turns)} sub={`${q.ok.toLocaleString()} of ${stats.turns.toLocaleString()} turns without a failure`} />}
           <Tile label="Failed tool calls" value={stats.failedToolCalls.toLocaleString()} sub={`of ${stats.toolCalls.toLocaleString()} tool calls (${pct(failedShare)})`} />
           <Tile label="Model requests" value={requests.toLocaleString()} sub={`${(requests / stats.turns).toFixed(1)} a turn · median turn ${fmtDuration(stats.medianMs)}`} />
           <Tile label="Tokens" value={shortCount(stats.tokens)} sub={`${pct(stats.cachedShare)} of the input from cache`} />

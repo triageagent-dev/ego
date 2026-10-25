@@ -283,7 +283,7 @@ export const QualityView: React.FC = () => {
             )}
           </div>
 
-          <TurnQualityView q={turnQuality} hours={hours} />
+          <TurnQualityView q={turnQuality} hours={hours} scoreIsTurns={egoScore === null && turnQuality.turns > 0} />
 
           <div css={chartsGridStyle}>
           <section css={cardStyle}>
