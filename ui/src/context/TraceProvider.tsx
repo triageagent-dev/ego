@@ -37,7 +37,8 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
     errors: [],
     tableRows: new Map(),
     expectedTraceCount: 0,
-    currentView: 'streaming',
+    // The ego page, which the logo opens, is where the app starts.
+    currentView: 'quality',
     evaluationOrigin: null,
     selectedTraceId: null,
     goldenTraceId: null,
