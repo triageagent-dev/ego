@@ -40,7 +40,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
   const [subjects, setSubjects] = useState<ActivitySubject[] | null>(null);
   const [subjectKey, setSubjectKey] = useState(() => stored('ego.activity.agent') || '');
   const [minutes, setMinutes] = useState(() => Number(stored('ego.activity.minutes')) || 1440);
-  const [view, setView] = useState<View>(() => VIEWS.find((v) => v === stored('ego.activity.view')) ?? 'graph');
+  const [view, setView] = useState<View>(() => VIEWS.find((v) => v === stored('ego.activity.view')) ?? 'tree');
   const [data, setData] = useState<TurnsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<TurnRow | null>(null);
@@ -165,13 +165,13 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
           <div css={layoutStyle} style={{ '--side-w': `${sideW}px` } as CSSProperties}>
             <div css={mainStyle}>
               <div css={graphBoxStyle}>
-                {view === 'graph' && <AgentTree graph={graph} path={path} selectedId={nodeId} onSelectNode={setNodeId} />}
+                {view === 'tree' && <AgentTree graph={graph} path={path} selectedId={nodeId} onSelectNode={setNodeId} />}
                 {view === 'chord' && <AgentChord rows={data.turns} graph={graph} selectedId={nodeId} onSelectNode={setNodeId} />}
                 {view === 'treemap' && <AgentTreemap graph={graph} weight={weight} selectedId={nodeId} onSelectNode={setNodeId} />}
               </div>
               {view === 'chord' && <div css={legendStyle}><span>a line joins a step to the one that came after it · hover a dot: blue led to it, violet came after · click to select</span></div>}
               {view === 'treemap' && <div css={legendStyle}><span>a tile is as big as its {weight} and warms with the share of calls that failed · click to select</span></div>}
-              {view === 'graph' && <div css={legendStyle}><span>a bar is as long as the calls, the red part is the share that failed · pick a turn on the strip to see what it used · click a row to select</span></div>}
+              {view === 'tree' && <div css={legendStyle}><span>a bar is as long as the calls, the red part is the share that failed · pick a turn on the strip to see what it used · click a row to select</span></div>}
               <div css={stripStyle}>
                 <TurnTimeline compact turns={data.turns} segments={data.segments} fromMs={data.fromMs} toMs={data.toMs} selected={shown} onSelect={setSelected} />
               </div>
@@ -304,7 +304,7 @@ const failedStyle = css`
   color: var(--status-failure);
 `;
 
-const VIEWS = ['graph', 'chord', 'treemap'] as const;
+const VIEWS = ['tree', 'chord', 'treemap'] as const;
 type View = (typeof VIEWS)[number];
 
 const legendStyle = css`
