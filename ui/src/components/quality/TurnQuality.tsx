@@ -124,8 +124,20 @@ export function TurnQualityView({ q, hours }: { q: TurnQuality; hours: number })
 
   if (q.subjects.length === 0 || !subject) return null;
   const windowLabel = hours === 24 ? '24h' : hours === 24 * 7 ? '7d' : '30d';
-  // Two tenants can run an agent of the same name: they are told apart by the tenant.
-  const label = (x: ActivitySubject) => (q.subjects.filter((o) => o.agent === x.agent).length > 1 ? `${x.agent} · ${x.tenant ? tenantName(x.tenant) : 'no tenant'}` : x.agent);
+  // An agent is named alone. Where two tenants run an agent of the same name, the tenant's name is added unless it
+  // only repeats the agent's; if the names still collide, the tenant's key tells them apart.
+  const names = new Map<string, string>();
+  for (const x of q.subjects) {
+    const shared = q.subjects.some((o) => o !== x && o.agent === x.agent);
+    const t = x.tenant ? tenantName(x.tenant) : '';
+    names.set(keyOf(x), shared && t && t !== x.agent ? `${x.agent} · ${t}` : x.agent);
+  }
+  const seen = new Map<string, number>();
+  for (const n of names.values()) seen.set(n, (seen.get(n) ?? 0) + 1);
+  const label = (x: ActivitySubject) => {
+    const n = names.get(keyOf(x)) ?? x.agent;
+    return (seen.get(n) ?? 0) > 1 ? `${x.agent} · ${x.tenant || 'no tenant'}` : n;
+  };
   // The picker stays when the agent picked has no turns, so another can be chosen.
   const head = (
     <div css={headStyle}>
