@@ -48,6 +48,8 @@ function titleOf(n: GNode): string {
   return `${n.label} · ${n.kind === 'tool' && n.server ? `tool of ${n.server}` : n.kind}\n${calls}${time}`;
 }
 
+const MAX_BADGE_STEPS = 2;
+
 export function AgentGraph({
   graph, path, turnNode, selectedId, onSelectNode, onPickTurn,
 }: {
@@ -298,7 +300,9 @@ export function AgentGraph({
     for (const s of path) byNode.set(s.nodeId, [...(byNode.get(s.nodeId) ?? []), s]);
     for (const [id, steps] of byNode) {
       const g = badges.append('g').attr('class', 'ego-badge').attr('data-node', id);
-      const text = steps.map((s) => s.n).join(',');
+      // A node reached many times shows its first steps and how many more: the whole list would cover the graph.
+      const shown = steps.slice(0, MAX_BADGE_STEPS).map((s) => s.n).join(',');
+      const text = steps.length > MAX_BADGE_STEPS ? `${shown}+${steps.length - MAX_BADGE_STEPS}` : shown;
       const w = Math.max(16, 7 * text.length + 8);
       const bad = steps.some((s) => s.failed);
       g.append('rect').attr('x', -w / 2).attr('y', -8).attr('width', w).attr('height', 16).attr('rx', 8).attr('fill', bad ? FAILED : '#f5f3ff');
