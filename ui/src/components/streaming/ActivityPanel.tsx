@@ -164,6 +164,9 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
         ) : (
           <div css={layoutStyle} style={{ '--side-w': `${sideW}px` } as CSSProperties}>
             <div css={mainStyle}>
+              <div css={stripStyle}>
+                <TurnTimeline compact turns={data.turns} segments={data.segments} fromMs={data.fromMs} toMs={data.toMs} selected={shown} onSelect={setSelected} />
+              </div>
               <div css={graphBoxStyle}>
                 {view === 'tree' && <AgentTree graph={graph} path={path} selectedId={nodeId} onSelectNode={setNodeId} />}
                 {view === 'chord' && <AgentChord rows={data.turns} graph={graph} selectedId={nodeId} onSelectNode={setNodeId} />}
@@ -172,9 +175,6 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
               {view === 'chord' && <div css={legendStyle}><span>a line joins a step to the one that came after it · hover a dot: blue led to it, violet came after · click to select</span></div>}
               {view === 'treemap' && <div css={legendStyle}><span>a tile is as big as its {weight} and warms with the share of calls that failed · click to select</span></div>}
               {view === 'tree' && <div css={legendStyle}><span>a bar is as long as the calls, the red part is the share that failed · pick a turn on the strip to see what it used · click a row to select</span></div>}
-              <div css={stripStyle}>
-                <TurnTimeline compact turns={data.turns} segments={data.segments} fromMs={data.fromMs} toMs={data.toMs} selected={shown} onSelect={setSelected} />
-              </div>
             </div>
 
             <aside css={sideStyle}>
@@ -373,6 +373,7 @@ const stripStyle = css`
   border-radius: var(--radius);
   background: var(--card-surface);
   padding: 4px 10px 0;
+  margin-bottom: 8px;
 `;
 
 // The side column is as tall as the graph and the strip beside it; what it holds scrolls inside.
