@@ -454,3 +454,57 @@ type DecisionTurn struct {
 	Score         *float64 `json:"score"`
 	Answer        string   `json:"answer,omitempty"`
 }
+
+// ActivityQuery selects what get_activity summarizes: one agent (in one tenant) or, with no agent, every agent the
+// caller may see that worked in turns during the window.
+type ActivityQuery struct {
+	Agent  string
+	Tenant string
+	Hours  int
+}
+
+// ToolRecord is how one tool did over a window: its calls, how many failed and how long a call took on average.
+type ToolRecord struct {
+	Tool    string  `json:"tool"`
+	Server  string  `json:"server,omitempty"`
+	Calls   int     `json:"calls"`
+	Failed  int     `json:"failed,omitempty"`
+	AvgMs   float64 `json:"avg_ms,omitempty"`
+	Failure float64 `json:"failure_rate,omitempty"`
+}
+
+// ActivityHour counts the turns that began in one hour (one day for a window over a week) and how many of them had a
+// failure.
+type ActivityHour struct {
+	Start  string `json:"start"`
+	Turns  int    `json:"turns"`
+	Failed int    `json:"failed,omitempty"`
+}
+
+// ActivitySummary is the record of one agent over a window, from its turns alone: no judge has to have scored it. A
+// turn has a failure when any of its spans failed or any of its tool calls failed or was rejected.
+type ActivitySummary struct {
+	Agent  string `json:"agent"`
+	Tenant string `json:"tenant,omitempty"`
+	Hours  int    `json:"hours"`
+	Turns  int    `json:"turns"`
+	// TurnsWithoutFailure over Turns is Success, 0 to 1; absent when there were no turns.
+	TurnsWithoutFailure int      `json:"turns_without_failure"`
+	Success             *float64 `json:"success,omitempty"`
+	ToolCalls           int      `json:"tool_calls"`
+	FailedToolCalls     int      `json:"failed_tool_calls"`
+	ModelRequests       int      `json:"model_requests"`
+	InputTokens         int64    `json:"input_tokens"`
+	OutputTokens        int64    `json:"output_tokens"`
+	// CachedShare is the part of the input tokens read from the model's cache, 0 to 1.
+	CachedShare  float64 `json:"cached_share"`
+	MedianTurnMs int64   `json:"median_turn_ms"`
+	P95TurnMs    int64   `json:"p95_turn_ms"`
+	// Awake is the share of the window with a turn running, 0 to 1.
+	Awake float64 `json:"awake"`
+	// Tools lists the worst first (most failures, then most calls); Hourly the turns in time order.
+	Tools  []ToolRecord   `json:"tools"`
+	Hourly []ActivityHour `json:"hourly"`
+	// Truncated is true when only the newest turns of a long window were read.
+	Truncated bool `json:"truncated,omitempty"`
+}

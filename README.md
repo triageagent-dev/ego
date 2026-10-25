@@ -289,6 +289,7 @@ over HTTP; it adds `evaluate_traces`, which scores local files.
 | `register_correction` | What changed in answer to a finding and the version it ships as; starts verification. |
 | `list_corrections` | Corrections with their verification: before and after means, state. |
 | `label_session` | Agree or disagree with a judge's score, with a note. For people, not for the agent that produced the session. |
+| `get_activity` | How an agent that works in turns did, from its turns alone (no judge): turns without a failure, tool calls and failures, model requests, tokens, the record of each tool, turns per hour. |
 | `get_usage` | Token spend in a window, by kind, tenant, model or service, and the largest sessions. |
 | `list_sessions`, `summarize_session` | Sessions with filters (agent, tenant, since, text, complete); one session's turns and tool calls. |
 | `get_session_spans` | One session's spans with their attributes; `errors_only` returns the failed ones with their message and their parent's attributes, to find why a session shows an error. |

@@ -359,6 +359,21 @@ func (b *REST) DeleteRoleBinding(ctx context.Context, id string) (map[string]boo
 
 // The quality and explain endpoints answer in the tools' own shape, so they decode straight into it.
 
+func (b *REST) Activity(ctx context.Context, q ActivityQuery) ([]ActivitySummary, error) {
+	v := url.Values{"hours": {strconv.Itoa(q.Hours)}}
+	if q.Agent != "" {
+		v.Set("agent", q.Agent)
+	}
+	if q.Tenant != "" {
+		v.Set("tenant", q.Tenant)
+	}
+	var out []ActivitySummary
+	if err := b.get(ctx, "/api/activity/summary?"+v.Encode(), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (b *REST) Quality(ctx context.Context, kind string, hours int) (*Quality, error) {
 	q := url.Values{"hours": {strconv.Itoa(hours)}}
 	if kind != "" {

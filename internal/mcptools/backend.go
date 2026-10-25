@@ -38,6 +38,10 @@ type Backend interface {
 	SetRoleBinding(ctx context.Context, in RoleBindingInput) (RoleBinding, error)
 	DeleteRoleBinding(ctx context.Context, id string) (map[string]bool, error)
 
+	// Activity answers get_activity: the record of the agents that work in turns, from their turns, for the
+	// caller's tenants.
+	Activity(ctx context.Context, q ActivityQuery) ([]ActivitySummary, error)
+
 	// Quality answers get_quality for the caller's tenants.
 	Quality(ctx context.Context, kind string, hours int) (*Quality, error)
 	// ExplainRegression answers explain_regression; an alert outside the caller's tenants is refused.

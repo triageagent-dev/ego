@@ -57,6 +57,11 @@ scores each session at its completion. `list_threads` shows your threads (when e
 and the newest score); `list_sessions` with `thread` lists the segments of one. Declare `ego.thread` also when your
 runtime rotates its session id and you want one thread.
 
+An agent that no judge scores (an always-on agent whose calls have no online profile) has no findings to read: call
+`get_activity` (`agent?`, `hours?`) for its record from its turns instead: the share of turns without a failure, the
+tools that keep failing (worst first) and the tokens. Treat a tool that fails over and over, or a drop in success, as a
+finding of your own, and read the failed spans with `get_session_spans` and `errors_only` before deciding a correction.
+
 ### 3. Decide one correction per finding
 
 A correction is a change to yourself: a prompt change, a tool-use rule, a new check in a skill. Keep it as small
