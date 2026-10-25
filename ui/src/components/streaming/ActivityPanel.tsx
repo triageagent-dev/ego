@@ -230,7 +230,7 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
                           </span>
                           <span css={stepTimeStyle}>{fmtDuration(st.durationUs / 1000)}</span>
                           {st.approvalUs ? <span css={stepNoteStyle}>{fmtDuration(st.approvalUs / 1000)} waiting to be approved</span> : null}
-                          {st.kind === 'tool' && st.ctxAdded ? <span css={stepNoteStyle}>{st.ctxShared ? '~' : ''}+{shortCount(st.ctxAdded)} tokens into the context{st.ctxShared ? ', shared with the calls beside it' : ''}</span> : null}
+                          {st.kind === 'tool' && st.ctxAdded ? <span css={stepNoteStyle} title={st.ctxShared ? 'what the model request after it took in, split with the calls beside it by the length of their results' : 'what the model request after it took in'}>{st.ctxShared ? '~' : ''}+{shortCount(st.ctxAdded)} tokens</span> : null}
                           {st.kind === 'model' && (st.tokensIn || st.tokensOut) ? <span css={stepNoteStyle}>↓{shortCount(st.tokensIn ?? 0)} ↑{shortCount(st.tokensOut ?? 0)}{st.cached ? `, ${shortCount(st.cached)} from cache` : ''}</span> : null}
                           {st.failed && st.message && <span css={stepFailNoteStyle}>✗ {st.message}</span>}
                         </li>
