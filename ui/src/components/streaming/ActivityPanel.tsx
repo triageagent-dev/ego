@@ -11,7 +11,7 @@ import { useTurnDetail } from '../../lib/useTurnDetail';
 import type { ActivitySubject, TurnRow, TurnsResult } from '../../lib/types';
 import { errorStyle } from '../ui/page';
 import { AgentChord } from './AgentChord';
-import { AgentGraph } from './AgentGraph';
+import { AgentTree } from './AgentTree';
 import { AgentTreemap } from './AgentTreemap';
 import { WEIGHTS, type Weight } from '../../lib/treemapWeight';
 import { TurnTimeline } from './TurnTimeline';
@@ -165,22 +165,13 @@ export function ActivityPanel({ onOpenSession }: { onOpenSession: (session: stri
           <div css={layoutStyle} style={{ '--side-w': `${sideW}px` } as CSSProperties}>
             <div css={mainStyle}>
               <div css={graphBoxStyle}>
-                {view === 'graph' && <AgentGraph graph={graph} path={path} turnNode={shownNode} selectedId={nodeId} onSelectNode={setNodeId} onPickTurn={setSelected} />}
+                {view === 'graph' && <AgentTree graph={graph} path={path} selectedId={nodeId} onSelectNode={setNodeId} />}
                 {view === 'chord' && <AgentChord rows={data.turns} graph={graph} selectedId={nodeId} onSelectNode={setNodeId} />}
                 {view === 'treemap' && <AgentTreemap graph={graph} weight={weight} selectedId={nodeId} onSelectNode={setNodeId} />}
               </div>
               {view === 'chord' && <div css={legendStyle}><span>a line joins a step to the one that came after it · hover a dot: blue led to it, violet came after · click to select</span></div>}
               {view === 'treemap' && <div css={legendStyle}><span>a tile is as big as its {weight} and warms with the share of calls that failed · click to select</span></div>}
-              {view === 'graph' && (
-              <div css={legendStyle}>
-                <span><i style={{ background: '#a79ff0' }} />agent</span>
-                <span><i style={{ background: '#6b7280' }} />model, MCP server, tool and, small, a turn</span>
-                <span><i style={{ background: '#f59e0b' }} />some failures</span>
-                <span><i style={{ background: '#ef4444' }} />many</span>
-                <span><i style={{ background: 'transparent', boxShadow: '0 0 0 2px #f97316' }} />the turn on show</span>
-                <span>click a turn to see its path · drag, scroll to zoom, double-click to fit</span>
-              </div>
-              )}
+              {view === 'graph' && <div css={legendStyle}><span>a bar is as long as the calls, the red part is the share that failed · pick a turn on the strip to see what it used · click a row to select</span></div>}
               <div css={stripStyle}>
                 <TurnTimeline compact turns={data.turns} segments={data.segments} fromMs={data.fromMs} toMs={data.toMs} selected={shown} onSelect={setSelected} />
               </div>
