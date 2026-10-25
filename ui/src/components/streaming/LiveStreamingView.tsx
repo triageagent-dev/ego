@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useTraceContext } from '../../context/TraceContext';
 import { SessionCard } from './SessionCard';
 import { SessionDetails } from './SessionDetails';
-import { getActivity } from '../../api/client';
 import { config } from '../../config';
 import { onFeedMessage, onFeedOpen } from '../../lib/connection';
 import { parseHash, sessionLink } from '../shell/routes';
@@ -83,18 +82,8 @@ export function LiveStreamingView() {
   const [searchQuery, setSearchQuery] = useState(() => stored('ego.search') ?? '');
   // The thread whose id was put in the search box by a click on a part chip.
   const [threadSearch, setThreadSearch] = useState('');
-  // The sessions, or the activity (turns over time) of one agent.
-  const [pickedMode, setListMode] = useState<'sessions' | 'activity'>('sessions');
-  // Activity is for the agents that work in turns (always-on agents, such as a spot): the switch is there only when the
-  // server holds one the caller may see, and a plain trace has no activity to show.
-  const [hasActivity, setHasActivity] = useState(false);
-  useEffect(() => {
-    let live = true;
-    getActivity().then((rows) => live && setHasActivity(rows.length > 0)).catch(() => live && setHasActivity(false));
-    return () => { live = false; };
-    // The picked tenant narrows the agents: ask again when it changes.
-  }, [pickedTenant]);
-  const listMode = hasActivity ? pickedMode : 'sessions';
+  // The sessions, or the live view (turns over time) of one agent.
+  const [listMode, setListMode] = useState<'sessions' | 'activity'>('sessions');
   const searchThread = (thread: string) => {
     setThreadSearch(thread);
     setSearchQuery(thread);
@@ -834,21 +823,21 @@ export function LiveStreamingView() {
     </div>
   );
 
-  // The sessions, or the activity of an always-on agent.
-  const listSwitch = !hasActivity ? null : (
+  // The sessions, or the live view of an always-on agent.
+  const listSwitch = (
     <span style={{ display: 'inline-flex', gap: '2px', padding: '1px', borderRadius: 'var(--radius)', border: '1px solid var(--border-default)' }}>
-      {(['sessions', 'activity'] as const).map((label) => (
+      {([['sessions', 'sessions'], ['activity', 'live']] as const).map(([mode, label]) => (
         <button
-          key={label}
-          onClick={() => setListMode(label)}
-          aria-pressed={listMode === label}
+          key={mode}
+          onClick={() => setListMode(mode)}
+          aria-pressed={listMode === mode}
           style={{
-            padding: '1px 9px',
+            padding: '2px 12px',
             borderRadius: 'var(--radius)',
             border: 'none',
-            background: listMode === label ? 'var(--bg-selected)' : 'transparent',
-            color: listMode === label ? 'var(--accent-magenta)' : 'var(--text-tertiary)',
-            fontSize: '12px',
+            background: listMode === mode ? 'var(--bg-selected)' : 'transparent',
+            color: listMode === mode ? 'var(--accent-magenta)' : 'var(--text-tertiary)',
+            fontSize: '13px',
             cursor: 'pointer',
           }}
         >
@@ -862,7 +851,7 @@ export function LiveStreamingView() {
     return (
       <div style={{ padding: '12px 18px 28px' }}>
         <PageTitle style={{ display: 'flex', alignItems: 'baseline', gap: '14px', flexWrap: 'wrap', marginBottom: '8px' }}>
-          <h1 css={titleStyle}>activity</h1>
+          <h1 css={titleStyle}>live</h1>
           <p css={subtitleStyle}>how an always-on agent works, turn by turn</p>
           {listSwitch}
         </PageTitle>
