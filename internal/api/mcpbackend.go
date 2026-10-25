@@ -258,6 +258,14 @@ func (b *mcpBackend) EgoScore(ctx context.Context, q mcptools.ActivityQuery) ([]
 	return turnScores(b.sessions, roleInfoOrOpen(ctx), q), nil
 }
 
+func (b *mcpBackend) EgoTools(ctx context.Context, q mcptools.ActivityQuery) ([]mcptools.EgoTools, error) {
+	return egoTools(b.sessions, roleInfoOrOpen(ctx), q), nil
+}
+
+func (b *mcpBackend) EgoErrors(ctx context.Context, q mcptools.ActivityQuery) ([]mcptools.EgoErrors, error) {
+	return egoErrors(b.sessions, roleInfoOrOpen(ctx), q), nil
+}
+
 func (b *mcpBackend) Quality(ctx context.Context, kind string, hours int) (*mcptools.Quality, error) {
 	return b.online.Quality(roleInfoOrOpen(ctx), kind, hours)
 }

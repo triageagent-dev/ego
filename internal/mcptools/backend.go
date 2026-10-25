@@ -41,6 +41,10 @@ type Backend interface {
 	// EgoScore answers get_ego_score: the score of the agents that work in turns, from their turns, for the
 	// caller's tenants.
 	EgoScore(ctx context.Context, q ActivityQuery) ([]TurnScore, error)
+	// EgoTools answers get_ego_tools: how each tool of the agents did, from their turns.
+	EgoTools(ctx context.Context, q ActivityQuery) ([]EgoTools, error)
+	// EgoErrors answers get_ego_errors: what failed, grouped, from their turns.
+	EgoErrors(ctx context.Context, q ActivityQuery) ([]EgoErrors, error)
 
 	// Quality answers get_quality for the caller's tenants.
 	Quality(ctx context.Context, kind string, hours int) (*Quality, error)

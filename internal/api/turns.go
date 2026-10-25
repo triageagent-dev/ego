@@ -68,9 +68,68 @@ type TurnRow struct {
 	ToolCalls   map[string]ToolCount `json:"toolCalls,omitempty"`
 	// ModelCalls counts the model requests by model.
 	ModelCalls map[string]ToolCount `json:"modelCalls,omitempty"`
+	// Errors says what failed in the turn, the first few tool calls: which tool and the error it gave.
+	Errors []TurnError `json:"errors,omitempty"`
 	// Flow counts what followed what in the turn: each model request and tool call, in time order, joined to the
 	// one after it.
 	Flow []FlowEdge `json:"flow,omitempty"`
+}
+
+// TurnError is one failed tool call of a turn, with the text the tool gave.
+type TurnError struct {
+	Tool    string `json:"tool"`
+	Server  string `json:"server,omitempty"`
+	Message string `json:"message"`
+	AtMs    int64  `json:"atMs"`
+}
+
+// maxTurnErrors bounds the failed calls kept for one turn, and maxErrorChars the text kept for one of them.
+const (
+	maxTurnErrors = 5
+	maxErrorChars = 240
+)
+
+// errorText is what a failed tool call said. A tool result of the form {"isError":true,"result":"..."} holds the
+// real text; the status description of a failed span is often only "tool error". A refused call says so.
+func errorText(sp *tracepkg.Span) string {
+	var res struct {
+		IsError bool   `json:"isError"`
+		Result  string `json:"result"`
+	}
+	if raw := sp.TagString("gen_ai.tool.call.result"); strings.HasPrefix(strings.TrimSpace(raw), "{") && json.Unmarshal([]byte(raw), &res) == nil && res.IsError && strings.TrimSpace(res.Result) != "" {
+		return clipError(res.Result)
+	}
+	var find func(*tracepkg.Span) string
+	find = func(s *tracepkg.Span) string {
+		if s.TagString("decision") == "reject" {
+			return "rejected"
+		}
+		if spanErrored(s) {
+			for _, k := range []string{"exception.message", "error", "otel.status_description"} {
+				if v := strings.TrimSpace(s.TagString(k)); v != "" {
+					return v
+				}
+			}
+		}
+		for _, c := range s.Children {
+			if t := find(c); t != "" {
+				return t
+			}
+		}
+		return ""
+	}
+	if t := find(sp); t != "" {
+		return clipError(t)
+	}
+	return "failed"
+}
+
+func clipError(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > maxErrorChars {
+		return string(r[:maxErrorChars]) + "…"
+	}
+	return s
 }
 
 // FlowEdge says that step From was followed by step To, N times in a turn. A step is named as the graph names its
@@ -243,6 +302,9 @@ func turnOf(session string, part int, root *tracepkg.Span) (TurnRow, bool) {
 			if bad {
 				c.Failed++
 				row.FailedTools++
+				if len(row.Errors) < maxTurnErrors {
+					row.Errors = append(row.Errors, TurnError{Tool: name, Server: server, Message: errorText(sp), AtMs: sp.StartTime / 1000})
+				}
 			}
 			row.ToolCalls[name] = c
 			steps = append(steps, flowStep{sp.StartTime, "t:" + cmp.Or(server, "built-in") + "/" + name})

@@ -57,11 +57,13 @@ scores each session at its completion. `list_threads` shows your threads (when e
 and the newest score); `list_sessions` with `thread` lists the segments of one. Declare `ego.thread` also when your
 runtime rotates its session id and you want one thread.
 
-An agent that no judge scores has no findings to read: call `get_ego_score` (`agent?`, `hours?`) for its score from
-its turns instead. `score` is the share of turns without a failure, `error_rate` the share of tool calls that failed,
-and `failing_tools` the tools that failed most. Treat a tool that fails over and over, or a fall in `score` between a
-short and a long window, as a finding of your own, and read the failed spans with `get_session_spans` and
-`errors_only` before deciding a correction.
+An agent that no judge scores has no findings to read. Its ego is in its own turns: call `get_ego_score` (`agent?`,
+`hours?`) for the main numbers: `score`, the share of turns without a failure, `error_rate`, the share of tool calls
+that failed, the tokens and `failing_tools`. `get_ego_tools` gives the record of every tool (calls, failed,
+`failure_rate`, `avg_ms`) and `get_ego_errors` what the failures said, grouped by tool and text, with the session of
+the latest one. Treat a tool that fails over and over, or a fall in `score` between a short and a long window, as a
+finding of your own, and read the failed spans with `get_session_spans` and `errors_only` before deciding a
+correction.
 
 ### 3. Decide one correction per finding
 

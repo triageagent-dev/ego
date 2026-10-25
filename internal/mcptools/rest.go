@@ -360,6 +360,30 @@ func (b *REST) DeleteRoleBinding(ctx context.Context, id string) (map[string]boo
 // The quality and explain endpoints answer in the tools' own shape, so they decode straight into it.
 
 func (b *REST) EgoScore(ctx context.Context, q ActivityQuery) ([]TurnScore, error) {
+	var out []TurnScore
+	if err := b.get(ctx, "/api/activity/score?"+activityValues(q).Encode(), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (b *REST) EgoTools(ctx context.Context, q ActivityQuery) ([]EgoTools, error) {
+	var out []EgoTools
+	if err := b.get(ctx, "/api/activity/tools?"+activityValues(q).Encode(), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (b *REST) EgoErrors(ctx context.Context, q ActivityQuery) ([]EgoErrors, error) {
+	var out []EgoErrors
+	if err := b.get(ctx, "/api/activity/errors?"+activityValues(q).Encode(), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func activityValues(q ActivityQuery) url.Values {
 	v := url.Values{"hours": {strconv.Itoa(q.Hours)}}
 	if q.Agent != "" {
 		v.Set("agent", q.Agent)
@@ -367,11 +391,7 @@ func (b *REST) EgoScore(ctx context.Context, q ActivityQuery) ([]TurnScore, erro
 	if q.Tenant != "" {
 		v.Set("tenant", q.Tenant)
 	}
-	var out []TurnScore
-	if err := b.get(ctx, "/api/activity/score?"+v.Encode(), &out); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return v
 }
 
 func (b *REST) Quality(ctx context.Context, kind string, hours int) (*Quality, error) {

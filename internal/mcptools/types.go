@@ -338,15 +338,52 @@ type Quality struct {
 // without a failure, 0 to 1; ErrorRate the share of its tool calls that failed; FailingTools the tools that failed
 // most, worst first.
 type TurnScore struct {
-	Agent           string       `json:"agent"`
-	Tenant          string       `json:"tenant,omitempty"`
-	Hours           int          `json:"hours"`
-	Turns           int          `json:"turns"`
-	Score           *float64     `json:"score,omitempty"`
-	ToolCalls       int          `json:"tool_calls"`
-	FailedToolCalls int          `json:"failed_tool_calls"`
-	ErrorRate       float64      `json:"error_rate"`
-	FailingTools    []ToolRecord `json:"failing_tools"`
+	Agent           string   `json:"agent"`
+	Tenant          string   `json:"tenant,omitempty"`
+	Hours           int      `json:"hours"`
+	Turns           int      `json:"turns"`
+	Score           *float64 `json:"score,omitempty"`
+	ToolCalls       int      `json:"tool_calls"`
+	FailedToolCalls int      `json:"failed_tool_calls"`
+	ErrorRate       float64  `json:"error_rate"`
+	// ModelRequests, the tokens and CachedShare (the part of the input read from cache) say what the turns cost;
+	// MedianTurnMs and P95TurnMs how long a turn takes; Awake the share of the window with a turn running.
+	ModelRequests int64        `json:"model_requests"`
+	InputTokens   int64        `json:"input_tokens"`
+	OutputTokens  int64        `json:"output_tokens"`
+	CachedShare   float64      `json:"cached_share"`
+	MedianTurnMs  int64        `json:"median_turn_ms"`
+	P95TurnMs     int64        `json:"p95_turn_ms"`
+	Awake         float64      `json:"awake"`
+	FailingTools  []ToolRecord `json:"failing_tools"`
+}
+
+// EgoTools is get_ego_tools: how each tool of an agent did in the window, the ones that failed most first.
+type EgoTools struct {
+	Agent  string       `json:"agent"`
+	Tenant string       `json:"tenant,omitempty"`
+	Hours  int          `json:"hours"`
+	Tools  []ToolRecord `json:"tools"`
+}
+
+// ErrorGroup is one kind of failure: the same tool with the same error text (digits aside), how often it happened and
+// when, and the session of the latest one, to read it with get_session_spans.
+type ErrorGroup struct {
+	Tool    string `json:"tool"`
+	Server  string `json:"server,omitempty"`
+	Message string `json:"message"`
+	Count   int    `json:"count"`
+	FirstAt string `json:"first_at"`
+	LastAt  string `json:"last_at"`
+	Session string `json:"session"`
+}
+
+// EgoErrors is get_ego_errors: what failed for an agent in the window, the most frequent first.
+type EgoErrors struct {
+	Agent  string       `json:"agent"`
+	Tenant string       `json:"tenant,omitempty"`
+	Hours  int          `json:"hours"`
+	Errors []ErrorGroup `json:"errors"`
 }
 
 // MetricSeries is one metric's hourly means over the window.

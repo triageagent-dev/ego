@@ -228,17 +228,17 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: getQualityHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_ego_score",
-			mcp.WithDescription("Your own ego score, read from your turns: how often your work ends without a failure and "+
-				"which tools keep failing. It needs no judge and costs no model call, so it is the score of an always-on "+
-				"agent that online evaluation does not rate (get_quality has nothing for it). A turn is one wake or one "+
-				"prompt, the work between being woken and finishing; a turn fails when any of its spans failed or any of "+
+			mcp.WithDescription("Your ego: the main numbers of how you are doing, read from your own turns, with no judge "+
+				"and no model call, for an always-on agent that online evaluation does not rate (get_quality has "+
+				"nothing for it). A turn is one wake or one prompt; it fails when any of its spans failed or any of "+
 				"its tool calls failed or was rejected. For each agent in the window: turns; score, the share of turns "+
-				"without a failure, 0 to 1 (1 is a clean window); tool_calls and failed_tool_calls, with error_rate their "+
-				"share; and failing_tools, at most five tools that failed, worst first, each with calls, failed, "+
-				"failure_rate and avg_ms. Call it at the start of a wake or after a run of errors to see whether a tool "+
-				"is the cause: a tool with a high failure_rate is broken or misused, so stop retrying it blindly. Then "+
-				"read why with get_session_spans (errors_only) and write down what you will do differently. Compare a "+
-				"short window with a long one (hours 1 and 24) to tell a fresh failure from a steady one. Scoped to the "+
+				"without a failure, 0 to 1 (1 is a clean window); tool_calls, failed_tool_calls and error_rate, the "+
+				"share of tool calls that failed; model_requests, input_tokens, output_tokens and cached_share (the "+
+				"part of the input read from cache); median_turn_ms, p95_turn_ms and awake (the share of the window "+
+				"with a turn running); and failing_tools, at most five, worst first. Start here, at the start of a wake "+
+				"or after a run of errors. Then go into the detail: get_ego_tools for every tool's record, "+
+				"get_ego_errors for what the failures said, get_session_spans (errors_only) for one turn. Compare a short "+
+				"window with a long one (hours 1 and 24) to tell a fresh failure from a steady one. Scoped to the "+
 				"tenants you may see; with no agent, every agent that worked in turns in the window, at most 20."),
 			mcp.WithString("agent",
 				mcp.Description("Only this exact agent name (gen_ai.agent.name). Omit for every agent you may see.")),
@@ -247,6 +247,37 @@ func Tools(b Backend, o Options) []server.ServerTool {
 			mcp.WithNumber("hours", mcp.DefaultNumber(defaultActivityHours),
 				mcp.Description("Window in hours, 1 to 720.")),
 		), Handler: getEgoScoreHandler(b)},
+
+		server.ServerTool{Tool: mcp.NewTool("get_ego_tools",
+			mcp.WithDescription("Your ego by tool: how each tool you called did in the window, the ones that failed most "+
+				"first (at most 40): calls, failed, failure_rate, avg_ms and the MCP server it belongs to. Use it after "+
+				"get_ego_score shows failures, to see which tool is the cause and how bad it is: a tool that fails "+
+				"every time is broken or misused, one that fails a tenth of the time is flaky or hit by a bad argument. "+
+				"A slow average is a cost too. Scoped to the tenants you may see; with no agent, every agent that "+
+				"worked in turns."),
+			mcp.WithString("agent",
+				mcp.Description("Only this exact agent name (gen_ai.agent.name). Omit for every agent you may see.")),
+			mcp.WithString("tenant",
+				mcp.Description("Only this tenant key, or \"<sender>/*\" for every tenant of one sender.")),
+			mcp.WithNumber("hours", mcp.DefaultNumber(defaultActivityHours),
+				mcp.Description("Window in hours, 1 to 720.")),
+		), Handler: getEgoToolsHandler(b)},
+
+		server.ServerTool{Tool: mcp.NewTool("get_ego_errors",
+			mcp.WithDescription("Your ego by error: what failed in the window, grouped by tool and error text (digits "+
+				"aside, so a changing count or port is one kind of failure), the most frequent first (at most 25): the "+
+				"tool and its server, the text the tool gave, how many times, when first and last, and the session of "+
+				"the latest one. Use it to see what the failures say: a missing namespace, a refused call, a timeout, a "+
+				"bad argument. Read one in full with get_session_spans on that session and errors_only. Then decide "+
+				"what to do differently, such as another argument, another tool, or not calling it. Scoped to the "+
+				"tenants you may see; with no agent, every agent that worked in turns."),
+			mcp.WithString("agent",
+				mcp.Description("Only this exact agent name (gen_ai.agent.name). Omit for every agent you may see.")),
+			mcp.WithString("tenant",
+				mcp.Description("Only this tenant key, or \"<sender>/*\" for every tenant of one sender.")),
+			mcp.WithNumber("hours", mcp.DefaultNumber(defaultActivityHours),
+				mcp.Description("Window in hours, 1 to 720.")),
+		), Handler: getEgoErrorsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("explain_regression",
 			mcp.WithDescription("Explain a quality alert: the alert, the version or model it is attributed to, and its "+
@@ -457,15 +488,24 @@ func listThreadsHandler(b Backend) server.ToolHandlerFunc {
 	}
 }
 
+// egoQuery reads the arguments the three get_ego_* tools share.
+func egoQuery(req mcp.CallToolRequest) (ActivityQuery, error) {
+	q := ActivityQuery{
+		Agent:  strings.TrimSpace(req.GetString("agent", "")),
+		Tenant: strings.TrimSpace(req.GetString("tenant", "")),
+		Hours:  req.GetInt("hours", defaultActivityHours),
+	}
+	if q.Hours < 1 || q.Hours > maxActivityHours {
+		return q, fmt.Errorf("hours must be between 1 and %d", maxActivityHours)
+	}
+	return q, nil
+}
+
 func getEgoScoreHandler(b Backend) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		q := ActivityQuery{
-			Agent:  strings.TrimSpace(req.GetString("agent", "")),
-			Tenant: strings.TrimSpace(req.GetString("tenant", "")),
-			Hours:  req.GetInt("hours", defaultActivityHours),
-		}
-		if q.Hours < 1 || q.Hours > maxActivityHours {
-			return toolError(fmt.Errorf("hours must be between 1 and %d", maxActivityHours))
+		q, err := egoQuery(req)
+		if err != nil {
+			return toolError(err)
 		}
 		out, err := b.EgoScore(ctx, q)
 		if err != nil {
@@ -473,6 +513,40 @@ func getEgoScoreHandler(b Backend) server.ToolHandlerFunc {
 		}
 		if out == nil {
 			out = []TurnScore{}
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func getEgoToolsHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		q, err := egoQuery(req)
+		if err != nil {
+			return toolError(err)
+		}
+		out, err := b.EgoTools(ctx, q)
+		if err != nil {
+			return toolError(err)
+		}
+		if out == nil {
+			out = []EgoTools{}
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func getEgoErrorsHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		q, err := egoQuery(req)
+		if err != nil {
+			return toolError(err)
+		}
+		out, err := b.EgoErrors(ctx, q)
+		if err != nil {
+			return toolError(err)
+		}
+		if out == nil {
+			out = []EgoErrors{}
 		}
 		return mcp.NewToolResultStructuredOnly(out), nil
 	}

@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -148,9 +149,9 @@ func summarizeTurns(res TurnsResult, hours int) mcptools.ActivitySummary {
 	return out
 }
 
-// ActivitySummaries summarizes the agent the query names, or every agent the caller may see that worked in turns
-// during the window, the one seen last first.
-func (s *SessionStore) ActivitySummaries(q mcptools.ActivityQuery, info RoleInfo) []mcptools.ActivitySummary {
+// subjectTurns reads the turns of the agent the query names, or of every agent the caller may see that worked in
+// turns during the window, the one seen last first.
+func (s *SessionStore) subjectTurns(q mcptools.ActivityQuery, info RoleInfo) []TurnsResult {
 	window := time.Duration(q.Hours) * time.Hour
 	subjects := []subjectKey{{q.Agent, q.Tenant}}
 	if q.Agent == "" {
@@ -163,15 +164,103 @@ func (s *SessionStore) ActivitySummaries(q mcptools.ActivityQuery, info RoleInfo
 			subjects = subjects[:maxActivitySubjects]
 		}
 	}
-	out := make([]mcptools.ActivitySummary, 0, len(subjects))
+	out := make([]TurnsResult, 0, len(subjects))
 	for _, sel := range subjects {
-		out = append(out, summarizeTurns(s.Turns(sel, window, info), q.Hours))
+		out = append(out, s.Turns(sel, window, info))
 	}
 	return out
 }
 
-// egoScoreHandler implements GET /api/activity/score?agent=&tenant=&hours=: the score of each agent from its turns.
-func egoScoreHandler(store *SessionStore) http.HandlerFunc {
+// ActivitySummaries summarizes each of those agents.
+func (s *SessionStore) ActivitySummaries(q mcptools.ActivityQuery, info RoleInfo) []mcptools.ActivitySummary {
+	out := []mcptools.ActivitySummary{}
+	for _, res := range s.subjectTurns(q, info) {
+		out = append(out, summarizeTurns(res, q.Hours))
+	}
+	return out
+}
+
+// egoTools lists how each tool of each agent did, the ones that failed most first.
+func egoTools(store *SessionStore, info RoleInfo, q mcptools.ActivityQuery) []mcptools.EgoTools {
+	out := []mcptools.EgoTools{}
+	if store == nil {
+		return out
+	}
+	for _, sum := range store.ActivitySummaries(q, info) {
+		if sum.Turns > 0 {
+			out = append(out, mcptools.EgoTools{Agent: sum.Agent, Tenant: sum.Tenant, Hours: q.Hours, Tools: sum.Tools})
+		}
+	}
+	return out
+}
+
+const maxErrorGroups = 25
+
+var digitRuns = regexp.MustCompile(`[0-9]+`)
+
+// errorGroups groups the failed tool calls of a window by tool and error text, digits aside (a count or a port in
+// the text does not make a new kind of failure), the most frequent first.
+func errorGroups(res TurnsResult) []mcptools.ErrorGroup {
+	type key struct{ server, tool, text string }
+	groups := map[key]*mcptools.ErrorGroup{}
+	var order []key
+	var firstMs, lastMs = map[key]int64{}, map[key]int64{}
+	for _, row := range res.Turns {
+		for _, e := range row.Errors {
+			k := key{e.Server, e.Tool, digitRuns.ReplaceAllString(e.Message, "#")}
+			g := groups[k]
+			if g == nil {
+				g = &mcptools.ErrorGroup{Tool: e.Tool, Server: e.Server, Message: e.Message}
+				groups[k] = g
+				order = append(order, k)
+				firstMs[k], lastMs[k] = e.AtMs, e.AtMs
+			}
+			g.Count++
+			if e.AtMs < firstMs[k] {
+				firstMs[k] = e.AtMs
+			}
+			if e.AtMs >= lastMs[k] {
+				lastMs[k] = e.AtMs
+				g.Message = e.Message
+				g.Session = row.Session
+			}
+		}
+	}
+	out := make([]mcptools.ErrorGroup, 0, len(order))
+	for _, k := range order {
+		g := groups[k]
+		g.FirstAt = time.UnixMilli(firstMs[k]).UTC().Format(time.RFC3339)
+		g.LastAt = time.UnixMilli(lastMs[k]).UTC().Format(time.RFC3339)
+		out = append(out, *g)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].LastAt > out[j].LastAt
+	})
+	if len(out) > maxErrorGroups {
+		out = out[:maxErrorGroups]
+	}
+	return out
+}
+
+// egoErrors says what failed for each agent, grouped.
+func egoErrors(store *SessionStore, info RoleInfo, q mcptools.ActivityQuery) []mcptools.EgoErrors {
+	out := []mcptools.EgoErrors{}
+	if store == nil {
+		return out
+	}
+	for _, res := range store.subjectTurns(q, info) {
+		if len(res.Turns) > 0 {
+			out = append(out, mcptools.EgoErrors{Agent: res.Agent, Tenant: res.Tenant, Hours: q.Hours, Errors: errorGroups(res)})
+		}
+	}
+	return out
+}
+
+// egoHandler serves GET /api/activity/<what>?agent=&tenant=&hours=: the answer build gives for the caller's role.
+func egoHandler(store *SessionStore, what string, build func(*SessionStore, RoleInfo, mcptools.ActivityQuery) any) http.HandlerFunc {
 	cache := newReadCache()
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -189,7 +278,7 @@ func egoScoreHandler(store *SessionStore) http.HandlerFunc {
 			q.Hours = n
 		}
 		info := roleInfoOrOpen(r.Context())
-		key := roleKey(info) + "|" + q.Agent + "|" + q.Tenant + "|" + strconv.Itoa(q.Hours) + "|" + strconv.FormatUint(store.changes(), 10)
+		key := what + "|" + roleKey(info) + "|" + q.Agent + "|" + q.Tenant + "|" + strconv.Itoa(q.Hours) + "|" + strconv.FormatUint(store.changes(), 10)
 		w.Header().Set("Content-Type", "application/json")
 		if body, ok := cache.get(key); ok {
 			_, _ = w.Write(body)
@@ -201,9 +290,9 @@ func egoScoreHandler(store *SessionStore) http.HandlerFunc {
 			return
 		}
 		defer cache.release()
-		body, err := json.Marshal(map[string]any{"data": turnScores(store, info, q), "error": nil})
+		body, err := json.Marshal(map[string]any{"data": build(store, info, q), "error": nil})
 		if err != nil {
-			writeEvaluateError(w, http.StatusInternalServerError, "failed to encode the ego score")
+			writeEvaluateError(w, http.StatusInternalServerError, "failed to encode the answer")
 			return
 		}
 		body = append(body, '\n')
@@ -239,7 +328,9 @@ func turnScores(store *SessionStore, info RoleInfo, q mcptools.ActivityQuery) []
 // scoreOf is the compact score of one agent's summary: the tools that failed are the only ones listed.
 func scoreOf(s mcptools.ActivitySummary) mcptools.TurnScore {
 	t := mcptools.TurnScore{Agent: s.Agent, Tenant: s.Tenant, Hours: s.Hours, Turns: s.Turns, Score: s.Success,
-		ToolCalls: s.ToolCalls, FailedToolCalls: s.FailedToolCalls, FailingTools: []mcptools.ToolRecord{}}
+		ToolCalls: s.ToolCalls, FailedToolCalls: s.FailedToolCalls, ModelRequests: int64(s.ModelRequests),
+		InputTokens: s.InputTokens, OutputTokens: s.OutputTokens, CachedShare: s.CachedShare,
+		MedianTurnMs: s.MedianTurnMs, P95TurnMs: s.P95TurnMs, Awake: s.Awake, FailingTools: []mcptools.ToolRecord{}}
 	if s.ToolCalls > 0 {
 		t.ErrorRate = float64(s.FailedToolCalls) / float64(s.ToolCalls)
 	}
