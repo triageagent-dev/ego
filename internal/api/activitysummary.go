@@ -166,7 +166,96 @@ func (s *SessionStore) subjectTurns(q mcptools.ActivityQuery, info RoleInfo) []T
 	}
 	out := make([]TurnsResult, 0, len(subjects))
 	for _, sel := range subjects {
-		out = append(out, s.Turns(sel, window, info))
+		out = append(out, onlySession(s.Turns(sel, window, info), q.Session))
+	}
+	return out
+}
+
+// onlySession keeps the turns of one session; an empty session keeps them all.
+func onlySession(res TurnsResult, session string) TurnsResult {
+	if session == "" {
+		return res
+	}
+	kept := make([]TurnRow, 0, len(res.Turns))
+	for _, r := range res.Turns {
+		if r.Session == session {
+			kept = append(kept, r)
+		}
+	}
+	res.Turns = kept
+	return res
+}
+
+// slice scores a part of a window as a window of its own: its time runs from from to to.
+func slice(res TurnsResult, rows []TurnRow, from, to int64) TurnsResult {
+	res.Turns, res.FromMs, res.ToMs = rows, from, to
+	return res
+}
+
+func rfc3339(ms int64) string { return time.UnixMilli(ms).UTC().Format(time.RFC3339) }
+
+// scoreRows cuts one agent's window into rows: one per session (newest first) or one per hour or day (oldest first),
+// at most limit of the newest.
+func scoreRows(res TurnsResult, q mcptools.ActivityQuery) []mcptools.TurnScore {
+	limit := q.Limit
+	if limit < 1 || limit > mcptools.MaxScoreRows {
+		limit = mcptools.MaxScoreRows
+	}
+	var out []mcptools.TurnScore
+	switch q.By {
+	case mcptools.ScoreBySession:
+		type span struct {
+			rows     []TurnRow
+			from, to int64
+		}
+		by := map[string]*span{}
+		var order []string
+		for _, r := range res.Turns {
+			sp := by[r.Session]
+			if sp == nil {
+				sp = &span{from: r.StartMs, to: r.StartMs + r.DurationMs}
+				by[r.Session] = sp
+				order = append(order, r.Session)
+			}
+			sp.rows = append(sp.rows, r)
+			sp.from, sp.to = min(sp.from, r.StartMs), max(sp.to, r.StartMs+r.DurationMs)
+		}
+		sort.SliceStable(order, func(i, j int) bool { return by[order[i]].to > by[order[j]].to })
+		for _, id := range order {
+			if len(out) == limit {
+				break
+			}
+			sp := by[id]
+			sc := scoreOf(summarizeTurns(slice(res, sp.rows, sp.from, sp.to), q.Hours))
+			sc.Session, sc.From, sc.To = id, rfc3339(sp.from), rfc3339(sp.to)
+			out = append(out, sc)
+		}
+	case mcptools.ScoreByHour, mcptools.ScoreByDay:
+		step := int64(time.Hour / time.Millisecond)
+		if q.By == mcptools.ScoreByDay {
+			step = int64(24 * time.Hour / time.Millisecond)
+		}
+		by := map[int64][]TurnRow{}
+		var starts []int64
+		for _, r := range res.Turns {
+			b := r.StartMs / step * step
+			if _, ok := by[b]; !ok {
+				starts = append(starts, b)
+			}
+			by[b] = append(by[b], r)
+		}
+		sort.Slice(starts, func(i, j int) bool { return starts[i] < starts[j] })
+		if len(starts) > limit {
+			starts = starts[len(starts)-limit:]
+		}
+		for _, b := range starts {
+			to := min(b+step, res.ToMs)
+			sc := scoreOf(summarizeTurns(slice(res, by[b], b, to), q.Hours))
+			sc.From, sc.To = rfc3339(b), rfc3339(b+step)
+			out = append(out, sc)
+		}
+	default:
+		out = append(out, scoreOf(summarizeTurns(res, q.Hours)))
 	}
 	return out
 }
@@ -268,7 +357,22 @@ func egoHandler(store *SessionStore, what string, build func(*SessionStore, Role
 			return
 		}
 		v := r.URL.Query()
-		q := mcptools.ActivityQuery{Agent: strings.TrimSpace(v.Get("agent")), Tenant: strings.TrimSpace(v.Get("tenant")), Hours: defaultActivityHours}
+		q := mcptools.ActivityQuery{Agent: strings.TrimSpace(v.Get("agent")), Tenant: strings.TrimSpace(v.Get("tenant")), Hours: defaultActivityHours,
+			Session: strings.TrimSpace(v.Get("session")), By: v.Get("by")}
+		switch q.By {
+		case "", mcptools.ScoreByAgent, mcptools.ScoreBySession, mcptools.ScoreByHour, mcptools.ScoreByDay:
+		default:
+			writeEvaluateError(w, http.StatusBadRequest, "by must be agent, session, hour or day")
+			return
+		}
+		if l := v.Get("limit"); l != "" {
+			n, err := strconv.Atoi(l)
+			if err != nil || n < 1 || n > mcptools.MaxScoreRows {
+				writeEvaluateError(w, http.StatusBadRequest, "limit must be between 1 and "+strconv.Itoa(mcptools.MaxScoreRows))
+				return
+			}
+			q.Limit = n
+		}
 		if h := v.Get("hours"); h != "" {
 			n, err := strconv.Atoi(h)
 			if err != nil || n < 1 || n > maxActivityHours {
@@ -278,7 +382,7 @@ func egoHandler(store *SessionStore, what string, build func(*SessionStore, Role
 			q.Hours = n
 		}
 		info := roleInfoOrOpen(r.Context())
-		key := what + "|" + roleKey(info) + "|" + q.Agent + "|" + q.Tenant + "|" + strconv.Itoa(q.Hours) + "|" + strconv.FormatUint(store.changes(), 10)
+		key := what + "|" + roleKey(info) + "|" + q.Agent + "|" + q.Tenant + "|" + q.Session + "|" + q.By + "|" + strconv.Itoa(q.Limit) + "|" + strconv.Itoa(q.Hours) + "|" + strconv.FormatUint(store.changes(), 10)
 		w.Header().Set("Content-Type", "application/json")
 		if body, ok := cache.get(key); ok {
 			_, _ = w.Write(body)
@@ -307,19 +411,19 @@ const (
 )
 
 // turnScores scores each agent the query names, or every agent the caller may see that worked in turns during the
-// window: the compact answer an agent reads about itself.
+// window, cut as the query says: the compact answer an agent reads about itself.
 func turnScores(store *SessionStore, info RoleInfo, q mcptools.ActivityQuery) []mcptools.TurnScore {
 	out := []mcptools.TurnScore{}
 	if store == nil {
 		return out
 	}
-	for _, s := range store.ActivitySummaries(q, info) {
-		if s.Turns == 0 {
+	for _, res := range store.subjectTurns(q, info) {
+		if len(res.Turns) == 0 {
 			continue
 		}
-		out = append(out, scoreOf(s))
-		if len(out) == maxScoreAgents {
-			break
+		out = append(out, scoreRows(res, q)...)
+		if len(out) >= mcptools.MaxScoreRows {
+			return out[:mcptools.MaxScoreRows]
 		}
 	}
 	return out

@@ -30,6 +30,8 @@ const (
 const (
 	defaultActivityHours = 24
 	maxActivityHours     = 720
+	// defaultScoreRows is how many sessions or periods get_ego_score lists when no limit is given.
+	defaultScoreRows = 10
 )
 
 // Options choose which tools a transport registers.
@@ -228,24 +230,26 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: getQualityHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_ego_score",
-			mcp.WithDescription("Your ego: the main numbers of how you are doing, read from your own turns, with no judge "+
-				"and no model call, for an always-on agent that online evaluation does not rate (get_quality has "+
-				"nothing for it). A turn is one wake or one prompt; it fails when any of its spans failed or any of "+
-				"its tool calls failed or was rejected. For each agent in the window: turns; score, the share of turns "+
-				"without a failure, 0 to 1 (1 is a clean window); tool_calls, failed_tool_calls and error_rate, the "+
-				"share of tool calls that failed; model_requests, input_tokens, output_tokens and cached_share (the "+
-				"part of the input read from cache); median_turn_ms, p95_turn_ms and awake (the share of the window "+
-				"with a turn running); and failing_tools, at most five, worst first. Start here, at the start of a wake "+
-				"or after a run of errors. Then go into the detail: get_ego_tools for every tool's record, "+
-				"get_ego_errors for what the failures said, get_session_spans (errors_only) for one turn. Compare a short "+
-				"window with a long one (hours 1 and 24) to tell a fresh failure from a steady one. Scoped to the "+
-				"tenants you may see; with no agent, every agent that worked in turns in the window, at most 20."),
-			mcp.WithString("agent",
-				mcp.Description("Only this exact agent name (gen_ai.agent.name). Omit for every agent you may see.")),
-			mcp.WithString("tenant",
-				mcp.Description("Only this tenant key, or \"<sender>/*\" for every tenant of one sender.")),
-			mcp.WithNumber("hours", mcp.DefaultNumber(defaultActivityHours),
-				mcp.Description("Window in hours, 1 to 720.")),
+			mcp.WithDescription("Your ego: how you are doing, as numbers you can act on, read from your own turns with no "+
+				"judge and no model call. It is for an always-on agent that online evaluation does not rate "+
+				"(get_quality has nothing for it). A turn is one wake or one prompt; it fails when any of its spans "+
+				"failed or any of its tool calls failed or was rejected. The answer is text, key: value lines or a "+
+				"table, ending with the next call to make. Cut it three ways with `by`: agent (default, the whole "+
+				"window, so the total is hours 720), session (one row per session, newest first: limit 1 answers \"how "+
+				"did I do in my last session\"), or hour or day (one row per period, oldest first, the newest `limit`: "+
+				"how you are trending). A row has: score, the share of turns without a failure (100% is a clean "+
+				"window); the tool error rate and its counts; model requests; input and output tokens and the share "+
+				"read from cache; median and p95 turn time and the share of the window you were awake; the tools that "+
+				"failed most. Ask for it at the start of a wake or after a run of errors, and compare a short window "+
+				"with a long one (hours 1 and 24) to tell a fresh failure from a steady one. Then get the detail: "+
+				"get_ego_tools for every tool, get_ego_errors for what the failures said, get_session_spans for one "+
+				"turn. Scoped to the tenants you may see; with no agent, every agent that worked in turns."),
+			mcp.WithString("by", mcp.Enum(ScoreByAgent, ScoreBySession, ScoreByHour, ScoreByDay), mcp.DefaultString(ScoreByAgent),
+				mcp.Description("How to cut the window: one row per agent (total), per session, per hour or per day.")),
+			mcp.WithString("session_id",
+				mcp.Description("Score only this session, as a by-session row names it.")),
+			mcp.WithNumber("limit", mcp.DefaultNumber(defaultScoreRows),
+				mcp.Description("With by session, hour or day: how many of the newest rows, 1 to 200.")),
 		), Handler: getEgoScoreHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_ego_tools",
@@ -261,6 +265,8 @@ func Tools(b Backend, o Options) []server.ServerTool {
 				mcp.Description("Only this tenant key, or \"<sender>/*\" for every tenant of one sender.")),
 			mcp.WithNumber("hours", mcp.DefaultNumber(defaultActivityHours),
 				mcp.Description("Window in hours, 1 to 720.")),
+			mcp.WithString("session_id",
+				mcp.Description("Only the turns of this session, as get_ego_score by session names it.")),
 		), Handler: getEgoToolsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_ego_errors",
@@ -277,6 +283,8 @@ func Tools(b Backend, o Options) []server.ServerTool {
 				mcp.Description("Only this tenant key, or \"<sender>/*\" for every tenant of one sender.")),
 			mcp.WithNumber("hours", mcp.DefaultNumber(defaultActivityHours),
 				mcp.Description("Window in hours, 1 to 720.")),
+			mcp.WithString("session_id",
+				mcp.Description("Only the turns of this session, as get_ego_score by session names it.")),
 		), Handler: getEgoErrorsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("explain_regression",
@@ -491,12 +499,26 @@ func listThreadsHandler(b Backend) server.ToolHandlerFunc {
 // egoQuery reads the arguments the three get_ego_* tools share.
 func egoQuery(req mcp.CallToolRequest) (ActivityQuery, error) {
 	q := ActivityQuery{
-		Agent:  strings.TrimSpace(req.GetString("agent", "")),
-		Tenant: strings.TrimSpace(req.GetString("tenant", "")),
-		Hours:  req.GetInt("hours", defaultActivityHours),
+		Agent:   strings.TrimSpace(req.GetString("agent", "")),
+		Tenant:  strings.TrimSpace(req.GetString("tenant", "")),
+		Hours:   req.GetInt("hours", defaultActivityHours),
+		Session: strings.TrimSpace(req.GetString("session_id", "")),
+		By:      req.GetString("by", ScoreByAgent),
+		Limit:   req.GetInt("limit", 0),
 	}
 	if q.Hours < 1 || q.Hours > maxActivityHours {
 		return q, fmt.Errorf("hours must be between 1 and %d", maxActivityHours)
+	}
+	switch q.By {
+	case ScoreByAgent, ScoreBySession, ScoreByHour, ScoreByDay:
+	default:
+		return q, fmt.Errorf("by must be %s, %s, %s or %s", ScoreByAgent, ScoreBySession, ScoreByHour, ScoreByDay)
+	}
+	if q.Limit == 0 {
+		q.Limit = defaultScoreRows
+	}
+	if q.Limit < 1 || q.Limit > MaxScoreRows {
+		return q, fmt.Errorf("limit must be between 1 and %d", MaxScoreRows)
 	}
 	return q, nil
 }
@@ -514,7 +536,7 @@ func getEgoScoreHandler(b Backend) server.ToolHandlerFunc {
 		if out == nil {
 			out = []TurnScore{}
 		}
-		return mcp.NewToolResultStructuredOnly(out), nil
+		return mcp.NewToolResultStructured(out, RenderEgoScore(out, q)), nil
 	}
 }
 
@@ -531,7 +553,7 @@ func getEgoToolsHandler(b Backend) server.ToolHandlerFunc {
 		if out == nil {
 			out = []EgoTools{}
 		}
-		return mcp.NewToolResultStructuredOnly(out), nil
+		return mcp.NewToolResultStructured(out, RenderEgoTools(out, q)), nil
 	}
 }
 
@@ -548,7 +570,7 @@ func getEgoErrorsHandler(b Backend) server.ToolHandlerFunc {
 		if out == nil {
 			out = []EgoErrors{}
 		}
-		return mcp.NewToolResultStructuredOnly(out), nil
+		return mcp.NewToolResultStructured(out, RenderEgoErrors(out, q)), nil
 	}
 }
 

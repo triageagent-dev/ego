@@ -391,6 +391,15 @@ func activityValues(q ActivityQuery) url.Values {
 	if q.Tenant != "" {
 		v.Set("tenant", q.Tenant)
 	}
+	if q.Session != "" {
+		v.Set("session", q.Session)
+	}
+	if q.By != "" {
+		v.Set("by", q.By)
+	}
+	if q.Limit > 0 {
+		v.Set("limit", strconv.Itoa(q.Limit))
+	}
 	return v
 }
 

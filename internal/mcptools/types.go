@@ -338,8 +338,13 @@ type Quality struct {
 // without a failure, 0 to 1; ErrorRate the share of its tool calls that failed; FailingTools the tools that failed
 // most, worst first.
 type TurnScore struct {
-	Agent           string   `json:"agent"`
-	Tenant          string   `json:"tenant,omitempty"`
+	Agent  string `json:"agent"`
+	Tenant string `json:"tenant,omitempty"`
+	// Session is the session this row scores (cut by session); From and To bound the turns of a session or the
+	// period of a row cut by hour or day.
+	Session         string   `json:"session,omitempty"`
+	From            string   `json:"from,omitempty"`
+	To              string   `json:"to,omitempty"`
 	Hours           int      `json:"hours"`
 	Turns           int      `json:"turns"`
 	Score           *float64 `json:"score,omitempty"`
@@ -513,7 +518,24 @@ type ActivityQuery struct {
 	Agent  string
 	Tenant string
 	Hours  int
+	// Session narrows the turns to one session (a segment of an always-on agent's thread).
+	Session string
+	// By is how get_ego_score cuts the window: ScoreByAgent (one row per agent), ScoreBySession (one per session,
+	// newest first), or ScoreByHour and ScoreByDay (one per period, oldest first). Limit bounds the sessions or
+	// periods returned, the newest ones.
+	By    string
+	Limit int
 }
+
+// The cuts of get_ego_score.
+const (
+	ScoreByAgent   = "agent"
+	ScoreBySession = "session"
+	ScoreByHour    = "hour"
+	ScoreByDay     = "day"
+	// MaxScoreRows bounds the sessions or periods of one answer.
+	MaxScoreRows = 200
+)
 
 // ToolRecord is how one tool did over a window: its calls, how many failed and how long a call took on average.
 type ToolRecord struct {

@@ -289,9 +289,9 @@ over HTTP; it adds `evaluate_traces`, which scores local files.
 | `register_correction` | What changed in answer to a finding and the version it ships as; starts verification. |
 | `list_corrections` | Corrections with their verification: before and after means, state. |
 | `label_session` | Agree or disagree with a judge's score, with a note. For people, not for the agent that produced the session. |
-| `get_ego_score` | Your ego, the main numbers from your own turns with no judge: the share of turns without a failure, the tool error rate, tokens, turn times and the tools that fail most. |
-| `get_ego_tools` | Your ego by tool: calls, failures, failure rate and average time of every tool. |
-| `get_ego_errors` | Your ego by error: what failed, grouped by tool and text, how often, when, and the session of the latest. |
+| `get_ego_score` | Your ego, from your own turns with no judge: the share of turns without a failure, the tool error rate, tokens, turn times and the tools that fail most. `by` cuts it per agent (total), per session, per hour or per day, so an agent can ask how its last session went. Answers in text. |
+| `get_ego_tools` | Your ego by tool: calls, failures, failure rate and average time of every tool, for a window or one session. |
+| `get_ego_errors` | Your ego by error: what failed, grouped by tool and text, how often, when, and the session of the latest, for a window or one session. |
 | `get_usage` | Token spend in a window, by kind, tenant, model or service, and the largest sessions. |
 | `list_sessions`, `summarize_session` | Sessions with filters (agent, tenant, since, text, complete); one session's turns and tool calls. |
 | `get_session_spans` | One session's spans with their attributes; `errors_only` returns the failed ones with their message and their parent's attributes, to find why a session shows an error. |

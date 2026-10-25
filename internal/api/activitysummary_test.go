@@ -112,3 +112,35 @@ func TestErrorTextReadsTheToolResult(t *testing.T) {
 		t.Fatalf("%q", got)
 	}
 }
+
+func TestScoreRowsBySessionAndPeriod(t *testing.T) {
+	const hour = 3_600_000
+	base := int64(1_700_000_000_000) / hour * hour
+	res := TurnsResult{Agent: "spot", FromMs: base, ToMs: base + 3*hour, Turns: []TurnRow{
+		{Session: "s~1", StartMs: base + 10, DurationMs: 100, Requests: 1, ToolCalls: map[string]ToolCount{"t": {Calls: 2}}},
+		{Session: "s~1", StartMs: base + 200, DurationMs: 100, Requests: 1, Failed: true, FailedTools: 1, ToolCalls: map[string]ToolCount{"t": {Calls: 2, Failed: 1}}},
+		{Session: "s~2", StartMs: base + hour + 10, DurationMs: 100, Requests: 1},
+	}}
+	by := scoreRows(res, mcptools.ActivityQuery{Hours: 24, By: mcptools.ScoreBySession, Limit: 5})
+	if len(by) != 2 || by[0].Session != "s~2" || by[1].Session != "s~1" {
+		t.Fatalf("newest session first: %+v", by)
+	}
+	if by[1].Turns != 2 || by[1].Score == nil || *by[1].Score != 0.5 || by[1].ErrorRate != 0.25 {
+		t.Fatalf("session s~1: %+v", by[1])
+	}
+	last := scoreRows(res, mcptools.ActivityQuery{Hours: 24, By: mcptools.ScoreBySession, Limit: 1})
+	if len(last) != 1 || last[0].Session != "s~2" {
+		t.Fatalf("limit 1 is the last session: %+v", last)
+	}
+	hourly := scoreRows(res, mcptools.ActivityQuery{Hours: 24, By: mcptools.ScoreByHour})
+	if len(hourly) != 2 || hourly[0].Turns != 2 || hourly[1].Turns != 1 {
+		t.Fatalf("hourly: %+v", hourly)
+	}
+	total := scoreRows(res, mcptools.ActivityQuery{Hours: 24})
+	if len(total) != 1 || total[0].Turns != 3 {
+		t.Fatalf("total: %+v", total)
+	}
+	if only := onlySession(res, "s~2"); len(only.Turns) != 1 {
+		t.Fatalf("only a session: %d", len(only.Turns))
+	}
+}
