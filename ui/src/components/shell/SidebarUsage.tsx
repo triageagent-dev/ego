@@ -6,6 +6,7 @@ import { estimateCostUsd } from '../../lib/pricing';
 import { useLiveData } from '../../lib/connection';
 import { useSelectedTenant } from '../../lib/tenant';
 import { useTraceContext } from '../../context/TraceContext';
+import { useTurnQuality } from '../quality/TurnQuality';
 
 interface Usage {
   tokens: number;
@@ -75,6 +76,8 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
   const { actions } = useTraceContext();
   const tenant = useSelectedTenant();
   const [figures, setFigures] = useState<Figures>({});
+  // An agent that works in turns has no judge score until online evaluation scores it: its turns stand in.
+  const turnQuality = useTurnQuality(24);
 
   // The tenant is read by the requests, which narrow by it.
   const load = useCallback(async (current: () => boolean) => {
@@ -98,6 +101,9 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
   if (figures.scored != null) day.push(['scored', short(figures.scored), 'sessions scored by online evaluation (quality)']);
   const ego: Row[] = [];
   if (figures.ego != null) ego.push(['score', `${Math.round(figures.ego * 100)}%`, 'mean online score of the last 24 hours, over every metric']);
+  else if (turnQuality.turns > 0 && turnQuality.subject) {
+    ego.push(['score', `${Math.round((turnQuality.ok / turnQuality.turns) * 100)}%`, `${turnQuality.ok} of ${turnQuality.turns} turns of ${turnQuality.subject.agent} ended without a failure in the last 24 hours`]);
+  }
   if (ego.length === 0 && day.length === 0) return null;
 
   const rowsOf = (list: Row[]) =>
