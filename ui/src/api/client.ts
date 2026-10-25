@@ -400,9 +400,9 @@ export async function getActivityTurns(agent: string, tenant: string | undefined
   return unwrap<TurnsResult>(response);
 }
 
-/** The agents that work in turns, the one seen last first (the picked tenant narrows them). */
-export async function getActivity(): Promise<ActivitySubject[]> {
-  const response = await fetch(withTenant(config.api.endpoints.activity));
+/** The agents that work in turns, the one seen last first (the picked tenant narrows them); since, such as "24h", keeps those with a session in that time. */
+export async function getActivity(since?: string): Promise<ActivitySubject[]> {
+  const response = await fetch(withTenant(`${config.api.endpoints.activity}${since ? `?since=${encodeURIComponent(since)}` : ''}`));
   if (!response.ok) throw new Error(`Failed to load activity: ${httpStatusLabel(response)}`);
   return unwrap<ActivitySubject[]>(response);
 }

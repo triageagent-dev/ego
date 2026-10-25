@@ -8,7 +8,7 @@ import { tenantName, useSelectedTenant } from '../../lib/tenant';
 import { fmtDuration, shortCount, turnStats, type TurnStats } from '../../lib/turns';
 import type { ActivitySubject, TurnsResult } from '../../lib/types';
 import { ChartBox } from '../ui/ChartBox';
-import { cardStyle, cardTitleStyle, segBtnStyle, segActiveStyle, segmentStyle, tileLabelStyle, tileStyle, tileSubStyle, tileValueStyle, tilesStyle } from '../ui/page';
+import { cardStyle, cardTitleStyle, tileLabelStyle, tileStyle, tileSubStyle, tileValueStyle, tilesStyle } from '../ui/page';
 
 // How an agent that works in turns (an always-on agent, such as a spot) does, from what its turns say and without a
 // judge: how many turns ended without a failure, which tool calls failed, the calls, the tokens and each tool's record.
@@ -38,12 +38,13 @@ export function useTurnQuality(hours: number): TurnQuality {
 
   useEffect(() => {
     let live = true;
-    getActivity()
+    // Only the agents that worked in the window are offered: the rest have nothing to show.
+    getActivity(`${hours}h`)
       .then((rows) => live && setSubjects(rows))
       .catch(() => live && setSubjects([]));
     return () => { live = false; };
     // The picked tenant narrows the agents.
-  }, [tenant]);
+  }, [tenant, hours]);
 
   const subject = subjects.find((s) => keyOf(s) === key) ?? subjects[0] ?? null;
   const load = useCallback(async (current: () => boolean) => {
@@ -130,13 +131,11 @@ export function TurnQualityView({ q, hours }: { q: TurnQuality; hours: number })
     <div css={headStyle}>
       <h2 css={cardTitleStyle}>Turns, {label(subject)}</h2>
       {q.subjects.length > 1 && (
-        <div css={segmentStyle} role="group" aria-label="Agent">
+        <select value={keyOf(subject)} onChange={(e) => { const x = q.subjects.find((o) => keyOf(o) === e.target.value); if (x) q.pick(x); }} css={selectStyle} aria-label="Agent">
           {q.subjects.map((x) => (
-            <button key={keyOf(x)} css={[segBtnStyle, keyOf(x) === keyOf(subject) && segActiveStyle]} onClick={() => q.pick(x)}>
-              {label(x)}
-            </button>
+            <option key={keyOf(x)} value={keyOf(x)}>{label(x)}</option>
           ))}
-        </div>
+        </select>
       )}
       {data?.truncated && <span css={noteStyle}>newest turns only</span>}
     </div>
@@ -231,6 +230,17 @@ const headStyle = css`
   margin-bottom: 8px;
 
   h2 { margin: 0; }
+`;
+
+const selectStyle = css`
+  max-width: 420px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
 `;
 
 const noteStyle = css`
