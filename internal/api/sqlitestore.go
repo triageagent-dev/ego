@@ -19,6 +19,8 @@ import (
 // session serialized as a JSON blob, so a field added to Session never needs a migration.
 type SQLiteStore struct {
 	db *sql.DB
+	// path is the database file, kept to measure its size on disk.
+	path string
 	// onChange, when set, is told which kind of data a write changed (the topic* constants), so the UI can be nudged
 	// to read it again instead of polling.
 	onChange func(topic string)
@@ -114,7 +116,7 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	}
 
 	logx.Infof("session archive: %s", path)
-	return &SQLiteStore{db: db}, nil
+	return &SQLiteStore{db: db, path: path}, nil
 }
 
 type sessionSnapshot struct {

@@ -77,6 +77,15 @@ func usageLimits(store *SessionStore, online *OnlineEngine, info RoleInfo, now t
 			limitDTO{Key: "sessions.retention", Label: "Sessions are kept for", Group: "Storage", Limit: days(sessRet), Unit: "days"},
 			limitDTO{Key: "usage.retention", Label: "Token usage is kept for", Group: "Storage", Limit: days(usageRet), Unit: "days"},
 		)
+		// Sizes cover every tenant's data, so they are shown like the online budget: not to a limited role.
+		if st, ok := store.store.Storage(); ok && !info.Scoped() && !info.TenantScoped() {
+			out = append(out, limitDTO{Key: "storage.database", Label: "Database on disk", Group: "Storage", Limit: st.Capacity, Used: counted(st.DBBytes), Unit: "bytes",
+				Note: "The database file with its write-ahead log, out of the volume it sits on."})
+			if st.Capacity > 0 {
+				out = append(out, limitDTO{Key: "storage.volume", Label: "Volume in use", Group: "Storage", Limit: st.Capacity, Used: counted(st.Capacity - st.Free), Unit: "bytes",
+					Note: "Everything on the database's volume, not only the database."})
+			}
+		}
 	}
 	return out
 }

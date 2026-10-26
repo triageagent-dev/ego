@@ -286,7 +286,7 @@ export interface LimitItem {
   group: string;
   limit: number;
   used?: number;
-  unit: 'tokens' | 'calls' | 'count' | 'days';
+  unit: 'tokens' | 'calls' | 'count' | 'days' | 'bytes';
   note?: string;
 }
 

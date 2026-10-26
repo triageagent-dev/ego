@@ -52,6 +52,35 @@ func TestUsageLimits_ReportsTheCapsAndWhatIsUsed(t *testing.T) {
 	}
 }
 
+func TestUsageLimits_StorageOfTheDatabase(t *testing.T) {
+	archive, err := NewSQLiteStore(filepath.Join(t.TempDir(), "size.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	store := NewSessionStoreWithArchive(nil, archive, SessionLimits{})
+
+	items := usageLimits(store, nil, RoleInfo{}, time.Now())
+	db := limitByKey(items, "storage.database")
+	if db == nil || db.Unit != "bytes" || db.Used == nil || *db.Used <= 0 {
+		t.Fatalf("storage.database = %+v, want bytes with a size above zero", db)
+	}
+	if db.Limit > 0 {
+		if vol := limitByKey(items, "storage.volume"); vol == nil || vol.Limit != db.Limit || vol.Used == nil || *vol.Used < *db.Used {
+			t.Errorf("storage.volume = %+v, want the same capacity and at least the database's size", vol)
+		}
+	}
+
+	// The sizes cover every tenant's data: a limited role does not see them.
+	if limitByKey(usageLimits(store, nil, RoleInfo{Tenants: []string{"a/b"}}, time.Now()), "storage.database") != nil {
+		t.Error("storage.database listed to a tenant-limited role")
+	}
+	// No archive: nothing to measure, nothing listed.
+	if limitByKey(usageLimits(NewSessionStore(nil), nil, RoleInfo{}, time.Now()), "storage.database") != nil {
+		t.Error("storage.database listed without an archive")
+	}
+}
+
 func TestUsageLimitsHandler(t *testing.T) {
 	rec := httptest.NewRecorder()
 	usageLimitsHandler(NewSessionStore(nil), nil)(rec, httptest.NewRequest(http.MethodGet, "/api/usage/limits", nil))

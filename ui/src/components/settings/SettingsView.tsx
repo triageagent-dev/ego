@@ -17,7 +17,20 @@ function short(n: number): string {
   return String(n);
 }
 
+// 1073741824 -> 1.0 GiB
+function size(n: number): string {
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${i === 0 ? v : v.toFixed(1)} ${units[i]}`;
+}
+
 function amount(n: number, unit: LimitItem['unit']): string {
+  if (unit === 'bytes') return size(n);
   if (unit === 'days') return `${n} day${n === 1 ? '' : 's'}`;
   return short(n);
 }
@@ -29,13 +42,14 @@ const LimitRow: React.FC<{ item: LimitItem }> = ({ item }) => {
   const counted = item.used !== undefined;
   const pct = counted && !unlimited ? Math.min(100, (item.used! / item.limit) * 100) : null;
   const budget = item.unit === 'tokens' || item.unit === 'calls';
-  const color = !budget ? 'var(--accent-primary)' : pct !== null && pct >= 90 ? 'var(--status-failure)' : pct !== null && pct >= 70 ? 'var(--status-warning)' : 'var(--accent-primary)';
+  const disk = item.unit === 'bytes';
+  const color = !budget && !disk ? 'var(--accent-primary)' : pct !== null && pct >= 90 ? 'var(--status-failure)' : pct !== null && pct >= 70 ? 'var(--status-warning)' : 'var(--accent-primary)';
   const daily = budget ? ' a day' : '';
   return (
     <div css={limitRowStyle} title={item.note}>
       <span css={rowLabelStyle}>{item.label}</span>
       <span css={rowValueStyle}>
-        {counted ? short(item.used!) : amount(item.limit, item.unit)}
+        {counted ? (item.unit === 'bytes' ? size(item.used!) : short(item.used!)) : amount(item.limit, item.unit)}
         <span css={ofStyle}>
           {counted ? ` of ${unlimited ? 'no limit' : amount(item.limit, item.unit) + daily}` : item.unit === 'days' ? ' then deleted' : ' at most'}
         </span>
