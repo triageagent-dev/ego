@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { TraceResult, ViewType, EvalSet, EvalSetMetadata, EvalCase, TraceTableRow, LiveSession } from '../lib/types';
+import type { TraceResult, ViewType, RubricKind, RubricSet, EvalSet, EvalSetMetadata, EvalCase, TraceTableRow, LiveSession } from '../lib/types';
 import type { TraceMetadata } from '../lib/trace-metadata';
 
 export interface ApiKeyStatus {
@@ -12,6 +12,8 @@ export interface TraceState {
   // Upload state
   traceFiles: File[];
   evalSetFile: File | null;
+  // The rubric set chosen for each kind of rubric metric.
+  rubricSets: Record<RubricKind, RubricSet | null>;
   selectedEvaluatorNames: string[];
   judgeModel: string;
   threshold: number;
@@ -52,6 +54,7 @@ export interface TraceContextType {
   actions: {
     setTraceFiles: (files: File[]) => Promise<void>;
     setEvalSet: (file: File | null) => void;
+    setRubricSet: (kind: RubricKind, set: RubricSet | null) => void;
     toggleEvaluatorName: (evaluatorName: string) => void;
     setJudgeModel: (model: string) => void;
     setThreshold: (threshold: number) => void;

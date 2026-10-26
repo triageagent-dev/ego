@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Checkbox, Segmented } from 'antd';
+import { Button, Checkbox, Segmented, Select } from 'antd';
 import { css } from '@emotion/react';
 import { Play, Pencil, Loader2 } from 'lucide-react';
 import { NewGoldenForm } from './NewGoldenForm';
+import { RUBRIC_KIND_LABEL, RubricSetsPanel } from './RubricSetsPanel';
+import { RUBRIC_KIND_OF } from '../../lib/eval-config';
 import { MetricGroup, useMetricGroups } from './MetricSelector';
 import { SessionPicker } from './SessionPicker';
 import { formatStarted } from '../../lib/trace-helpers';
 import { ago, blurbFor, groupStats } from './metricInsights';
-import { getEvalSet, listEvalSets, listRuns } from '../../api/client';
+import { getEvalSet, listEvalSets, listRubricSets, listRuns } from '../../api/client';
 import { evalSetToWireFormat } from '../../lib/evalset-builder';
-import type { EvalSetSummary, Run } from '../../lib/types';
+import type { EvalSetSummary, RubricKind, RubricSet, Run } from '../../lib/types';
 import { SessionEvalSetFile, SessionTraceFile } from '../../lib/sessionFiles';
 import { EvalSetEditorDrawer } from './EvalSetEditorDrawer';
 import { TraceEditorDrawer } from './TraceEditorDrawer';
@@ -305,6 +307,26 @@ const detailsHintStyle = css`
   font-size: 12px;
 `;
 
+const menuRowStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+`;
+
+const menuLabelStyle = css`
+  color: var(--text-muted);
+  font-size: 11.5px;
+`;
+
+const rubricListStyle = css`
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+`;
+
 const turnsHeadStyle = css`
   display: flex;
   align-items: center;
@@ -382,6 +404,7 @@ const noteStyle = css`
 // The open card: the sources (traces and golden set), the eval sets, or a metric category's name.
 const SOURCES = 'sources';
 const EVALSETS = 'evalsets';
+const RUBRICSETS = 'rubricsets';
 
 
 export const UploadView: React.FC = () => {
@@ -429,6 +452,12 @@ export const UploadView: React.FC = () => {
       setGoldenBusy(null);
     }
   };
+  // The saved rubric sets, for the menus of the rubric metrics.
+  const [rubricList, setRubricList] = useState<RubricSet[] | null>(null);
+  const reloadRubricSets = () => listRubricSets().then(setRubricList).catch(() => setRubricList([]));
+  useEffect(() => {
+    void reloadRubricSets();
+  }, []);
   const [evalSetDrawerOpen, setEvalSetDrawerOpen] = useState(false);
   const [traceEditorIndex, setTraceEditorIndex] = useState<number | null>(null);
 
@@ -602,12 +631,80 @@ export const UploadView: React.FC = () => {
         </>
       );
     }
+    if (id === RUBRICSETS) {
+      return (
+        <>
+          <h2 css={detailsTitleStyle}>rubric sets</h2>
+          <p css={detailsHintStyle}>Write the rubrics once and pick them from the quality category.</p>
+          <RubricSetsPanel
+            sets={rubricList}
+            onChanged={(created) => {
+              void reloadRubricSets();
+              // A new set is the one in use for its kind.
+              if (created) actions.setRubricSet(created.kind, created);
+              else {
+                // A deleted set can no longer be the chosen one.
+                (Object.keys(state.rubricSets) as RubricKind[]).forEach((k) => {
+                  const chosen = state.rubricSets[k];
+                  if (chosen) listRubricSets().then((l) => !l.some((s) => s.rubricSetId === chosen.rubricSetId) && actions.setRubricSet(k, null)).catch(() => undefined);
+                });
+              }
+            }}
+          />
+        </>
+      );
+    }
     const group = groups.find(([name]) => name === id);
     if (group) {
+      const needsGolden = group[1].some((m) => m.requiresEvalSet);
+      const kinds = Array.from(new Set(group[1].map((m) => RUBRIC_KIND_OF[m.name]).filter((k): k is RubricKind => !!k)));
+      const chosenId = state.evalSetFile?.name.replace(/\.json$/, '');
       return (
         <>
           <h2 css={detailsTitleStyle}>{group[0]}</h2>
           <p css={detailsHintStyle}>Tick the metrics each trace is scored on.</p>
+          {needsGolden && (
+            <div css={menuRowStyle}>
+              <label css={menuLabelStyle}>eval set</label>
+              <Select
+                size="small"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                style={{ width: '100%' }}
+                placeholder="Choose a saved eval set"
+                loading={evalSets === null || goldenBusy !== null}
+                value={evalSets?.some((es) => es.evalSetId === chosenId) ? chosenId : undefined}
+                options={(evalSets ?? []).map((es) => ({ value: es.evalSetId, label: `${es.name || es.evalSetId} · ${es.numCases} case${es.numCases === 1 ? '' : 's'}` }))}
+                onChange={(v) => (v ? void chooseEvalSet(v) : actions.setEvalSet(null))}
+              />
+            </div>
+          )}
+          {kinds.map((kind) => {
+            const chosen = state.rubricSets[kind];
+            return (
+              <div key={kind} css={menuRowStyle}>
+                <label css={menuLabelStyle}>rubric set · {RUBRIC_KIND_LABEL[kind]}</label>
+                <Select
+                  size="small"
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  style={{ width: '100%' }}
+                  placeholder="Choose a saved rubric set"
+                  loading={rubricList === null}
+                  value={chosen?.rubricSetId}
+                  options={(rubricList ?? []).filter((s) => s.kind === kind).map((s) => ({ value: s.rubricSetId, label: `${s.name} · ${s.rubrics.length} rubric${s.rubrics.length === 1 ? '' : 's'}` }))}
+                  onChange={(v) => actions.setRubricSet(kind, (v && rubricList?.find((s) => s.rubricSetId === v)) || null)}
+                />
+                {chosen && (
+                  <ol css={rubricListStyle}>
+                    {chosen.rubrics.map((r, i) => <li key={i}>{r}</li>)}
+                  </ol>
+                )}
+              </div>
+            );
+          })}
           <MetricGroup
             metrics={group[1]}
             selectedEvaluatorNames={state.selectedEvaluatorNames}
@@ -676,12 +773,24 @@ export const UploadView: React.FC = () => {
               <span css={sideWhenStyle}>Create one here; it becomes the golden set of this evaluation.</span>
             </>,
           )}
+          {card(
+            RUBRICSETS,
+            'rubric sets',
+            null,
+            <span css={chipStyle}>{rubricList === null ? '…' : `${rubricList.length} saved`}</span>,
+            null,
+            <>
+              <span>Rubrics you write once and reuse.</span>
+              <span css={sideWhenStyle}>Used by the quality metrics.</span>
+            </>,
+          )}
           {groups.map(([name, metrics]) => {
             const picked = new Set(state.selectedEvaluatorNames);
             const on = metrics.filter((m) => picked.has(m.name)).length;
             const stats = groupStats(metrics, runs);
             const blurb = blurbFor(name, metrics);
             const missingGolden = !state.evalSetFile && metrics.some((m) => picked.has(m.name) && m.requiresEvalSet);
+            const missingRubrics = metrics.some((m) => picked.has(m.name) && RUBRIC_KIND_OF[m.name] && !state.rubricSets[RUBRIC_KIND_OF[m.name]]);
             return card(
               name,
               name,
@@ -698,6 +807,7 @@ export const UploadView: React.FC = () => {
                 <span>{blurb.what}</span>
                 <span css={sideWhenStyle}>{blurb.when}</span>
                 {missingGolden && <span css={sideWarnStyle}>Ticked here, but no golden set is chosen.</span>}
+                {missingRubrics && <span css={sideWarnStyle}>Ticked here, but no rubric set is chosen.</span>}
                 {stats.errored > 0.2 && (
                   <span css={sideWarnStyle}>{Math.round(stats.errored * 100)}% of its past results errored; check keys and access.</span>
                 )}

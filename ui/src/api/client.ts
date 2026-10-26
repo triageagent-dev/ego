@@ -10,6 +10,8 @@ import type {
   RunResultRow,
   EvalSet,
   EvalSetSummary,
+  RubricKind,
+  RubricSet,
   UsageSeries,
   ActivitySubject,
   TurnsResult,
@@ -323,6 +325,30 @@ export async function saveEvalSet(evalSet: EvalSet): Promise<EvalSetSummary> {
   if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to save eval set'));
   return unwrap<EvalSetSummary>(response);
+}
+
+export async function listRubricSets(kind?: RubricKind): Promise<RubricSet[]> {
+  const response = await fetch(`${config.api.endpoints.rubricSets}${kind ? `?kind=${kind}` : ''}`);
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to list rubric sets'));
+  return unwrap<RubricSet[]>(response);
+}
+
+export async function saveRubricSet(set: { rubricSetId?: string; name: string; description?: string; kind: RubricKind; rubrics: string[] }): Promise<RubricSet> {
+  const response = await fetch(config.api.endpoints.rubricSets, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(set),
+  });
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to save the rubric set'));
+  return unwrap<RubricSet>(response);
+}
+
+export async function deleteRubricSet(rubricSetId: string): Promise<void> {
+  const response = await fetch(`${config.api.endpoints.rubricSets}/${encodeURIComponent(rubricSetId)}`, { method: 'DELETE' });
+  if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to delete the rubric set'));
 }
 
 export async function listMetrics(): Promise<MetricMetadata[]> {

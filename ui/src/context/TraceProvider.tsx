@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { TraceContext } from './TraceContext';
 import type { TraceState } from './TraceContext';
-import type { ViewType, EvalConfig, EvalSet, EvalSetMetadata, EvalCase, LiveSession } from '../lib/types';
+import type { ViewType, RubricKind, RubricSet, EvalConfig, EvalSet, EvalSetMetadata, EvalCase, LiveSession } from '../lib/types';
 import { evaluateTracesStreaming, convertTraces, getConfig, healthCheck } from '../api/client';
 import { buildEvalConfig } from '../lib/eval-config';
 import { store, stored } from '../lib/stored';
@@ -18,6 +18,7 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
   const [state, setState] = useState<TraceState>({
     traceFiles: [],
     evalSetFile: null,
+    rubricSets: { final_response: null, tool_use: null },
     selectedEvaluatorNames: [],
     // The evaluation defaults are the reader's own, kept per browser (settings, in the account menu).
     // A remembered model that has left the list (retired by its provider) is dropped for the default.
@@ -96,6 +97,9 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
       setEvalSet: (file: File | null) =>
         setState((prev) => ({ ...prev, evalSetFile: file })),
 
+      setRubricSet: (kind: RubricKind, set: RubricSet | null) =>
+        setState((prev) => ({ ...prev, rubricSets: { ...prev.rubricSets, [kind]: set } })),
+
       toggleEvaluatorName: (evaluatorName: string) =>
         setState((prev) => ({
           ...prev,
@@ -172,6 +176,10 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
             judgeModel: state.judgeModel,
             threshold: state.threshold,
             trajectoryMatchType: state.trajectoryMatchType,
+            rubrics: {
+              final_response: state.rubricSets.final_response?.rubrics,
+              tool_use: state.rubricSets.tool_use?.rubrics,
+            },
           });
 
           await evaluateTracesStreaming(
@@ -388,7 +396,7 @@ export const TraceProvider: React.FC<TraceProviderProps> = ({ children }) => {
           };
         }),
     }),
-    [state.traceFiles, state.traceMetadata, state.excludedTraceIds, state.evalSetFile, state.selectedEvaluatorNames, state.judgeModel, state.threshold, state.trajectoryMatchType]
+    [state.traceFiles, state.traceMetadata, state.excludedTraceIds, state.evalSetFile, state.selectedEvaluatorNames, state.judgeModel, state.threshold, state.trajectoryMatchType, state.rubricSets]
   );
 
   return (

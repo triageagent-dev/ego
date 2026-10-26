@@ -155,6 +155,8 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/runs/{id}/results", getRunResultsHandler(archive))
 	mux.HandleFunc("/api/evalsets", evalSetsHandler(archive))
 	mux.HandleFunc("/api/evalsets/{id}", getEvalSetHandler(archive))
+	mux.HandleFunc("/api/rubricsets", rubricSetsHandler(archive))
+	mux.HandleFunc("/api/rubricsets/{id}", rubricSetHandler(archive))
 	mux.HandleFunc("/api/convert", convertHandler(store))
 	mux.HandleFunc("/api/evaluate", evaluateHandler(archive, store))
 	mux.HandleFunc("/api/evaluate/stream", evaluateStreamHandler(archive, store))

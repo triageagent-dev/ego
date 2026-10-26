@@ -33,6 +33,7 @@ export const config = {
       onlineCorrections: `${API_BASE_URL}/api/online/corrections`,
       onlineLabels: `${API_BASE_URL}/api/online/labels`,
       evalSets: `${API_BASE_URL}/api/evalsets`,
+      rubricSets: `${API_BASE_URL}/api/rubricsets`,
       validateEvalSet: `${API_BASE_URL}/api/validate/eval-set`,
       streamingCreateEvalSet: `${API_BASE_URL}/api/streaming/create-eval-set`,
       streamingGetTrace: `${API_BASE_URL}/api/streaming/get-trace`,

@@ -244,7 +244,22 @@ export interface EvalConfig {
     judgeModel?: string;
     threshold?: number;
     trajectoryMatchType?: string;
+    // The rubric texts of a rubric metric, from the chosen rubric set.
+    rubrics?: string[];
   }>;
+}
+
+// A saved list of rubric texts for one of the two rubric metrics (GET /api/rubricsets).
+export type RubricKind = 'final_response' | 'tool_use';
+
+export interface RubricSet {
+  rubricSetId: string;
+  name: string;
+  description?: string;
+  kind: RubricKind;
+  rubrics: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 // EvalSet types
