@@ -35,7 +35,13 @@ const (
 
 // OnlineEngine runs the loop. Create with NewOnlineEngine and Start.
 type OnlineEngine struct {
-	cfg        *online.Config
+	// cfgp is the live configuration; the jobs a person edits replace it (SetJobs), so read it through conf().
+	cfgp atomic.Pointer[online.Config]
+	// base is the configuration as the file wrote it; the jobs a person saved are laid over it.
+	base       *online.Config
+	jobsStored atomic.Bool
+	// unscored counts the sessions of each kind that arrived with no job to score them, since the process started.
+	unscored   map[string]int64
 	store      *SQLiteStore
 	sessions   *SessionStore
 	tenantAttr string
@@ -82,6 +88,9 @@ type OnlineEngine struct {
 	lastTick time.Time
 }
 
+// conf is the configuration in force now.
+func (e *OnlineEngine) conf() *online.Config { return e.cfgp.Load() }
+
 type onlineHourRun struct {
 	runID string
 	hour  time.Time
@@ -90,7 +99,6 @@ type onlineHourRun struct {
 // NewOnlineEngine wires the engine. store is required.
 func NewOnlineEngine(cfg *online.Config, store *SQLiteStore, sessions *SessionStore, tenantAttr string) *OnlineEngine {
 	e := &OnlineEngine{
-		cfg:        cfg,
 		store:      store,
 		sessions:   sessions,
 		tenantAttr: tenantAttr,
@@ -105,6 +113,9 @@ func NewOnlineEngine(cfg *online.Config, store *SQLiteStore, sessions *SessionSt
 		judges:     map[string]judge.Model{},
 		rjudges:    map[string]judge.Model{},
 	}
+	e.cfgp.Store(cfg)
+	e.base = cfg
+	e.unscored = map[string]int64{}
 	e.newJudge = func(ctx context.Context, model string, onUsage func(int64)) (judge.Model, error) {
 		m, err := judge.NewGenAIModel(ctx, "", model)
 		if err != nil {
@@ -132,6 +143,7 @@ func (e *OnlineEngine) count(key string) {
 
 // Start restores state and runs the worker and the detector until stop.
 func (e *OnlineEngine) Start(stop <-chan struct{}) {
+	e.loadJobs()
 	now := e.now()
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	if spent, err := e.store.OnlineSpentSince(day.UnixMilli()); err != nil {
@@ -149,14 +161,14 @@ func (e *OnlineEngine) Start(stop <-chan struct{}) {
 	}
 	e.finishStaleRuns(true)
 	if os.Getenv("JEV_API_KEY") == "" {
-		for _, p := range e.cfg.Profiles {
+		for _, p := range e.conf().Profiles {
 			if p.UsesJev() {
 				logx.Warnf("online: profile %s has jev_* evaluators but JEV_API_KEY is not set; they will report errors", p.Key())
 			}
 		}
 	}
 	logx.Infof("online evaluation: %d profile(s), %d sink(s), judge cap %d tokens/day, jev cap %d calls/day",
-		len(e.cfg.Profiles), len(e.cfg.Sinks), e.cfg.Budget.JudgeTokensPerDay, e.cfg.Budget.JevCallsPerDay)
+		len(e.conf().Profiles), len(e.conf().Sinks), e.conf().Budget.JudgeTokensPerDay, e.conf().Budget.JevCallsPerDay)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -174,7 +186,7 @@ func (e *OnlineEngine) Start(stop <-chan struct{}) {
 		}
 	}()
 	go func() {
-		t := time.NewTicker(e.cfg.Detector.Every.D())
+		t := time.NewTicker(e.conf().Detector.Every.D())
 		defer t.Stop()
 		for {
 			select {
@@ -208,13 +220,14 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		e.count(online.SkipNoKind)
 		return
 	}
-	p, ok := e.cfg.Match(f.Kind, f.Service, f.Tenant)
+	p, ok := e.conf().Match(f.Kind, f.Service, f.Tenant)
 	if !ok {
 		e.count(online.SkipNoProfile)
+		e.countUnscored(f.Kind)
 		return
 	}
 	// Before the sampler sees it, so a greeting neither uses up the kind's allowance nor shifts its baselines.
-	if f.NotWorthJudging(e.cfg.Sampling.Trivial) {
+	if f.NotWorthJudging(e.conf().Sampling.Trivial) {
 		e.count(online.SkipTrivial)
 		return
 	}
@@ -222,7 +235,7 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 	// senders that both send a tenant called "acme" stay apart.
 	f.Tenant = tenantKey(e.sessions.SenderOf(sessionID), f.Tenant)
 	now := e.now()
-	d := e.sampler.Decide(f, now)
+	d := e.sampler.DecideAt(f, p.PerHour, now)
 	if !d.Sample {
 		e.count(d.Skip)
 		return
@@ -616,7 +629,7 @@ func (e *OnlineEngine) Tick(ctx context.Context) {
 }
 
 func (e *OnlineEngine) detect(ctx context.Context, now time.Time) {
-	cfg := e.cfg.Detector
+	cfg := e.conf().Detector
 	rows, err := e.store.OnlineSamples(now.Add(-cfg.Baseline.D()).UnixMilli())
 	if err != nil {
 		logx.Errorf("online: reading samples: %v", err)
@@ -677,7 +690,7 @@ func (e *OnlineEngine) detect(ctx context.Context, now time.Time) {
 		if event != "" {
 			logx.Infof("online: alert %s %s %s/%s/%s %.2f -> %.2f (n=%d)", next.ID, event,
 				key.Tenant, key.Kind, key.Metric, r.BaseMean, r.CurMean, r.NCur)
-			if err := e.notifier.Alert(ctx, online.PayloadOf(event, next, e.cfg)); err != nil {
+			if err := e.notifier.Alert(ctx, online.PayloadOf(event, next, e.conf())); err != nil {
 				logx.Warnf("online: notifying alert %s: %v", next.ID, err)
 			}
 		}
@@ -685,7 +698,7 @@ func (e *OnlineEngine) detect(ctx context.Context, now time.Time) {
 }
 
 func (e *OnlineEngine) digest(ctx context.Context, now time.Time) {
-	hour := *e.cfg.DigestHourUTC
+	hour := *e.conf().DigestHourUTC
 	if hour < 0 || !e.notifier.HasDigestSink() || now.UTC().Hour() != hour {
 		return
 	}
@@ -732,7 +745,7 @@ func (e *OnlineEngine) digest(ctx context.Context, now time.Time) {
 	e.mu.Lock()
 	open := len(e.alerts)
 	e.mu.Unlock()
-	text := online.DigestText(out, e.digestAgreement(now), e.budget.Status(now), open, e.cfg.PublicURL)
+	text := online.DigestText(out, e.digestAgreement(now), e.budget.Status(now), open, e.conf().PublicURL)
 	if err := e.notifier.Digest(ctx, text); err != nil {
 		logx.Errorf("online: digest: %v", err)
 		return
@@ -766,18 +779,18 @@ func (e *OnlineEngine) status() onlineStatusDTO {
 
 func (e *OnlineEngine) statusFor(info RoleInfo) onlineStatusDTO {
 	st := onlineStatusDTO{
-		Sampling: e.cfg.Sampling,
-		Detector: e.cfg.Detector,
+		Sampling: e.conf().Sampling,
+		Detector: e.conf().Detector,
 		Budget:   e.budget.Status(e.now()),
 		Queue:    len(e.queue),
 		Counts:   map[string]int64{},
 		Profiles: []string{},
 		Sinks:    []string{},
 	}
-	for _, p := range e.cfg.Profiles {
+	for _, p := range e.conf().Profiles {
 		st.Profiles = append(st.Profiles, p.Key())
 	}
-	for _, s := range e.cfg.Sinks {
+	for _, s := range e.conf().Sinks {
 		st.Sinks = append(st.Sinks, s.Type)
 	}
 	e.mu.Lock()

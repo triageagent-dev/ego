@@ -381,3 +381,61 @@ func TestParse_TrivialDefaults(t *testing.T) {
 		t.Error("a negative limit was accepted")
 	}
 }
+
+func TestMatch_GlobKindAndExactBeatsGlob(t *testing.T) {
+	c := &Config{Profiles: []Profile{
+		{Kind: "*-spot", Evaluators: []Evaluator{{Name: "jev_grounded"}}},
+		{Kind: "alpha-spot", Evaluators: []Evaluator{{Name: "hallucinations_v1"}}},
+	}}
+	if p, ok := c.Match("beta-spot", "", ""); !ok || p.Kind != "*-spot" {
+		t.Errorf("a spot should take the glob, got %+v", p)
+	}
+	if p, ok := c.Match("alpha-spot", "", ""); !ok || p.Kind != "alpha-spot" {
+		t.Errorf("the named spot should take its own profile, got %+v", p)
+	}
+	if _, ok := c.Match("chat", "", ""); ok {
+		t.Error("chat matches no spot profile")
+	}
+}
+
+func TestWithJobs_ReplacesAndValidates(t *testing.T) {
+	base, err := Parse([]byte(`{"budget":{"judgeTokensPerDay":1000,"jevCallsPerDay":10},"profiles":[{"kind":"rca","evaluators":[{"name":"jev_grounded"}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := base.WithJobs(Jobs{PerKindPerHour: 2, Profiles: []Profile{{Kind: "*-spot", PerHour: 1, Evaluators: []Evaluator{{Name: "jev_task_resolved"}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Sampling.PerKindPerHour != 2 || len(next.Profiles) != 1 || next.Profiles[0].MaxInvocations != 3 || next.Profiles[0].Evaluators[0].NumSamples != 1 {
+		t.Errorf("jobs not filled: %+v", next.Profiles)
+	}
+	if len(base.Profiles) != 1 || base.Profiles[0].Kind != "rca" {
+		t.Error("the base configuration must not change")
+	}
+	for name, j := range map[string]Jobs{
+		"bad pattern":   {Profiles: []Profile{{Kind: "[", Evaluators: []Evaluator{{Name: "jev_grounded"}}}}},
+		"no evaluators": {Profiles: []Profile{{Kind: "chat"}}},
+		"negative rate": {Profiles: []Profile{{Kind: "chat", PerHour: -1, Evaluators: []Evaluator{{Name: "jev_grounded"}}}}},
+		"reference":     {Profiles: []Profile{{Kind: "chat", Evaluators: []Evaluator{{Name: "response_match_score"}}}}},
+	} {
+		if _, err := base.WithJobs(j); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}
+
+func TestSampler_DecideAtUsesTheJobsRate(t *testing.T) {
+	s := NewSampler(Sampling{PerKindPerHour: 5, BoostPerKindPerHour: 1, AfterChangeSessions: 1, DedupWindow: Duration(time.Hour)})
+	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	if d := s.DecideAt(feat("chat", "a", "v1", 0, 100), 1, now); !d.Sample {
+		t.Fatalf("first: %+v", d)
+	}
+	if d := s.DecideAt(feat("chat", "b", "v1", 0, 100), 1, now); d.Skip != SkipRate {
+		t.Errorf("a job at one an hour takes one session: %+v", d)
+	}
+	s.SetConfig(Sampling{PerKindPerHour: 5, BoostPerKindPerHour: 1, AfterChangeSessions: 1, DedupWindow: Duration(time.Hour)})
+	if d := s.DecideAt(feat("chat", "c", "v1", 0, 100), 0, now.Add(2*time.Hour)); !d.Sample {
+		t.Errorf("after the hour: %+v", d)
+	}
+}

@@ -92,7 +92,7 @@ func (e *OnlineEngine) Quality(info RoleInfo, kind string, hours int) (*mcptools
 	}
 	for _, a := range filterByTenant(alerts, info, func(a *online.Alert) string { return a.Key.Tenant }) {
 		if wantKind(a.Key.Kind) {
-			out.OpenAlerts = append(out.OpenAlerts, online.PayloadOf(a.Status, a, e.cfg))
+			out.OpenAlerts = append(out.OpenAlerts, online.PayloadOf(a.Status, a, e.conf()))
 		}
 	}
 
@@ -207,7 +207,7 @@ func (e *OnlineEngine) ExplainRegression(info RoleInfo, alertID string) (*mcptoo
 	if !ok || !info.AllowsAnyTenant([]string{a.Key.Tenant}) {
 		return nil, notFound("alert")
 	}
-	out := &mcptools.RegressionExplanation{Alert: online.PayloadOf(a.Status, a, e.cfg), Suspect: a.Last.Suspect, Sessions: []mcptools.SessionEvidence{}}
+	out := &mcptools.RegressionExplanation{Alert: online.PayloadOf(a.Status, a, e.conf()), Suspect: a.Last.Suspect, Sessions: []mcptools.SessionEvidence{}}
 	for _, id := range a.Last.Worst {
 		ev, found, err := e.sessionEvidence(id)
 		if err != nil {

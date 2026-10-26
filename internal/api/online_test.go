@@ -267,7 +267,7 @@ func TestOnlineEngine_UnreadableJudgeIsErrorNotZero(t *testing.T) {
 
 func TestOnlineEngine_SkipsSessionsNotWorthJudging(t *testing.T) {
 	e, sessions, _, fake := newTestEngine(t, testOnlineConfig)
-	e.cfg.Sampling.Trivial.Disabled = false
+	e.conf().Sampling.Trivial.Disabled = false
 	now := time.Date(2026, 10, 4, 12, 30, 0, 0, time.UTC)
 	e.now = func() time.Time { return now }
 
@@ -317,7 +317,7 @@ func TestOnlineStatus_SessionsScored24hIsPersisted(t *testing.T) {
 	}
 
 	// A restart: a new engine over the same store starts its in-memory counters at zero but the count stays.
-	e2 := NewOnlineEngine(e.cfg, archive, e.sessions, "tenant.id")
+	e2 := NewOnlineEngine(e.conf(), archive, e.sessions, "tenant.id")
 	e2.now = e.now
 	if got := e2.status().SessionsScored24h; got != 3 {
 		t.Errorf("after a restart the count = %d, want 3", got)

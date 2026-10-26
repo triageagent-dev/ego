@@ -12,6 +12,8 @@ import type {
   EvalSetSummary,
   RubricKind,
   RubricSet,
+  OnlineJob,
+  OnlineJobs,
   UsageSeries,
   ActivitySubject,
   TurnsResult,
@@ -573,4 +575,27 @@ export async function getSessionSpans(sessionId: string): Promise<SessionSpan[]>
   if (!response.ok) throw new Error(`Failed to load spans: ${httpStatusLabel(response)}`);
   const data = await unwrap<{ sessionId: string; spans: SessionSpan[] }>(response);
   return data.spans;
+}
+
+export async function getOnlineJobs(): Promise<OnlineJobs> {
+  const response = await fetch(config.api.endpoints.onlineJobs);
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to load the scoring jobs'));
+  return unwrap<OnlineJobs>(response);
+}
+
+export async function saveOnlineJobs(jobs: { perKindPerHour: number; profiles: OnlineJob[] }): Promise<OnlineJobs> {
+  const response = await fetch(config.api.endpoints.onlineJobs, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(jobs),
+  });
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to save the scoring jobs'));
+  return unwrap<OnlineJobs>(response);
+}
+
+/** Drops the saved jobs; the server's own configuration applies again. */
+export async function resetOnlineJobs(): Promise<OnlineJobs> {
+  const response = await fetch(config.api.endpoints.onlineJobs, { method: 'DELETE' });
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to reset the scoring jobs'));
+  return unwrap<OnlineJobs>(response);
 }

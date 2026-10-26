@@ -49,7 +49,7 @@ type findingsStatusDTO struct {
 
 func (e *OnlineEngine) findingsStatus() findingsStatusDTO {
 	var st findingsStatusDTO
-	st.Enabled = e.cfg.Findings.Enabled
+	st.Enabled = e.conf().Findings.Enabled
 	st.Written = e.fWritten.Load()
 	st.Skipped.Budget = e.fSkippedBudget.Load()
 	st.Skipped.NoEvidence = e.fSkippedEvidence.Load()
@@ -107,7 +107,7 @@ func (e *OnlineEngine) persistSpend(now time.Time, tokens int64) {
 // never bad enough to alert. With findings disabled only the verification runs.
 func (e *OnlineEngine) findingsMaintain(ctx context.Context, now time.Time) {
 	e.verifyCorrections(ctx, now)
-	if !e.cfg.Findings.Enabled {
+	if !e.conf().Findings.Enabled {
 		return
 	}
 	e.resolveFindingsOfResolvedAlerts(ctx, now)
@@ -217,7 +217,7 @@ type diagnosisResult struct {
 // model's name stays, with the reason in modelError.
 func (e *OnlineEngine) diagnose(ctx context.Context, now time.Time, in online.PromptInput) (res diagnosisResult, skipBudget bool) {
 	fallback := func() { res.d = online.FallbackDiagnosis(in.Stats, in.MinScore, in.Evidence) }
-	if e.cfg.Budget.JudgeTokensPerDay <= 0 {
+	if e.conf().Budget.JudgeTokensPerDay <= 0 {
 		fallback()
 		return res, false
 	}
@@ -264,7 +264,7 @@ func (e *OnlineEngine) diagnose(ctx context.Context, now time.Time, in online.Pr
 // names the alert it answers ("" for a sweep finding). Nothing is written when the series has no evidence left or
 // the budget is spent; both are counted.
 func (e *OnlineEngine) writeFinding(ctx context.Context, now time.Time, key online.SeriesKey, alertID string, existing *online.Finding) {
-	cfg := e.cfg.Findings
+	cfg := e.conf().Findings
 	// A judge that people keep disagreeing with must not drive corrections (docs/rsi.md, section 4).
 	if e.uncalibrated(key.Metric, key.Tenant, now) {
 		e.fSkippedUncalibrated.Add(1)
@@ -335,7 +335,7 @@ func (e *OnlineEngine) writeFinding(ctx context.Context, now time.Time, key onli
 }
 
 func (e *OnlineEngine) notifyFinding(ctx context.Context, event string, f *online.Finding) {
-	if err := e.notifier.Finding(ctx, online.FindingPayloadOf(event, f, e.cfg)); err != nil {
+	if err := e.notifier.Finding(ctx, online.FindingPayloadOf(event, f, e.conf())); err != nil {
 		logx.Warnf("online: notifying finding %s: %v", f.ID, err)
 	}
 }
@@ -469,7 +469,7 @@ func (e *OnlineEngine) alertFindings(ctx context.Context, now time.Time) {
 // findings.every, remembered across restarts.
 func (e *OnlineEngine) sweepFindings(ctx context.Context, now time.Time) {
 	if v, err := e.store.OnlineState(findingsSweepKey); err == nil && v != "" {
-		if ms, perr := strconv.ParseInt(v, 10, 64); perr == nil && now.Sub(time.UnixMilli(ms)) < e.cfg.Findings.Every.D() {
+		if ms, perr := strconv.ParseInt(v, 10, 64); perr == nil && now.Sub(time.UnixMilli(ms)) < e.conf().Findings.Every.D() {
 			return
 		}
 	}
@@ -487,7 +487,7 @@ func (e *OnlineEngine) SweepNow(ctx context.Context, info RoleInfo) (*mcptools.S
 	if !info.IsAdmin {
 		return nil, &statusError{403, "admin role required"}
 	}
-	if !e.cfg.Findings.Enabled {
+	if !e.conf().Findings.Enabled {
 		return nil, &statusError{409, "findings are disabled in the online config"}
 	}
 	// Bounded, and tied to the request so a caller that went away stops the model calls.
@@ -515,7 +515,7 @@ func (e *OnlineEngine) runSweep(ctx context.Context, now time.Time) (rep mcptool
 	}
 	ran = true
 	defer e.sweeping.Store(false)
-	cfg := e.cfg.Findings
+	cfg := e.conf().Findings
 	before := e.sweepCounters()
 	defer func() {
 		after := e.sweepCounters()
@@ -650,13 +650,13 @@ func (e *OnlineEngine) RegisterCorrection(info RoleInfo, in mcptools.CorrectionI
 	}
 	if c.Verification.Before.N == 0 {
 		// No finding to read the "before" from: the detector's baseline span before now.
-		base, err := e.store.OnlineSamplesFor(c.Tenant, c.Kind, c.Metric, "", now.Add(-e.cfg.Detector.Baseline.D()).UnixMilli(), now.UnixMilli()+1)
+		base, err := e.store.OnlineSamplesFor(c.Tenant, c.Kind, c.Metric, "", now.Add(-e.conf().Detector.Baseline.D()).UnixMilli(), now.UnixMilli()+1)
 		if err != nil {
 			return nil, err
 		}
 		c.Verification.Before = online.MeanOf(base)
 	}
-	c.Verification.WindowEnd = now.Add(e.cfg.Findings.VerifyWithin.D()).UTC()
+	c.Verification.WindowEnd = now.Add(e.conf().Findings.VerifyWithin.D()).UTC()
 
 	e.fmu.Lock()
 	// Counted under fmu with the insert, so two callers cannot both take the last slot.
@@ -738,7 +738,7 @@ func (e *OnlineEngine) verifyOne(ctx context.Context, now time.Time, c *online.C
 	}
 	state, v := online.Verify(online.VerifyInput{
 		Before: c.Verification.Before, After: after, AlertResolved: alertResolved, Created: c.CreatedAt, Now: now,
-	}, e.cfg.Detector, e.cfg.Findings)
+	}, e.conf().Detector, e.conf().Findings)
 
 	e.fmu.Lock()
 	fresh, ok, err := e.store.OnlineCorrection(c.ID)
@@ -773,7 +773,7 @@ func (e *OnlineEngine) verifyOne(ctx context.Context, now time.Time, c *online.C
 		}
 		e.moveFinding(ctx, now, fresh.FindingID, trigger, &note)
 	}
-	if err := e.notifier.Correction(ctx, online.CorrectionPayloadOf(state, fresh, e.cfg)); err != nil {
+	if err := e.notifier.Correction(ctx, online.CorrectionPayloadOf(state, fresh, e.conf())); err != nil {
 		logx.Warnf("online: notifying correction %s: %v", fresh.ID, err)
 	}
 }

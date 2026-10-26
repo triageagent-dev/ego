@@ -29,6 +29,7 @@ export const config = {
       activity: `${API_BASE_URL}/api/activity`,
       usageLimits: `${API_BASE_URL}/api/usage/limits`,
       online: `${API_BASE_URL}/api/online`,
+      onlineJobs: `${API_BASE_URL}/api/online/jobs`,
       onlineFindings: `${API_BASE_URL}/api/online/findings`,
       onlineCorrections: `${API_BASE_URL}/api/online/corrections`,
       onlineLabels: `${API_BASE_URL}/api/online/labels`,

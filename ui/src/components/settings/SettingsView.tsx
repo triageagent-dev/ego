@@ -8,6 +8,7 @@ import { PageTitle } from '../shell/PageTitle';
 import { VersionLink } from '../shell/VersionLink';
 import { errorStyle, pageStyle, subtitleStyle, titleStyle } from '../ui/page';
 import { EvalSettingsForm } from './EvalSettingsForm';
+import { ScoringJobsPanel } from './ScoringJobsPanel';
 
 // 1,234,567 -> 1.2M
 function short(n: number): string {
@@ -107,6 +108,15 @@ export const SettingsView: React.FC = () => {
         </div>
 
         <div>
+          <section css={sectionStyle}>
+            <h2 css={sectionTitleStyle}>scoring jobs</h2>
+            <p css={hintStyle}>
+              Each job scores a sample of the sessions an agent finishes, as they come: the kind of session it covers, the metrics that score
+              it, how many an hour and how many of the last turns. The scores feed quality, alerts and findings.
+            </p>
+            <ScoringJobsPanel canEdit={!me?.authenticated || me.role === 'admin'} />
+          </section>
+
           <section css={sectionStyle}>
             <h2 css={sectionTitleStyle}>evaluation</h2>
             <p css={hintStyle}>Used by every evaluation you start; kept in this browser.</p>

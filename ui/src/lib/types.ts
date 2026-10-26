@@ -997,3 +997,25 @@ export interface OnlineSessionScore {
   human_verdict?: 'agree' | 'disagree';
   human_score?: number;
 }
+
+/** One scoring job of the online loop: the sessions of a kind, what scores them and how many. */
+export interface OnlineJob {
+  /** A call kind, or a pattern such as `*-spot`. */
+  kind: string;
+  service?: string;
+  tenant?: string;
+  /** How many of the last turns of a session are scored. */
+  maxInvocations?: number;
+  /** Sessions of each tenant and kind scored per hour; absent takes the default rate. */
+  perHour?: number;
+  evaluators: { name: string; rubrics?: string[]; numSamples?: number; judgeModel?: string }[];
+}
+
+export interface OnlineJobs {
+  perKindPerHour: number;
+  profiles: OnlineJob[];
+  /** `stored` once jobs were saved here, `file` while the server's own configuration is in force. */
+  source: 'stored' | 'file';
+  /** Kinds that sent sessions with no job to score them. */
+  unscored: { kind: string; sessions: number }[];
+}

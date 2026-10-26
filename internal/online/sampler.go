@@ -112,7 +112,22 @@ func NewSampler(cfg Sampling) *Sampler {
 
 // Decide samples or skips one session, and folds it into the kind's
 // baselines either way. The caller has already matched a profile.
-func (s *Sampler) Decide(f Features, now time.Time) Decision {
+func (s *Sampler) Decide(f Features, now time.Time) Decision { return s.DecideAt(f, 0, now) }
+
+// SetConfig replaces the rates and rules for the next decisions; what the sampler has learned of each kind stays.
+func (s *Sampler) SetConfig(cfg Sampling) {
+	s.mu.Lock()
+	s.cfg = cfg
+	s.mu.Unlock()
+}
+
+// DecideAt is Decide with the base rate of the session's profile; 0 takes the configured per-kind rate.
+func (s *Sampler) DecideAt(f Features, perHour float64, now time.Time) Decision {
+	if perHour <= 0 {
+		s.mu.Lock()
+		perHour = s.cfg.PerKindPerHour
+		s.mu.Unlock()
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pruneLocked(now)
@@ -154,7 +169,7 @@ func (s *Sampler) Decide(f Features, now time.Time) Decision {
 	if last, ok := s.seen[f.Fingerprint]; ok && now.Sub(last) < s.cfg.DedupWindow.D() {
 		return Decision{Skip: SkipDuplicate}
 	}
-	if !st.base.take(s.cfg.PerKindPerHour, now) {
+	if !st.base.take(perHour, now) {
 		return Decision{Skip: SkipRate}
 	}
 	s.seen[f.Fingerprint] = now

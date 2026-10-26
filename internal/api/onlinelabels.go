@@ -72,7 +72,7 @@ func (e *OnlineEngine) gatedTenants(ls []*online.Label) map[string][]string {
 	out := map[string][]string{}
 	for tenant, labels := range byTenant {
 		for metric, a := range online.AgreementByMetric(labels) {
-			if a.Gated(e.cfg.Findings.MinAgreement) {
+			if a.Gated(e.conf().Findings.MinAgreement) {
 				out[metric] = append(out[metric], tenant)
 			}
 		}
@@ -100,7 +100,7 @@ func (e *OnlineEngine) uncalibrated(metric, tenant string, now time.Time) bool {
 		logx.Warnf("online: reading labels for the agreement gate: %v", err)
 		return false
 	}
-	return online.AgreementByMetric(labelValues(ls))[metric].Gated(e.cfg.Findings.MinAgreement)
+	return online.AgreementByMetric(labelValues(ls))[metric].Gated(e.conf().Findings.MinAgreement)
 }
 
 func (e *OnlineEngine) storedDrift(metric string) *online.Drift {
@@ -372,7 +372,7 @@ func (e *OnlineEngine) rescoreSession(ctx context.Context, now time.Time, sessio
 	}
 	var p online.Profile
 	found := false
-	for _, cand := range e.cfg.Profiles {
+	for _, cand := range e.conf().Profiles {
 		if cand.Key() == rec.Profile {
 			p, found = cand, true
 		}
@@ -421,13 +421,13 @@ func (e *OnlineEngine) rescoreSession(ctx context.Context, now time.Time, sessio
 // findings.recalibrateEvery; one cut short by the budget is retried on the next tick.
 func (e *OnlineEngine) recalibrate(ctx context.Context, now time.Time) {
 	if v, err := e.store.OnlineState(recalibrateKey); err == nil && v != "" {
-		if ms, perr := strconv.ParseInt(v, 10, 64); perr == nil && now.Sub(time.UnixMilli(ms)) < e.cfg.Findings.RecalibrateEvery.D() {
+		if ms, perr := strconv.ParseInt(v, 10, 64); perr == nil && now.Sub(time.UnixMilli(ms)) < e.conf().Findings.RecalibrateEvery.D() {
 			return
 		}
 	}
 	// Only labels young enough to count (the agreement window, or the pass interval when that is longer) are
 	// anchors, and at most MaxLabelRows of them: this read must not grow with the table.
-	anchorWindow := max(online.AgreementWindow, e.cfg.Findings.RecalibrateEvery.D())
+	anchorWindow := max(online.AgreementWindow, e.conf().Findings.RecalibrateEvery.D())
 	all, err := e.store.OnlineLabels("", "", "", now.Add(-anchorWindow).UnixMilli(), online.MaxLabelRows)
 	if err != nil {
 		logx.Errorf("online: reading labels: %v", err)

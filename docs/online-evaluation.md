@@ -84,7 +84,15 @@ a ConfigMap rendered from Helm values):
   (`jev_*`, `jev_custom`). `numSamples` is new and defaults to 1 here, since one
   judge sample per invocation is the cost lever (the upload path keeps 5).
 - `maxInvocations` scores only the last N invocations of a long session.
-- A profile may also match `service` or `tenant`; the most specific match wins.
+- A profile may also match `service` or `tenant`; the most specific match wins. Its `kind` may be a glob
+  (`*-spot` covers every spot, whatever it is called); a profile that names the kind exactly beats a glob.
+- `perHour` gives a profile its own base rate per (tenant, kind); 0 takes `sampling.perKindPerHour`.
+- **Jobs in the settings page.** The profiles and `sampling.perKindPerHour` can be edited at runtime: settings (account
+  menu), "scoring jobs". An admin adds, changes and removes jobs there, picks a saved rubric set for a rubric metric
+  and sees the kinds that sent sessions with no job to score them. Saving checks the jobs like a config file and
+  applies them from the next session, with no restart; they are kept in the archive and win over the file's profiles
+  until "Use the server's configuration" drops them. `GET /api/online/jobs` reads, `PUT` replaces (admin only),
+  `DELETE` goes back to the file. Budgets, the detector, findings and sinks stay in the file.
 - Production traffic has no golden answers, so profiles use reference-free
   metrics.
 

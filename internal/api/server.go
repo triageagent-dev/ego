@@ -161,6 +161,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/evaluate", evaluateHandler(archive, store))
 	mux.HandleFunc("/api/evaluate/stream", evaluateStreamHandler(archive, store))
 	mux.HandleFunc("/api/online/status", onlineStatusHandler(onlineEngine))
+	mux.HandleFunc("/api/online/jobs", onlineJobsHandler(onlineEngine))
 	mux.HandleFunc("/api/online/failed", onlineFailedHandler(onlineEngine, archive))
 	mux.HandleFunc("/api/online/series", onlineSeriesHandler(onlineEngine))
 	mux.HandleFunc("/api/online/alerts", onlineAlertsHandler(onlineEngine))

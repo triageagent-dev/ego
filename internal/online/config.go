@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"strings"
 	"time"
 )
@@ -28,14 +29,45 @@ type Evaluator struct {
 }
 
 // Profile maps sessions of one call kind (optionally narrowed to a service
-// or tenant) to the evaluators that score them.
+// or tenant) to the evaluators that score them. Kind is a name or a glob such as "*-spot"; a profile naming the kind
+// exactly beats a glob.
 type Profile struct {
 	Kind    string `json:"kind"`
 	Service string `json:"service,omitempty"`
 	Tenant  string `json:"tenant,omitempty"`
 	// MaxInvocations scores only the last N invocations (default 3).
-	MaxInvocations int         `json:"maxInvocations,omitempty"`
-	Evaluators     []Evaluator `json:"evaluators"`
+	MaxInvocations int `json:"maxInvocations,omitempty"`
+	// PerHour is how many sessions of each (tenant, kind) this profile scores per hour; 0 takes sampling.perKindPerHour.
+	PerHour    float64     `json:"perHour,omitempty"`
+	Evaluators []Evaluator `json:"evaluators"`
+}
+
+// Jobs is the part of the configuration a person edits at runtime: which kinds are scored, with what, and how
+// often. Budgets, the detector, findings and sinks stay in the file.
+type Jobs struct {
+	PerKindPerHour float64   `json:"perKindPerHour"`
+	Profiles       []Profile `json:"profiles"`
+}
+
+// Jobs returns the editable part of the configuration.
+func (c *Config) Jobs() Jobs {
+	return Jobs{PerKindPerHour: c.Sampling.PerKindPerHour, Profiles: append([]Profile{}, c.Profiles...)}
+}
+
+// WithJobs returns a copy of the configuration with its jobs replaced, filled and checked like a file config.
+func (c *Config) WithJobs(j Jobs) (*Config, error) {
+	n := *c
+	n.Sampling.PerKindPerHour = j.PerKindPerHour
+	n.Profiles = make([]Profile, len(j.Profiles))
+	for i, p := range j.Profiles {
+		p.Evaluators = append([]Evaluator(nil), p.Evaluators...)
+		n.Profiles[i] = p
+	}
+	n.fillDefaults()
+	if err := n.validate(); err != nil {
+		return nil, err
+	}
+	return &n, nil
 }
 
 // Key names the profile in counters and cost estimates.
@@ -308,6 +340,12 @@ func (c *Config) validate() error {
 		if p.Kind == "" {
 			return fmt.Errorf("online config: every profile needs a kind")
 		}
+		if _, err := path.Match(p.Kind, ""); err != nil {
+			return fmt.Errorf("online config: profile kind %q is not a valid pattern", p.Kind)
+		}
+		if p.PerHour < 0 || p.MaxInvocations < 0 {
+			return fmt.Errorf("online config: profile %q: perHour and maxInvocations must not be negative", p.Key())
+		}
 		if seen[p.Key()] {
 			return fmt.Errorf("online config: duplicate profile %q", p.Key())
 		}
@@ -372,7 +410,7 @@ func (f Findings) validate() error {
 func (c *Config) Match(kind, service, tenant string) (Profile, bool) {
 	best, bestScore := Profile{}, -1
 	for _, p := range c.Profiles {
-		if p.Kind != kind {
+		if ok, _ := path.Match(p.Kind, kind); !ok {
 			continue
 		}
 		if p.Service != "" && p.Service != service {
@@ -382,6 +420,9 @@ func (c *Config) Match(kind, service, tenant string) (Profile, bool) {
 			continue
 		}
 		score := 0
+		if p.Kind == kind {
+			score += 4
+		}
 		if p.Service != "" {
 			score++
 		}
