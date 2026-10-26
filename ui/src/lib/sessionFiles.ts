@@ -45,10 +45,27 @@ export class SessionEvalSetFile extends File {
   }
 }
 
-type SessionFile = SessionTraceFile | SessionEvalSetFile;
+// A saved eval set, named by its id: the conversations in it stay on the server, so the request carries a few bytes
+// and nothing a gateway's content rules could take for an attack.
+export class StoredEvalSetFile extends File {
+  readonly evalSetId: string;
+
+  constructor(evalSetId: string) {
+    super([], `${evalSetId}.json`, { type: 'application/json' });
+    this.evalSetId = evalSetId;
+  }
+
+  async fetchText(): Promise<string> {
+    const response = await fetch(`${config.api.endpoints.evalSets}/${encodeURIComponent(this.evalSetId)}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    return JSON.stringify((await response.json()).data, null, 2);
+  }
+}
+
+type SessionFile = SessionTraceFile | SessionEvalSetFile | StoredEvalSetFile;
 
 export function isSessionFile(file: File): file is SessionFile {
-  return file instanceof SessionTraceFile || file instanceof SessionEvalSetFile;
+  return file instanceof SessionTraceFile || file instanceof SessionEvalSetFile || file instanceof StoredEvalSetFile;
 }
 
 /** The file itself: a session file is read from the server into a real one, anything else is returned as is. */

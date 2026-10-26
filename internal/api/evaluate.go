@@ -171,9 +171,9 @@ type evaluateRequest struct {
 // shared by /api/evaluate and /api/evaluate/stream. Returns an HTTP status + message for the caller to report
 // (via a plain JSON error or an SSE error event) when the request itself is malformed; per-file load failures
 // are instead accumulated into loadErrors.
-func parseEvaluateRequest(r *http.Request, sessions *SessionStore) (*evaluateRequest, int, string) {
+func parseEvaluateRequest(r *http.Request, sessions *SessionStore, archive *SQLiteStore) (*evaluateRequest, int, string) {
 	if isJSONBody(r) {
-		return parseEvaluateByID(r, sessions)
+		return parseEvaluateByID(r, sessions, archive)
 	}
 	limitUpload(nil, r)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
@@ -363,7 +363,7 @@ func evaluateHandler(store *SQLiteStore, sessions *SessionStore) http.HandlerFun
 			return
 		}
 
-		req, status, msg := parseEvaluateRequest(r, sessions)
+		req, status, msg := parseEvaluateRequest(r, sessions, store)
 		if r.MultipartForm != nil {
 			defer r.MultipartForm.RemoveAll()
 		}
@@ -428,7 +428,7 @@ func evaluateStreamHandler(store *SQLiteStore, sessions *SessionStore) http.Hand
 			return
 		}
 
-		req, _, msg := parseEvaluateRequest(r, sessions)
+		req, _, msg := parseEvaluateRequest(r, sessions, store)
 		if r.MultipartForm != nil {
 			defer r.MultipartForm.RemoveAll()
 		}

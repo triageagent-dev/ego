@@ -31,6 +31,8 @@ type evaluateByIDRequest struct {
 	Config           evalConfigDTO `json:"config"`
 	SessionIDs       []string      `json:"session_ids"`
 	EvalSetSessionID string        `json:"eval_set_session_id,omitempty"`
+	// EvalSetID names a saved eval set, so its conversations stay on the server.
+	EvalSetID string `json:"eval_set_id,omitempty"`
 	// TraceIDs limits the evaluation to these traces of the named sessions (the turns the reader picked); empty
 	// means every trace.
 	TraceIDs []string `json:"trace_ids,omitempty"`
@@ -111,7 +113,7 @@ func goldenEvalSet(tr *tracepkg.Trace, evalSetID string) (set adk.EvalSet, detai
 
 // parseEvaluateByID is parseEvaluateRequest for a JSON body naming sessions. It returns the same request, so
 // everything after parsing is shared with uploads.
-func parseEvaluateByID(r *http.Request, sessions *SessionStore) (*evaluateRequest, int, string) {
+func parseEvaluateByID(r *http.Request, sessions *SessionStore, archive *SQLiteStore) (*evaluateRequest, int, string) {
 	var body evaluateByIDRequest
 	if err := decodeJSON(nil, r, &body); err != nil {
 		return nil, http.StatusBadRequest, "invalid request body: " + err.Error()
@@ -164,6 +166,22 @@ func parseEvaluateByID(r *http.Request, sessions *SessionStore) (*evaluateReques
 		} else {
 			req.evalSet = &set
 		}
+	}
+	if id := body.EvalSetID; id != "" && req.evalSet == nil {
+		if info := roleInfoOrOpen(r.Context()); info.Scoped() || info.TenantScoped() {
+			return nil, http.StatusForbidden, "saved eval sets are not available to an agent- or tenant-scoped role"
+		}
+		if archive == nil {
+			return nil, http.StatusServiceUnavailable, "saved eval sets need the session archive"
+		}
+		set, ok, err := archive.GetEvalSet(id)
+		if err != nil {
+			return nil, http.StatusInternalServerError, "failed to fetch eval set: " + err.Error()
+		}
+		if !ok {
+			return nil, http.StatusNotFound, fmt.Sprintf("eval set %q not found", id)
+		}
+		req.evalSet = &set
 	}
 	return req, 0, ""
 }

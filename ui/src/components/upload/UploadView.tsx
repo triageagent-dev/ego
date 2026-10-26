@@ -10,9 +10,8 @@ import { SessionPicker } from './SessionPicker';
 import { formatStarted } from '../../lib/trace-helpers';
 import { ago, blurbFor, groupStats } from './metricInsights';
 import { getEvalSet, listEvalSets, listRubricSets, listRuns } from '../../api/client';
-import { evalSetToWireFormat } from '../../lib/evalset-builder';
 import type { EvalSetSummary, RubricKind, RubricSet, Run } from '../../lib/types';
-import { SessionEvalSetFile, SessionTraceFile } from '../../lib/sessionFiles';
+import { SessionEvalSetFile, SessionTraceFile, StoredEvalSetFile } from '../../lib/sessionFiles';
 import { EvalSetEditorDrawer } from './EvalSetEditorDrawer';
 import { TraceEditorDrawer } from './TraceEditorDrawer';
 import { useTraceContext } from '../../context/TraceContext';
@@ -444,8 +443,8 @@ export const UploadView: React.FC = () => {
     setGoldenBusy(id);
     setGoldenError('');
     try {
-      const set = await getEvalSet(id);
-      actions.setEvalSet(new File([JSON.stringify(evalSetToWireFormat(set), null, 2)], `${id}.json`, { type: 'application/json' }));
+      await getEvalSet(id); // refuses here when the set is gone, before a run is started on it
+      actions.setEvalSet(new StoredEvalSetFile(id));
     } catch (e) {
       setGoldenError(e instanceof Error ? e.message : String(e));
     } finally {

@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/triageagent-dev/ego/internal/adk"
 )
 
 func jsonPost(path, body string) *http.Request {
@@ -79,7 +82,7 @@ func TestParseEvaluateByID(t *testing.T) {
 	store.Ingest(agentTracesBody("mine", "aaaa", "s1", "a"))
 	store.Ingest(agentTracesBody("theirs", "bbbb", "s2", "b"))
 
-	req, status, msg := parseEvaluateRequest(jsonPost("/api/evaluate", `{"config":{"evaluators":[]},"session_ids":["mine"]}`), store)
+	req, status, msg := parseEvaluateRequest(jsonPost("/api/evaluate", `{"config":{"evaluators":[]},"session_ids":["mine"]}`), store, nil)
 	if msg != "" || req == nil {
 		t.Fatalf("parse = %d %q, want a request", status, msg)
 	}
@@ -92,24 +95,49 @@ func TestParseEvaluateByID(t *testing.T) {
 		}
 	}
 
-	if _, status, _ = parseEvaluateRequest(jsonPost("/api/evaluate", `{"config":{},"session_ids":["nope"]}`), store); status != http.StatusNotFound {
+	if _, status, _ = parseEvaluateRequest(jsonPost("/api/evaluate", `{"config":{},"session_ids":["nope"]}`), store, nil); status != http.StatusNotFound {
 		t.Errorf("unknown session: status %d, want 404", status)
 	}
-	if _, status, _ = parseEvaluateRequest(jsonPost("/api/evaluate", `{"config":{},"session_ids":["mine"],"eval_set_session_id":"nope"}`), store); status != http.StatusNotFound {
+	if _, status, _ = parseEvaluateRequest(jsonPost("/api/evaluate", `{"config":{},"session_ids":["mine"],"eval_set_session_id":"nope"}`), store, nil); status != http.StatusNotFound {
 		t.Errorf("unknown eval set session: status %d, want 404", status)
 	}
 
 	// A session with no conversation cannot be a golden reference; that is a load error, not a crash.
-	req, _, msg = parseEvaluateRequest(jsonPost("/api/evaluate", `{"config":{},"session_ids":["mine"],"eval_set_session_id":"mine"}`), store)
+	req, _, msg = parseEvaluateRequest(jsonPost("/api/evaluate", `{"config":{},"session_ids":["mine"],"eval_set_session_id":"mine"}`), store, nil)
 	if msg != "" || req.evalSet != nil || len(req.loadErrors) != 1 {
 		t.Errorf("golden without a conversation: msg=%q evalSet=%v loadErrors=%v", msg, req.evalSet, req.loadErrors)
 	}
 
 	as := withRoleInfoForTest(scopedTo("a"))
-	if _, status, _ = parseEvaluateRequest(as(jsonPost("/api/evaluate", `{"config":{},"session_ids":["theirs"]}`)), store); status != http.StatusNotFound {
+	if _, status, _ = parseEvaluateRequest(as(jsonPost("/api/evaluate", `{"config":{},"session_ids":["theirs"]}`)), store, nil); status != http.StatusNotFound {
 		t.Errorf("out-of-scope session: status %d, want 404", status)
 	}
-	if _, status, _ = parseEvaluateRequest(as(jsonPost("/api/evaluate", `{"config":{},"session_ids":["mine"],"eval_set_session_id":"theirs"}`)), store); status != http.StatusNotFound {
+	if _, status, _ = parseEvaluateRequest(as(jsonPost("/api/evaluate", `{"config":{},"session_ids":["mine"],"eval_set_session_id":"theirs"}`)), store, nil); status != http.StatusNotFound {
 		t.Errorf("out-of-scope eval set session: status %d, want 404", status)
+	}
+}
+
+func TestParseEvaluateByID_SavedEvalSetStaysOnTheServer(t *testing.T) {
+	store := NewSessionStore(nil)
+	store.Ingest(agentTracesBody("mine", "aaaa", "s1", "a"))
+	archive, err := NewSQLiteStore(filepath.Join(t.TempDir(), "sets.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { archive.Close() })
+	if _, err := archive.SaveEvalSet(adk.EvalSet{EvalSetID: "saved", EvalCases: []adk.EvalCase{{EvalID: "c1"}}}); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"config":{"evaluators":[]},"session_ids":["mine"],"eval_set_id":"saved"}`
+	req, status, msg := parseEvaluateRequest(jsonPost("/api/evaluate", body), store, archive)
+	if msg != "" || req.evalSet == nil || req.evalSet.EvalSetID != "saved" {
+		t.Fatalf("the saved set was not loaded: status %d msg %q", status, msg)
+	}
+	if _, status, _ = parseEvaluateRequest(jsonPost("/api/evaluate", strings.Replace(body, "saved", "gone", 1)), store, archive); status != http.StatusNotFound {
+		t.Errorf("unknown saved set: status %d, want 404", status)
+	}
+	as := withRoleInfoForTest(scopedTo("a"))
+	if _, status, _ = parseEvaluateRequest(as(jsonPost("/api/evaluate", body)), store, archive); status != http.StatusForbidden && status != http.StatusNotFound {
+		t.Errorf("scoped role: status %d, want a refusal", status)
 	}
 }

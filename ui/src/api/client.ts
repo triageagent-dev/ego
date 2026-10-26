@@ -29,7 +29,7 @@ import type {
 } from '../lib/types';
 import { config } from '../config';
 import { withTenant } from '../lib/tenant';
-import { materialize, SessionEvalSetFile, SessionTraceFile } from '../lib/sessionFiles';
+import { materialize, SessionEvalSetFile, SessionTraceFile, StoredEvalSetFile } from '../lib/sessionFiles';
 import { evalSetFromWireFormat, evalSetToWireFormat } from '../lib/evalset-builder';
 
 export class StorageUnavailableError extends Error {
@@ -105,7 +105,7 @@ export async function convertTraces(traceFiles: File[]): Promise<ConvertTracesRe
 // eval set), else the files as a multipart upload.
 async function evaluateRequest(traceFiles: File[], evalSetFile: File | null, evalConfig: EvalConfig, traceIds?: string[]): Promise<RequestInit> {
   const sessionIds = namedSessions(traceFiles);
-  if (sessionIds && (evalSetFile === null || evalSetFile instanceof SessionEvalSetFile)) {
+  if (sessionIds && (evalSetFile === null || evalSetFile instanceof SessionEvalSetFile || evalSetFile instanceof StoredEvalSetFile)) {
     return {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -113,6 +113,7 @@ async function evaluateRequest(traceFiles: File[], evalSetFile: File | null, eva
         config: evalConfig,
         session_ids: sessionIds,
         ...(evalSetFile instanceof SessionEvalSetFile ? { eval_set_session_id: evalSetFile.sessionId } : {}),
+        ...(evalSetFile instanceof StoredEvalSetFile ? { eval_set_id: evalSetFile.evalSetId } : {}),
         ...(traceIds ? { trace_ids: traceIds } : {}),
       }),
     };
