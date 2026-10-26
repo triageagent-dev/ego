@@ -18,6 +18,35 @@ func TestBuildHallucinationContext(t *testing.T) {
 	}
 }
 
+func TestBuildHallucinationContext_ShowsToolCallsAndResults(t *testing.T) {
+	inv := invocation("what is CBY?", "Called By: the callers of a service.")
+	inv.IntermediateData = &adk.IntermediateData{
+		ToolUses:      []adk.FunctionCall{{ID: "c1", Name: "search_corpus", Args: map[string]any{"query": "CBY"}}},
+		ToolResponses: []adk.FunctionResponse{{ID: "c1", Name: "search_corpus", Response: map[string]any{"text": "CBY (Called By): upstream callers"}}},
+	}
+	got := buildHallucinationContext(inv)
+	for _, want := range []string{"- search_corpus", "```tool_code\nsearch_corpus({\"query\":\"CBY\"})", "```tool_outputs\n{\"text\":\"CBY (Called By): upstream callers\"}"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("context lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "Agent has no tools") {
+		t.Error("an agent that used a tool has tools")
+	}
+}
+
+func TestBuildHallucinationContext_CapsLongToolOutputs(t *testing.T) {
+	inv := invocation("q", "a")
+	long := strings.Repeat("x", 3*maxToolOutputChars)
+	inv.IntermediateData = &adk.IntermediateData{
+		ToolUses:      []adk.FunctionCall{{Name: "t"}},
+		ToolResponses: []adk.FunctionResponse{{Name: "t", Response: map[string]any{"text": long}}},
+	}
+	if got := buildHallucinationContext(inv); len(got) > maxToolOutputChars+500 {
+		t.Errorf("context is %d characters, the result was not capped", len(got))
+	}
+}
+
 func TestParseHallucinationSentences(t *testing.T) {
 	resp := "<sentence>Apples are red.</sentence>\n<sentence>Bananas are green.</sentence>\n<sentence>Pears are purple.</sentence>"
 	got := parseHallucinationSentences(resp)

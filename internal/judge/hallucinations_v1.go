@@ -2,6 +2,7 @@ package judge
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -27,14 +28,72 @@ var (
 	hallucinationNegativeLabels = map[string]bool{"unsupported": true, "contradictory": true, "disputed": true}
 )
 
-// Replicated exactly, not a Go-specific gap.
+// Caps on what the judge is shown of the tools: one result, and all of a turn's results together.
+const (
+	maxToolOutputChars  = 6000
+	maxToolOutputsTotal = 24000
+)
+
+// buildHallucinationContext is what the response may be checked against: the user's message, the tools the agent
+// used and what they returned. A sentence that rests on a tool result is supported by it; without the results every
+// fact an agent looked up reads as invented, so the judge failed correct answers as often as wrong ones. The
+// tool_code and tool_outputs blocks are the ones the validator prompt's fifth rule speaks of.
 func buildHallucinationContext(inv adk.Invocation) string {
+	var uses []adk.FunctionCall
+	var responses []adk.FunctionResponse
+	if inv.IntermediateData != nil {
+		uses, responses = inv.IntermediateData.ToolUses, inv.IntermediateData.ToolResponses
+	}
 	var b strings.Builder
 	b.WriteString("Developer instructions:\n\n\n")
 	b.WriteString("User prompt:\n")
 	b.WriteString(inv.UserContent.Text())
-	b.WriteString("\n\nTool definitions:\nAgent has no tools.\n")
+	b.WriteString("\n\nTool definitions:\n")
+	if len(uses) == 0 {
+		b.WriteString("Agent has no tools.\n")
+		return b.String()
+	}
+	seen := map[string]bool{}
+	for _, u := range uses {
+		if !seen[u.Name] {
+			seen[u.Name] = true
+			b.WriteString("- " + u.Name + "\n")
+		}
+	}
+	budget := maxToolOutputsTotal
+	for i, u := range uses {
+		args, _ := json.Marshal(u.Args)
+		fmt.Fprintf(&b, "\n```tool_code\n%s(%s)\n```\n", u.Name, args)
+		out := ""
+		if r, ok := toolResponseFor(u, i, responses); ok {
+			raw, _ := json.Marshal(r.Response)
+			out = string(raw)
+		}
+		if len(out) > maxToolOutputChars {
+			out = out[:maxToolOutputChars] + " …"
+		}
+		if len(out) > budget {
+			out = out[:max(budget, 0)] + " …"
+		}
+		budget -= len(out)
+		fmt.Fprintf(&b, "```tool_outputs\n%s\n```\n", out)
+	}
 	return b.String()
+}
+
+// toolResponseFor pairs a call with its result by id, else by position.
+func toolResponseFor(u adk.FunctionCall, i int, responses []adk.FunctionResponse) (adk.FunctionResponse, bool) {
+	if u.ID != "" {
+		for _, r := range responses {
+			if r.ID == u.ID {
+				return r, true
+			}
+		}
+	}
+	if i < len(responses) && (responses[i].Name == "" || responses[i].Name == u.Name) {
+		return responses[i], true
+	}
+	return adk.FunctionResponse{}, false
 }
 
 func parseHallucinationSentences(response string) []string {
