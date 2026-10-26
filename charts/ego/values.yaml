@@ -71,6 +71,8 @@ vertex:
   enabled: true
   project: ""
   location: europe-west4
+  # -- Location of the Gemini judge alone. The newest Gemini models are served from "global" only; empty uses `location`.
+  judgeLocation: global
 
 # -- Optional Secret holding JEV_API_KEY for the Jev judge models.
 jevSecret: ego-jev

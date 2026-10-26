@@ -105,6 +105,10 @@ spec:
               value: {{ .Values.vertex.project | quote }}
             - name: GOOGLE_CLOUD_LOCATION
               value: {{ .Values.vertex.location | quote }}
+            {{- with .Values.vertex.judgeLocation }}
+            - name: EGO_JUDGE_LOCATION
+              value: {{ . | quote }}
+            {{- end }}
             {{- end }}
             {{- with .Values.jevSecret }}
             - name: JEV_API_KEY

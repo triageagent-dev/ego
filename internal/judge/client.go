@@ -3,6 +3,7 @@ package judge
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 
@@ -43,7 +44,7 @@ func (m *GenAIModel) WithUsageHook(fn func(tokens int64)) *GenAIModel {
 // NewGenAIModel creates a judge model client. apiKey may be empty, in which case the underlying SDK
 // auto-selects its backend from the environment: GOOGLE_GENAI_USE_VERTEXAI=true routes to Vertex AI using
 // GOOGLE_CLOUD_PROJECT/GOOGLE_CLOUD_LOCATION and Application Default Credentials (e.g. a GKE Workload Identity
-// service account - no API key anywhere), otherwise it falls back to the Gemini Developer API via
+// service account - no API key anywhere; EGO_JUDGE_LOCATION overrides the location for the judge alone), otherwise it falls back to the Gemini Developer API via
 // GEMINI_API_KEY/GOOGLE_API_KEY.
 //
 // An explicit apiKey (e.g. the CLI's --judge-api-key flag) always forces
@@ -56,6 +57,12 @@ func NewGenAIModel(ctx context.Context, apiKey, model string) (*GenAIModel, erro
 	cfg := &genai.ClientConfig{APIKey: apiKey}
 	if apiKey != "" {
 		cfg.Backend = genai.BackendGeminiAPI
+	} else if loc := os.Getenv("EGO_JUDGE_LOCATION"); loc != "" && os.Getenv("GOOGLE_GENAI_USE_VERTEXAI") == "true" {
+		// The newest Gemini models are served from the global location only, while Vertex managed evaluation
+		// (internal/vertexeval) needs the regional one in GOOGLE_CLOUD_LOCATION; the judge picks its own.
+		cfg.Backend = genai.BackendVertexAI
+		cfg.Project = os.Getenv("GOOGLE_CLOUD_PROJECT")
+		cfg.Location = loc
 	}
 	client, err := genai.NewClient(ctx, cfg)
 	if err != nil {
