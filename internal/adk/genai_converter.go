@@ -2,6 +2,7 @@ package adk
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
@@ -535,81 +536,91 @@ func trimCumulativeOutput(llmSpan *tracepkg.Span, outputMessages []any) []any {
 	return outputMessages
 }
 
-// extractGenAIToolCalls extracts tool calls/responses from a set of tool spans, optionally augmented from LLM
-// spans' gen_ai.output.messages tool_calls arrays.
+// extractGenAIToolCalls extracts the tool calls and results of one invocation. A call can be seen twice: in the
+// model's gen_ai.output.messages (with the model's id and arguments) and as a tool span (with the id and arguments
+// the framework recorded, or none). They are one call. The model's is the call as made, so its arguments win
+// and the span fills what the model left out; a span with no id joins the first call of the same name that no
+// span has claimed yet, and a span with no model call behind it is a call of its own.
 func extractGenAIToolCalls(toolSpans, llmSpans []*tracepkg.Span) ([]turnToolCall, []turnToolResponse) {
-	toolCallsByID := map[string]turnToolCall{}
-	var idOrder []string
-	var toolCallsNoID []turnToolCall
-	var toolResponses []turnToolResponse
-
-	for _, toolSpan := range toolSpans {
-		toolCall := ExtractToolCallFromAttrs(toolSpan.Tags, toolSpan.OperationName, toolSpan.SpanID)
-		if toolCall == nil {
-			continue
-		}
-
-		isPlaceholder := toolCall.ID == "unknown" || toolCall.ID == toolSpan.SpanID
-		dedupID := toolCall.ID
-		if isPlaceholder {
-			dedupID = ""
-		}
-
-		tc := turnToolCall{Name: toolCall.Name, Args: toolCall.Args, ID: dedupID}
-		if dedupID != "" {
-			if _, exists := toolCallsByID[dedupID]; !exists {
-				idOrder = append(idOrder, dedupID)
-			}
-			toolCallsByID[dedupID] = tc
-		} else {
-			toolCallsNoID = append(toolCallsNoID, tc)
-		}
-
-		if toolResult := ExtractToolResultFromAttrs(toolSpan.Tags); toolResult != nil {
-			toolResponses = append(toolResponses, turnToolResponse{
-				Name:     toolCall.Name,
-				Response: toolResult.Response,
-				ID:       dedupID,
-			})
-		}
+	type call struct {
+		turnToolCall
+		at      int64 // when it happened: the model's answer for a model call, the span's start otherwise
+		claimed bool  // a tool span is already this call
 	}
+	var calls []*call
+	byID := map[string]*call{}
 
 	for _, llmSpan := range llmSpans {
 		messages, ok := parseJSON(llmSpan.Tags[GenAIOutputMessages]).([]any)
 		if !ok {
 			continue
 		}
-		trimmed := trimCumulativeOutput(llmSpan, messages)
-
-		for _, m := range trimmed {
+		at := llmSpan.StartTime + llmSpan.Duration
+		for _, m := range trimCumulativeOutput(llmSpan, messages) {
 			mm := asMap(m)
 			if mm == nil || !assistantRoles[stringField(mm, "role")] {
 				continue
 			}
 			for _, tc := range extractToolCallsFromMessage(mm) {
-				newTC := turnToolCall{Name: tc.Name, Args: tc.Arguments, ID: tc.ID}
-				if tc.ID != "" {
-					if existing, exists := toolCallsByID[tc.ID]; exists {
-						if len(tc.Arguments) > 0 && len(existing.Args) == 0 {
-							toolCallsByID[tc.ID] = newTC
-						}
-					} else {
-						idOrder = append(idOrder, tc.ID)
-						toolCallsByID[tc.ID] = newTC
+				if existing := byID[tc.ID]; tc.ID != "" && existing != nil {
+					if len(existing.Args) == 0 {
+						existing.Args = tc.Arguments
 					}
-				} else {
-					toolCallsNoID = append(toolCallsNoID, newTC)
+					continue
+				}
+				c := &call{turnToolCall: turnToolCall{Name: tc.Name, Args: tc.Arguments, ID: tc.ID}, at: at}
+				calls = append(calls, c)
+				if tc.ID != "" {
+					byID[tc.ID] = c
 				}
 			}
 		}
 	}
 
-	toolCalls := make([]turnToolCall, 0, len(idOrder)+len(toolCallsNoID))
-	for _, id := range idOrder {
-		toolCalls = append(toolCalls, toolCallsByID[id])
-	}
-	toolCalls = append(toolCalls, toolCallsNoID...)
+	var toolResponses []turnToolResponse
+	for _, toolSpan := range toolSpans {
+		info := ExtractToolCallFromAttrs(toolSpan.Tags, toolSpan.OperationName, toolSpan.SpanID)
+		if info == nil {
+			continue
+		}
+		id := info.ID
+		if id == "unknown" || id == toolSpan.SpanID {
+			id = ""
+		}
 
+		var c *call
+		if id != "" {
+			c = byID[id]
+		} else {
+			for _, cand := range calls {
+				if !cand.claimed && cand.Name == info.Name {
+					c = cand
+					break
+				}
+			}
+		}
+		if c == nil {
+			c = &call{turnToolCall: turnToolCall{Name: info.Name, ID: id}, at: toolSpan.StartTime}
+			calls = append(calls, c)
+			if id != "" {
+				byID[id] = c
+			}
+		}
+		c.claimed = true
+		if len(c.Args) == 0 {
+			c.Args = info.Args
+		}
+
+		if toolResult := ExtractToolResultFromAttrs(toolSpan.Tags); toolResult != nil {
+			toolResponses = append(toolResponses, turnToolResponse{Name: info.Name, Response: toolResult.Response, ID: c.ID})
+		}
+	}
+
+	sort.SliceStable(calls, func(i, j int) bool { return calls[i].at < calls[j].at })
+	toolCalls := make([]turnToolCall, 0, len(calls))
+	for _, c := range calls {
+		toolCalls = append(toolCalls, c.turnToolCall)
+	}
 	return toolCalls, toolResponses
 }
 
