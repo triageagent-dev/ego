@@ -412,7 +412,7 @@ ego separates what people see by **tenant**, and gives access by **GitHub team**
 curl -X POST   "$EGO/api/admin/tenant-names"             -H "Authorization: Bearer $ADMIN" -d '{"key":"core/0123-abcd","name":"Checkout"}'
 
 # remove tenants that no longer exist (admin): their sessions, usage rows and names go at once instead of at retention;
-# a session that also belongs to another tenant stays, and human labels are kept
+# a session that also belongs to another tenant stays; the tenant's findings, corrections, human labels and alerts go with it
 curl -X POST   "$EGO/api/admin/purge-tenants"            -H "Authorization: Bearer $ADMIN" -d '{"keys":["core/old-demo","legacy-label"]}'
 
 # senders and their tokens (admin)
