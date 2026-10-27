@@ -1,6 +1,8 @@
 package api
 
 import (
+	"database/sql"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -22,6 +24,9 @@ type PurgeResult struct {
 	Corrections int `json:"corrections"`
 	Alerts      int `json:"alerts"`
 	Labels      int `json:"labels"`
+	// Runs are the evaluation runs of the tenants, with their results: the judge's verdicts and rationales per
+	// session. A run shared with another tenant stays.
+	Runs int `json:"runs"`
 }
 
 // allIn reports whether list is not empty and every entry of it is in set.
@@ -38,8 +43,9 @@ func allIn(list []string, set map[string]bool) bool {
 }
 
 // PurgeTenants removes every session whose tenants are all among keys, with its index row, ledger rows and online
-// scores, and every finding, correction, alert, score and label of the tenants: all that ego holds of them. A session
-// that also belongs to another tenant stays, with the other tenants' rows. With dryRun it only counts. The archive
+// scores, every finding, correction, alert, score and label of the tenants, and their evaluation runs with the
+// results of those runs: all that ego holds of them but the golden eval sets and rubric sets, which belong to no
+// tenant. A session or run that also belongs to another tenant stays, with the other tenants' rows. With dryRun it only counts. The archive
 // is deleted first and memory second, under the lock the persistence flush takes, so a flush cannot write a purged
 // session back.
 func (s *SessionStore) PurgeTenants(keys []string, dryRun bool) (PurgeResult, error) {
@@ -130,6 +136,12 @@ func (s *SQLiteStore) purgeTenantRows(set map[string]bool, doomed map[string]boo
 		return res, err
 	}
 	defer tx.Rollback()
+	// The runs are found before the online rows go: an online run is tied to its tenant by them as well as by its spec.
+	runs, err := doomedRunIDs(tx, set)
+	if err != nil {
+		return res, err
+	}
+	res.Runs = len(runs)
 	// Per tenant: the rows that carry the tenant key itself.
 	byTenant := []struct {
 		count, del string
@@ -160,6 +172,13 @@ func (s *SQLiteStore) purgeTenantRows(set map[string]bool, doomed map[string]boo
 	if dryRun {
 		return res, nil
 	}
+	for _, id := range runs {
+		for _, q := range []string{`DELETE FROM run_results WHERE run_id = ?`, `DELETE FROM runs WHERE run_id = ?`} {
+			if _, err := tx.Exec(q, id); err != nil {
+				return res, err
+			}
+		}
+	}
 	for id := range doomed {
 		for _, q := range []string{
 			`DELETE FROM sessions WHERE session_id = ?`,
@@ -180,6 +199,54 @@ func (s *SQLiteStore) purgeTenantRows(set map[string]bool, doomed map[string]boo
 	return res, nil
 }
 
+// doomedRunIDs are the runs whose tenants are all among set: an evaluation started on sessions of those tenants, or
+// an online run made for one of them. A run that cannot be attributed to a tenant (uploaded files) is not theirs.
+func doomedRunIDs(tx *sql.Tx, set map[string]bool) ([]string, error) {
+	online := map[string]string{}
+	rows, err := tx.Query(`SELECT DISTINCT run_id, tenant FROM online_evals WHERE run_id != ''`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var id, tenant string
+		if err := rows.Scan(&id, &tenant); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		online[id] = tenant
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err = tx.Query(`SELECT run_id, spec_json FROM runs`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id, specJSON string
+		if err := rows.Scan(&id, &specJSON); err != nil {
+			return nil, err
+		}
+		var spec runSpecSummaryDTO
+		if json.Unmarshal([]byte(specJSON), &spec) != nil {
+			continue
+		}
+		if allIn(runTenants(runDTO{RunID: id, Spec: spec}, online[id]), set) {
+			out = append(out, id)
+		}
+	}
+	return out, rows.Err()
+}
+
+// purgeGuard runs a purge while the online engine is held still, so that nothing it keeps in memory is written back
+// over the purge. It is nil when online evaluation is off.
+type purgeGuard func(keys []string, dryRun bool, purge func() (PurgeResult, error)) (PurgeResult, error)
+
 type purgeTenantsRequest struct {
 	Keys []string `json:"keys"`
 	// DryRun counts what the purge would remove and removes nothing.
@@ -188,7 +255,7 @@ type purgeTenantsRequest struct {
 
 // adminPurgeTenantsHandler implements POST /api/admin/purge-tenants {"keys": [...]}. Admin only. It removes the
 // sessions, usage rows and names of the tenant keys it is given, and nothing else.
-func adminPurgeTenantsHandler(store *SessionStore, names *TenantNames) http.HandlerFunc {
+func adminPurgeTenantsHandler(store *SessionStore, names *TenantNames, guard purgeGuard) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !roleInfoOrOpen(r.Context()).IsAdmin {
 			writeRoleForbidden(w)
@@ -230,7 +297,14 @@ func adminPurgeTenantsHandler(store *SessionStore, names *TenantNames) http.Hand
 				}
 			}
 		}
-		res, err := store.PurgeTenants(keys, req.DryRun)
+		purge := func() (PurgeResult, error) { return store.PurgeTenants(keys, req.DryRun) }
+		var res PurgeResult
+		var err error
+		if guard != nil {
+			res, err = guard(keys, req.DryRun, purge)
+		} else {
+			res, err = purge()
+		}
 		if err != nil {
 			logx.Errorf("purge tenants %v by %s failed: %v", keys, who, err)
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to purge tenants: "+err.Error())

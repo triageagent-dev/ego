@@ -1,11 +1,14 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/triageagent-dev/ego/internal/online"
 )
 
 // Purging a tenant removes its sessions (in memory and archived) and its ledger rows, and leaves every other tenant,
@@ -71,7 +74,7 @@ func TestPurgeTenantsEndpointIsAdminOnlyAndTakesKeysNotPatterns(t *testing.T) {
 	store := NewSessionStore(nil)
 	names, _ := NewTenantNames(nil)
 	_ = names.Set("gone", "Gone")
-	h := adminPurgeTenantsHandler(store, names)
+	h := adminPurgeTenantsHandler(store, names, nil)
 	post := func(role RoleInfo, body string) int {
 		req := withRoleInfoForTest(role)(httptest.NewRequest(http.MethodPost, "/api/admin/purge-tenants", strings.NewReader(body)))
 		rec := httptest.NewRecorder()
@@ -137,5 +140,109 @@ func TestPurgeTenantsErasesTheOnlineRowsAndCanBeDryRun(t *testing.T) {
 		if count(table) != 1 {
 			t.Errorf("%s has %d rows after the purge, want only the other tenant's", table, count(table))
 		}
+	}
+}
+
+func runCount(t *testing.T, archive *SQLiteStore) (runs, results int) {
+	t.Helper()
+	if err := archive.db.QueryRow(`SELECT COUNT(*) FROM runs`).Scan(&runs); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.db.QueryRow(`SELECT COUNT(*) FROM run_results`).Scan(&results); err != nil {
+		t.Fatal(err)
+	}
+	return runs, results
+}
+
+// A run holds the judge's verdicts and rationales per session, so purging a tenant removes its runs and their
+// results: an evaluation started on its sessions, and the online runs made for it. A run shared with another tenant,
+// another tenant's run and a run nobody can attribute stay.
+func TestPurgeTenantsRemovesTheTenantsRuns(t *testing.T) {
+	archive, err := NewSQLiteStore(filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	mk := func(spec runSpecSummaryDTO) string {
+		run, err := archive.CreateRun(spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := archive.InsertRunResults(run.RunID, []runResultRowDTO{{
+			ResultID: "res-" + run.RunID, RunID: run.RunID, EvaluatorName: "m", Status: "PASSED",
+			Details: map[string]any{"rationale": "quotes the user"},
+		}}); err != nil {
+			t.Fatal(err)
+		}
+		return run.RunID
+	}
+	gone := mk(runSpecSummaryDTO{Approach: "traces", Tenants: []string{"gone"}})
+	online := mk(runSpecSummaryDTO{Approach: "online", Target: map[string]any{"kind": "online", "tenant": "gone"}})
+	// An online run whose spec carries no tenant is tied to it by the online rows alone.
+	byRows := mk(runSpecSummaryDTO{Approach: "online"})
+	if _, err := archive.db.Exec(`INSERT INTO online_evals (session_id, trace_id, at_ms, tenant, kind, service, profile, lane, reasons, judge_tokens, jev_calls, run_id)
+		VALUES ('s-gone', 't', 1, 'gone', 'chat', '', 'chat', '', '', 0, 0, ?)`, byRows); err != nil {
+		t.Fatal(err)
+	}
+	mk(runSpecSummaryDTO{Approach: "traces", Tenants: []string{"gone", "keep"}})
+	mk(runSpecSummaryDTO{Approach: "traces", Tenants: []string{"keep"}})
+	mk(runSpecSummaryDTO{Approach: "upload"})
+	store := NewSessionStoreWithArchive(nil, archive, SessionLimits{})
+
+	res, err := store.PurgeTenants([]string{"gone"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runs, results := runCount(t, archive); res.Runs != 3 || runs != 6 || results != 6 {
+		t.Fatalf("dry run: reported %d runs, %d runs and %d results left; want 3 reported and nothing deleted", res.Runs, runs, results)
+	}
+
+	if res, err = store.PurgeTenants([]string{"gone"}, false); err != nil {
+		t.Fatal(err)
+	}
+	runs, results := runCount(t, archive)
+	if res.Runs != 3 || runs != 3 || results != 3 {
+		t.Errorf("purge: %d runs reported, %d runs and %d results left; want 3 reported and the shared, the other tenant's and the unattributed run left", res.Runs, runs, results)
+	}
+	for _, id := range []string{gone, online, byRows} {
+		var n int
+		archive.db.QueryRow(`SELECT COUNT(*) FROM runs WHERE run_id = ?`, id).Scan(&n)
+		archive.db.QueryRow(`SELECT COUNT(*) + ? FROM run_results WHERE run_id = ?`, n, id).Scan(&n)
+		if n != 0 {
+			t.Errorf("run %s or its results remain", id)
+		}
+	}
+}
+
+// An open alert lives in the engine's memory as well as in the archive, and a tick writes it back: the purge has to
+// hold the tick still and drop the alert, or the tenant's row returns within one detector interval.
+func TestPurgeTenantsDoesNotLetTheDetectorWriteAnAlertBack(t *testing.T) {
+	e, sessions, archive, _ := newTestEngine(t, testOnlineConfig)
+	alert := &online.Alert{ID: "alert-1", Key: online.SeriesKey{Tenant: "gone", Kind: "chat", Metric: "jev_grounded"}, Status: "open"}
+	other := &online.Alert{ID: "alert-2", Key: online.SeriesKey{Tenant: "keep", Kind: "chat", Metric: "jev_grounded"}, Status: "open"}
+	for _, a := range []*online.Alert{alert, other} {
+		e.alerts[a.Key] = a
+		if err := archive.UpsertOnlineAlert(a); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := e.PurgeTenants([]string{"gone"}, false, func() (PurgeResult, error) {
+		return sessions.PurgeTenants([]string{"gone"}, false)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.Tick(context.Background())
+
+	rows, err := archive.OnlineAlerts("", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tenants []string
+	for _, a := range rows {
+		tenants = append(tenants, a.Key.Tenant)
+	}
+	if len(tenants) != 1 || tenants[0] != "keep" {
+		t.Errorf("alert rows after the purge and a tick belong to %v, want only keep", tenants)
 	}
 }

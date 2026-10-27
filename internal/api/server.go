@@ -177,7 +177,11 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/admin/roles/{id}", adminRoleByIDHandler(roleStore))
 	mux.HandleFunc("/api/admin/revocations", adminRevocationsHandler(revoked))
 	mux.HandleFunc("/api/admin/tenant-names", adminTenantNamesHandler(tenantNames))
-	mux.HandleFunc("/api/admin/purge-tenants", adminPurgeTenantsHandler(store, tenantNames))
+	var purgeGuarded purgeGuard
+	if onlineEngine != nil {
+		purgeGuarded = onlineEngine.PurgeTenants
+	}
+	mux.HandleFunc("/api/admin/purge-tenants", adminPurgeTenantsHandler(store, tenantNames, purgeGuarded))
 	mux.HandleFunc("/api/admin/senders", adminSendersHandler(senderStore))
 	mux.HandleFunc("/api/admin/senders/{id}", adminSenderByIDHandler(senderStore))
 	mux.HandleFunc("/api/admin/senders/{id}/tokens", adminSenderTokensHandler(senderStore, tenantNames))

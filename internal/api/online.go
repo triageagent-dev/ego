@@ -55,6 +55,8 @@ type OnlineEngine struct {
 	// worker is single, so one counter is enough.
 	judgeTokens atomic.Int64
 
+	// tickMu keeps a tick and a purge from running together: a tick would write back an alert the purge is removing.
+	tickMu sync.Mutex
 	mu     sync.Mutex
 	counts map[string]int64
 	alerts map[online.SeriesKey]*online.Alert
@@ -612,6 +614,8 @@ func (e *OnlineEngine) finishStaleRuns(all bool) {
 // Tick closes finished hourly runs, runs the regression detector, sends
 // alert events, the daily digest, and prunes old rows once a day.
 func (e *OnlineEngine) Tick(ctx context.Context) {
+	e.tickMu.Lock()
+	defer e.tickMu.Unlock()
 	now := e.now()
 	e.finishStaleRuns(false)
 	e.detect(ctx, now)
@@ -975,4 +979,32 @@ func onlineFailedHandler(e *OnlineEngine, store *SQLiteStore) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"data": failed, "error": nil})
 	}
+}
+
+// PurgeTenants runs purge (the removal of the tenants' rows) with the detector held still and the tenants' open
+// alerts and hourly runs dropped from memory first. Otherwise the next tick would find an open alert of a purged
+// tenant in memory and write its row back, and a worker would add results to a run that is gone.
+func (e *OnlineEngine) PurgeTenants(keys []string, dryRun bool, purge func() (PurgeResult, error)) (PurgeResult, error) {
+	if dryRun {
+		return purge()
+	}
+	e.tickMu.Lock()
+	defer e.tickMu.Unlock()
+	set := map[string]bool{}
+	for _, k := range keys {
+		set[k] = true
+	}
+	e.mu.Lock()
+	for key := range e.alerts {
+		if set[key.Tenant] {
+			delete(e.alerts, key)
+		}
+	}
+	for key := range e.runs {
+		if tenant, _, _ := strings.Cut(key, "\x00"); set[tenant] {
+			delete(e.runs, key)
+		}
+	}
+	e.mu.Unlock()
+	return purge()
 }
