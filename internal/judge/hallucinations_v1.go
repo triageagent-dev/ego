@@ -48,7 +48,7 @@ func buildHallucinationContext(inv adk.Invocation) string {
 	var b strings.Builder
 	b.WriteString("Developer instructions:\n\n\n")
 	b.WriteString("User prompt:\n")
-	b.WriteString(inv.UserContent.Text())
+	b.WriteString(plainText(inv.UserContent.Text()))
 	b.WriteString("\n\nTool definitions:\n")
 	if len(uses) == 0 {
 		b.WriteString("Agent has no tools.\n")
@@ -58,13 +58,13 @@ func buildHallucinationContext(inv adk.Invocation) string {
 	for _, u := range uses {
 		if !seen[u.Name] {
 			seen[u.Name] = true
-			b.WriteString("- " + u.Name + "\n")
+			b.WriteString("- " + oneLine(u.Name) + "\n")
 		}
 	}
 	budget := maxToolOutputsTotal
 	for i, u := range uses {
 		args, _ := json.Marshal(u.Args)
-		fmt.Fprintf(&b, "\n```tool_code\n%s(%s)\n```\n", u.Name, args)
+		fmt.Fprintf(&b, "\n```tool_code\n%s(%s)\n```\n", oneLine(u.Name), plainText(string(args)))
 		out := ""
 		if r, ok := toolResponseFor(u, i, responses); ok {
 			raw, _ := json.Marshal(r.Response)
@@ -77,9 +77,25 @@ func buildHallucinationContext(inv adk.Invocation) string {
 			out = clipUTF8(out, budget) + " …"
 		}
 		budget = max(budget-len(out), 0)
-		fmt.Fprintf(&b, "```tool_outputs\n%s\n```\n", out)
+		fmt.Fprintf(&b, "```tool_outputs\n%s\n```\n", plainText(out))
 	}
 	return b.String()
+}
+
+// contextHeading matches the lines of the context that the validator prompt relies on to tell the user's words, the
+// tool definitions and the tool results apart.
+var contextHeading = regexp.MustCompile(`(?m)^(Developer instructions:|User prompt:|Tool definitions:)`)
+
+// plainText keeps text that came from outside from forging the structure of the context: a closing fence would end
+// a tool_code or tool_outputs block and let what follows pass for the prompt's own text, and a heading at the start
+// of a line would open a section. A fence becomes three quotes and a heading is marked as quoted.
+func plainText(s string) string {
+	return contextHeading.ReplaceAllString(strings.ReplaceAll(s, "```", "\x27\x27\x27"), "· $1")
+}
+
+// oneLine is plainText for a name, which has no business spanning lines.
+func oneLine(s string) string {
+	return plainText(strings.NewReplacer("\r", " ", "\n", " ").Replace(s))
 }
 
 // clipUTF8 cuts s to at most n bytes without splitting a multi-byte character.
