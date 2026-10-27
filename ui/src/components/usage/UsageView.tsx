@@ -65,6 +65,8 @@ interface Totals {
   calls: number;
   errors: number;
   input: number;
+  // The part of input read from the prompt cache.
+  cached: number;
   output: number;
   durationMs: number;
   cost: number;
@@ -72,13 +74,14 @@ interface Totals {
 }
 
 function emptyTotals(): Totals {
-  return { calls: 0, errors: 0, input: 0, output: 0, durationMs: 0, cost: 0, unpricedTokens: 0 };
+  return { calls: 0, errors: 0, input: 0, cached: 0, output: 0, durationMs: 0, cost: 0, unpricedTokens: 0 };
 }
 
 function addBucket(t: Totals, b: UsageBucket) {
   t.calls += b.calls;
   t.errors += b.errors;
   t.input += b.inputTokens;
+  t.cached += b.cacheReadTokens ?? 0;
   t.output += b.outputTokens;
   t.durationMs += b.durationMs;
   const cost = estimateCostUsd(b.model, b.inputTokens, b.outputTokens, b.cacheReadTokens, b.cacheWriteTokens);
@@ -363,6 +366,7 @@ export const UsageView: React.FC = () => {
                     <th>{DIMENSIONS.find(d => d.key === dim)!.label}</th>
                     <th css={numStyle}>Calls</th>
                     <th css={numStyle}>Input</th>
+                    <th css={numStyle}>Cached</th>
                     <th css={numStyle}>Output</th>
                     <th css={numStyle}>Total</th>
                     <th>Share</th>
@@ -381,6 +385,7 @@ export const UsageView: React.FC = () => {
                         <td><span css={swatchStyle} style={{ background: r.colour }} />{r.group}</td>
                         <td css={numStyle}>{r.calls.toLocaleString()}</td>
                         <td css={numStyle}>{formatTokens(r.input)}</td>
+                        <td css={numStyle}>{r.cached ? formatTokens(r.cached) : '–'}</td>
                         <td css={numStyle}>{formatTokens(r.output)}</td>
                         <td css={numStyle}>{formatTokens(t)}</td>
                         <td>
