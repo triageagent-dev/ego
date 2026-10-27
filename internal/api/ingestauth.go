@@ -9,11 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/tap"
 
 	"github.com/triageagent-dev/ego/internal/logx"
 )
@@ -189,12 +188,13 @@ func (a *ingestAuth) middleware(next http.Handler) http.Handler {
 	})
 }
 
-// interceptor is the OTLP/gRPC counterpart of middleware.
-func (a *ingestAuth) interceptor() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		md, _ := metadata.FromIncomingContext(ctx)
+// tapHandle is the OTLP/gRPC counterpart of middleware. It runs when the request headers arrive, before grpc-go
+// creates the stream, so a client that is refused costs the server no body: nothing of it is read, decompressed or
+// unmarshalled. It must not block, as it runs in the connection's reader.
+func (a *ingestAuth) tapHandle() tap.ServerInHandle {
+	return func(ctx context.Context, info *tap.Info) (context.Context, error) {
 		var header string
-		if v := md.Get("authorization"); len(v) > 0 {
+		if v := info.Header.Get("authorization"); len(v) > 0 {
 			header = v[0]
 		}
 		sender, tenant, ok := a.resolve(header)
@@ -205,7 +205,7 @@ func (a *ingestAuth) interceptor() grpc.UnaryServerInterceptor {
 			}
 			return nil, status.Error(codes.Unauthenticated, "unauthorized")
 		}
-		return handler(withIngestSender(ctx, sender, tenant), req)
+		return withIngestSender(ctx, sender, tenant), nil
 	}
 }
 

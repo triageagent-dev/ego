@@ -44,7 +44,7 @@ func newOTLPGRPCServer(store *SessionStore, auth *ingestAuth) *grpc.Server {
 		grpc.KeepaliveParams(keepalive.ServerParameters{MaxConnectionIdle: 5 * time.Minute, Time: 2 * time.Minute, Timeout: 20 * time.Second}),
 	}
 	if auth != nil {
-		opts = append(opts, grpc.UnaryInterceptor(auth.interceptor()))
+		opts = append(opts, grpc.InTapHandle(auth.tapHandle()))
 	}
 	s := grpc.NewServer(opts...)
 	coltracepb.RegisterTraceServiceServer(s, &traceServiceServer{store: store})

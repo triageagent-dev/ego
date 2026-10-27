@@ -13,6 +13,7 @@ import (
 	"time"
 
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -202,5 +203,35 @@ func TestFailedIngestAuthIsThrottledPerSource(t *testing.T) {
 	}
 	if code := push("10.0.0.2", "wrong"); code != http.StatusUnauthorized {
 		t.Errorf("another source = %d, want 401", code)
+	}
+}
+
+// The token is checked when the headers arrive, before the message is read. A client without one that sends a message
+// over the receive limit is told it is unauthenticated; were the check after the read, grpc-go would refuse the
+// message as too big first, having taken it in.
+func TestOTLPGRPCRefusesAnUnauthenticatedClientBeforeReadingTheMessage(t *testing.T) {
+	store := NewSessionStore(nil)
+	senders, _, _ := newTestSenders(t)
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := newOTLPGRPCServer(store, &ingestAuth{globalToken: testIngestToken, senders: senders})
+	go func() { _ = server.Serve(lis) }()
+	defer server.Stop()
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	huge := &coltracepb.ExportTraceServiceRequest{ResourceSpans: []*tracepb.ResourceSpans{{
+		ScopeSpans: []*tracepb.ScopeSpans{{Spans: []*tracepb.Span{{Name: strings.Repeat("x", maxOTLPBody+1024)}}}},
+	}}}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err = coltracepb.NewTraceServiceClient(conn).Export(ctx, huge)
+	if status.Code(err) != codes.Unauthenticated {
+		t.Errorf("an oversized message without a token = %v, want Unauthenticated before it is read", err)
 	}
 }
