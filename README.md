@@ -185,7 +185,7 @@ ego run trace.json -m jev_task_resolved
 ```
 
 `score` questions are not sent yet. A decision model that runs on a small context needs `EGO_DECISION_MAX_STATE_BYTES`;
-check its scores against labelled sessions before relying on them.
+check its scores against labelled sessions before relying on them. Ollama serves these models from version 0.35.
 
 ## Ingesting traces
 
