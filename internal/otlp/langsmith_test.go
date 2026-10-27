@@ -222,3 +222,42 @@ func TestLangSmithConversationIDFromMetadata(t *testing.T) {
 		}
 	}
 }
+
+// A LangGraph agent called inside a distributed trace has a remote parent, so its root run is not a root of the
+// LangSmith spans. The trace converts all the same: the turn, its tool call and the agent come from the model and
+// tool runs and the run's name. Marking such a run as the invocation on ingest would also mark a node run whose
+// parent arrives in a later batch, so it is not done.
+func TestLangSmithRootWithARemoteParentStillConverts(t *testing.T) {
+	raw, err := os.ReadFile("testdata/langgraph_langsmith.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, rs := range body["resourceSpans"].([]any) {
+		for _, ss := range rs.(map[string]any)["scopeSpans"].([]any) {
+			for _, sp := range ss.(map[string]any)["spans"].([]any) {
+				if m := sp.(map[string]any); m["name"] == "LangGraph" {
+					m["parentSpanId"] = "aaaaaaaaaaaaaaaa"
+				}
+			}
+		}
+	}
+	tr := ParseExportRequest(body)[0]
+	res := adk.ConvertTrace(tr)
+	if len(res.Invocations) != 1 {
+		t.Fatalf("got %d invocations (warnings %v), want 1", len(res.Invocations), res.Warnings)
+	}
+	inv := res.Invocations[0]
+	if inv.UserContent.Text() != "What is the weather in Paris?" || inv.FinalResponse.Text() != "It is sunny, 21C in Paris." {
+		t.Errorf("turn = %q / %q", inv.UserContent.Text(), inv.FinalResponse.Text())
+	}
+	if inv.IntermediateData == nil || len(inv.IntermediateData.ToolUses) != 1 || inv.IntermediateData.ToolUses[0].Name != "get_weather" {
+		t.Errorf("tool uses = %+v", inv.IntermediateData)
+	}
+	if meta := adk.ExtractTraceMetadata(tr, res.Invocations); meta.AgentName != "LangGraph" {
+		t.Errorf("agent = %q, want the run's name", meta.AgentName)
+	}
+}
