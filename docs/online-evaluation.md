@@ -79,10 +79,12 @@ a ConfigMap rendered from Helm values):
 }
 ```
 
-- Evaluators use the `POST /api/evaluate` evaluator shape, so every metric works:
-  deterministic, Gemini judges (`hallucinations_v1`, rubric judges) and Jev
-  (`jev_*`, `jev_custom`). `numSamples` is new and defaults to 1 here, since one
-  judge sample per invocation is the cost lever (the upload path keeps 5).
+- Evaluators use the `POST /api/evaluate` evaluator shape. Live traffic has no golden set, so the ones that run
+  are the Gemini judges `hallucinations_v1`, `rubric_based_final_response_quality_v1` and
+  `rubric_based_tool_use_quality_v1` (both need `rubrics`), and Jev: the `jev_*` questions and `jev_custom` (needs
+  `questions`). A name that is none of these, a metric that needs a reference, and a Vertex-managed metric, which
+  the budget cannot meter, are refused when the profile is loaded or saved. `numSamples` is new and defaults to 1
+  here, since one judge sample per invocation is the cost lever (the upload path keeps 5).
 - `maxInvocations` scores only the last N invocations of a long session.
 - A profile may also match `service` or `tenant`; the most specific match wins. Its `kind` may be a glob
   (`*-spot` covers every spot, whatever it is called); a profile that names the kind exactly beats a glob.

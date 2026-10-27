@@ -425,6 +425,36 @@ func TestWithJobs_ReplacesAndValidates(t *testing.T) {
 	}
 }
 
+// A profile that cannot run is refused when it is loaded or saved, not when a session first reaches it.
+func TestConfigValidate_Evaluators(t *testing.T) {
+	cfg := func(evaluator string) string {
+		return `{"budget":{"judgeTokensPerDay":1000,"jevCallsPerDay":10},"profiles":[{"kind":"chat","evaluators":[` + evaluator + `]}]}`
+	}
+	for name, ev := range map[string]string{
+		"hallucinations":  `{"name":"hallucinations_v1"}`,
+		"rubric":          `{"name":"rubric_based_final_response_quality_v1","rubrics":["Answers the question"]}`,
+		"tool use rubric": `{"name":"rubric_based_tool_use_quality_v1","rubrics":["Uses the right tool"]}`,
+		"jev builtin":     `{"name":"jev_grounded"}`,
+		"jev custom":      `{"name":"jev_custom","questions":{"q":{"question":"Was it polite?"}}}`,
+	} {
+		if _, err := Parse([]byte(cfg(ev))); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	for name, ev := range map[string]string{
+		"typo":                `{"name":"hallucination_v1"}`,
+		"jev typo":            `{"name":"jev_ground"}`,
+		"not an evaluator":    `{"name":"tool_trajectory_avg_score"}`,
+		"rubric without any":  `{"name":"rubric_based_final_response_quality_v1"}`,
+		"rubric of blanks":    `{"name":"rubric_based_tool_use_quality_v1","rubrics":[" ",""]}`,
+		"custom no questions": `{"name":"jev_custom"}`,
+	} {
+		if _, err := Parse([]byte(cfg(ev))); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}
+
 func TestSampler_DecideAtUsesTheJobsRate(t *testing.T) {
 	s := NewSampler(Sampling{PerKindPerHour: 5, BoostPerKindPerHour: 1, AfterChangeSessions: 1, DedupWindow: Duration(time.Hour)})
 	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)

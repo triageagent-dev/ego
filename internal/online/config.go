@@ -12,6 +12,8 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/triageagent-dev/ego/internal/decision"
 )
 
 // Evaluator is one evaluator of a profile, in the POST /api/evaluate
@@ -360,11 +362,20 @@ func (c *Config) validate() error {
 			return fmt.Errorf("online config: profile %q uses Gemini judges but budget.judgeTokensPerDay is 0", p.Key())
 		}
 		for _, e := range p.Evaluators {
+			if !knownEvaluator(e.Name) && !unmeteredMetrics[e.Name] && !referenceMetrics[e.Name] {
+				return fmt.Errorf("online config: profile %q: %q is not an evaluator online evaluation runs (hallucinations_v1, rubric_based_final_response_quality_v1, rubric_based_tool_use_quality_v1, or a jev_* metric)", p.Key(), e.Name)
+			}
 			if unmeteredMetrics[e.Name] {
 				return fmt.Errorf("online config: profile %q: %s runs on Vertex's managed service, which the budget cannot meter", p.Key(), e.Name)
 			}
 			if referenceMetrics[e.Name] {
 				return fmt.Errorf("online config: profile %q: %s needs a golden eval set, which live traffic has not", p.Key(), e.Name)
+			}
+			if strings.HasPrefix(e.Name, "rubric_based_") && !hasText(e.Rubrics) {
+				return fmt.Errorf("online config: profile %q: %s needs rubrics", p.Key(), e.Name)
+			}
+			if e.Name == decision.CustomMetricName && len(e.Questions) == 0 {
+				return fmt.Errorf("online config: profile %q: %s needs questions", p.Key(), e.Name)
 			}
 			if e.NumSamples < 1 || e.NumSamples > 5 {
 				return fmt.Errorf("online config: profile %q: %s numSamples must be 1..5", p.Key(), e.Name)
@@ -446,11 +457,37 @@ func (p Profile) UsesJev() bool {
 	return false
 }
 
+// judgeEvaluators are the Gemini judges that need no golden set, so live traffic can use them.
+var judgeEvaluators = map[string]bool{
+	"hallucinations_v1":                      true,
+	"rubric_based_final_response_quality_v1": true,
+	"rubric_based_tool_use_quality_v1":       true,
+}
+
+// knownEvaluator reports whether name is a judge or a jev_* decision that online evaluation can run: a typo in a
+// profile is refused when the profile is saved, not when a session first reaches it.
+func knownEvaluator(name string) bool {
+	if judgeEvaluators[name] || name == decision.CustomMetricName {
+		return true
+	}
+	m, ok := decision.Builtin(name)
+	return ok && !m.NeedsReference
+}
+
+// hasText reports whether any of list is more than white space.
+func hasText(list []string) bool {
+	for _, s := range list {
+		if strings.TrimSpace(s) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // UsesJudge reports whether a profile has a Gemini judge evaluator.
 func (p Profile) UsesJudge() bool {
 	for _, e := range p.Evaluators {
-		switch e.Name {
-		case "hallucinations_v1", "rubric_based_final_response_quality_v1", "rubric_based_tool_use_quality_v1":
+		if judgeEvaluators[e.Name] {
 			return true
 		}
 	}
