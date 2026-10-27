@@ -114,6 +114,18 @@ spec:
               value: {{ . | quote }}
             {{- end }}
             {{- end }}
+            {{- with .Values.decision.url }}
+            - name: EGO_DECISION_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.decision.model }}
+            - name: EGO_DECISION_MODEL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.decision.maxStateBytes }}
+            - name: EGO_DECISION_MAX_STATE_BYTES
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .Values.jevSecret }}
             - name: JEV_API_KEY
               valueFrom:

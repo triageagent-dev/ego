@@ -147,8 +147,8 @@ Run flags:
   --judge-samples int               samples per invocation for judge-model metrics, majority-voted (default 5)
   --rubric string                  rubric text for rubric_based_*_v1 metrics (repeatable); required by those metrics
   --jev-questions string           custom question file for the Jev eval; each question runs as a jev:<key> metric
-  --jev-api-key string             API key for jev_* metrics (falls back to JEV_API_KEY)
-  --jev-model string               Jev model for jev_* metrics (falls back to JEV_MODEL, default jev-1.13)
+  --jev-api-key string             API key for jev_* metrics (falls back to EGO_DECISION_API_KEY, JEV_API_KEY)
+  --jev-model string               decision model for jev_* metrics (falls back to EGO_DECISION_MODEL, JEV_MODEL, default jev-1.13)
 
 Metrics needing a live judge model (final_response_match_v2, hallucinations_v1, rubric_based_final_response_quality_v1,
 rubric_based_tool_use_quality_v1) call Gemini directly. Metrics needing Vertex AI's Managed Eval Service (safety_v1,
@@ -245,8 +245,8 @@ func runCmd(args []string) error {
 	var rubrics metricFlags
 	fs.Var(&rubrics, "rubric", "rubric text for rubric_based_*_v1 metrics (repeatable); required by those metrics")
 	jevQuestions := fs.String("jev-questions", "", "custom question file for the Jev eval (runs as jev:<key> metrics)")
-	jevAPIKey := fs.String("jev-api-key", "", "API key for jev_* metrics; falls back to JEV_API_KEY")
-	jevModel := fs.String("jev-model", "", "Jev model for jev_* metrics; falls back to JEV_MODEL, default "+decision.DefaultModel)
+	jevAPIKey := fs.String("jev-api-key", "", "API key for jev_* metrics; falls back to EGO_DECISION_API_KEY, then JEV_API_KEY")
+	jevModel := fs.String("jev-model", "", "decision model for jev_* metrics; falls back to EGO_DECISION_MODEL, then JEV_MODEL, default "+decision.DefaultModel)
 	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}

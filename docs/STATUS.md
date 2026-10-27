@@ -24,8 +24,8 @@ What ego supports today, and what it does not.
   `rubric_based_tool_use_quality_v1`; each reports its rationale and per-sentence or per-rubric verdicts.
 - Vertex AI Managed Eval, with Application Default Credentials: `safety_v1`, `multi_turn_task_success_v1`,
   `multi_turn_trajectory_quality_v1`, `multi_turn_tool_use_quality_v1`.
-- Jev decision model: `jev_task_resolved`, `jev_grounded`, `jev_tool_use_appropriate`, `jev_matches_reference`,
-  `jev_response_kind`, and custom `jev:<key>` questions.
+- Decision models (Jev by default; any server of the decisions API, such as Ollama's `/v1/systemone`, through `EGO_DECISION_URL`, `EGO_DECISION_MODEL`, `EGO_DECISION_MAX_STATE_BYTES`; `internal/decision`): `jev_task_resolved`, `jev_grounded`, `jev_tool_use_appropriate`, `jev_matches_reference`,
+  `jev_response_kind`, and custom `jev:<key>` questions. Only `choice` and `noul` questions are sent; `score` questions are not. Not verified against a live Ollama decision model.
 - Every result says whether an algorithm or an LLM judge produced it.
 
 **Server**

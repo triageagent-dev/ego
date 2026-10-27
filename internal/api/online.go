@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -162,10 +161,10 @@ func (e *OnlineEngine) Start(stop <-chan struct{}) {
 		}
 	}
 	e.finishStaleRuns(true)
-	if os.Getenv("JEV_API_KEY") == "" {
+	if !decision.Configured() {
 		for _, p := range e.conf().Profiles {
 			if p.UsesJev() {
-				logx.Warnf("online: profile %s has jev_* evaluators but JEV_API_KEY is not set; they will report errors", p.Key())
+				logx.Warnf("online: profile %s has jev_* evaluators but no decision model is configured (EGO_DECISION_API_KEY or EGO_DECISION_URL); they will report errors", p.Key())
 			}
 		}
 	}

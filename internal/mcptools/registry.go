@@ -116,7 +116,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 				mcp.Description("Rubric text for rubric_based_final_response_quality_v1/rubric_based_tool_use_quality_v1 (repeatable); required by those metrics."),
 				mcp.Items(map[string]any{"type": "string"})),
 			mcp.WithString("jev_questions_file",
-				mcp.Description("Absolute path to a custom question file for the Jev eval (each question runs as a jev:<key> metric). The jev_* metrics need JEV_API_KEY on this machine.")),
+				mcp.Description("Absolute path to a custom question file for the Jev eval (each question runs as a jev:<key> metric). The jev_* metrics need a decision model on this machine (EGO_DECISION_API_KEY for the default endpoint, or EGO_DECISION_URL for your own).")),
 		), Handler: o.EvaluateTraces})
 	}
 

@@ -67,17 +67,17 @@
 | Models: Gemini judge | Default `gemini-3-flash-preview` (`judge.DefaultModel`, also the `--judge-model` default and the `judge_model` default of `evaluate_traces`); model name overridable per evaluator in the request |
 | Models: findings diagnosis | Fixed to the default Gemini judge model (`gemini-3-flash-preview`); one call per finding written or refreshed; answer read as JSON |
 | Models: Vertex AI Managed Eval | `safety_v1`, `multi_turn_task_success_v1`, `multi_turn_trajectory_quality_v1`, `multi_turn_tool_use_quality_v1`; fixed managed backend; HTTP client timeout 3 minutes per call |
-| Models: Jev decision model | Default `jev-1.13` (sent as `typesafe/jev-1.13`); override env `JEV_MODEL` or `--jev-model` |
+| Models: Jev decision model | Default `jev-1.13` (sent as `typesafe/jev-1.13`); override env `EGO_DECISION_MODEL` (or `JEV_MODEL`) or `--jev-model`; the name is sent as given except on the default endpoint, which gets the `typesafe/` namespace in front of a bare name |
 | Local (non-LLM) metrics | `tool_trajectory_avg_score`, `response_match_score` (ROUGE-1) |
 | LLM auth: Gemini | Vertex AI via Application Default Credentials (chart sets `GOOGLE_GENAI_USE_VERTEXAI=true`, project, location, and `EGO_JUDGE_LOCATION`, which gives the judge its own location when no API key is used); or API key `GEMINI_API_KEY` / `GOOGLE_API_KEY` / `--judge-api-key` |
 | LLM auth: Vertex eval | Application Default Credentials, cloud-platform scope; no key mode |
-| LLM auth: Jev | Bearer `JEV_API_KEY` (env or `--jev-api-key`); chart reads it from Secret `ego-jev` (optional) |
+| LLM auth: Jev | Bearer `EGO_DECISION_API_KEY` / `JEV_API_KEY` (env or `--jev-api-key`); not sent when unset, which only an endpoint of your own allows; chart reads it from Secret `ego-jev` (optional) |
 | Data sent to models | User prompt, agent response, reference response, tool calls and rubrics extracted from traces; for the hallucination judge also the tool names, call arguments and tool results of the turn (each result cut at 6000 bytes, all results of a turn at 24000 bytes); for findings: per evidence session the session id, score, first user message (500 characters), tool-call names (30), the metric's rationale (400), up to 6 failing verdicts (300 each) and, for a session a person checked, a note of at most 400 characters (the person's score and note are marked as theirs), for at most `findings.maxSessions` (default 8) sessions |
 | Egress: github.com | OAuth authorize and code exchange (client secret) |
 | Egress: api.github.com | `/user`, `/orgs/{org}/members/{user}`, `/user/teams` with the signed-in user's token |
 | Egress: Gemini | `{location}-aiplatform.googleapis.com` (Vertex) or `generativelanguage.googleapis.com` (API key) |
 | Egress: Vertex Managed Eval | `https://{location}-aiplatform.googleapis.com/v1beta1/projects/{project}/locations/{location}/:evaluateInstances` |
-| Egress: Jev | `https://openrouter.ai/api/alpha/decisions` (override `JEV_API_URL`) |
+| Egress: decision model | `https://openrouter.ai/api/alpha/decisions` by default; `EGO_DECISION_URL` (or `JEV_API_URL`) points it at another server of the same API, which then needs no key |
 | Egress: notification sinks | Discord webhook (URL from env, e.g. `EGO_DISCORD_WEBHOOK`), generic webhook, event sink; optional bearer token read from a file on each send; sink URLs come from the online config file and its environment only (the scoring-jobs API changes profiles and sampling, not sinks). Payload types: alerts, `ego.finding.v1`, `ego.correction.v1`, daily digest |
 | Egress: MCP client | `--server-url` / `EGO_SERVER_URL` (default `http://localhost:8001`); `gh auth token` output used as bearer when no token is supplied, but only for https servers or loopback |
 | Online evaluation cap | `budget.judgeTokensPerDay` and `budget.jevCallsPerDay` per UTC day (chart default 2000000 / 1000); sampling `perKindPerHour` (chart default 6), per profile `perHour` overrides it. Scoring, findings and anchor re-scoring draw on the same daily judge-token cap; findings spend is persisted across restarts |

@@ -65,7 +65,7 @@ func usageLimits(store *SessionStore, online *OnlineEngine, info RoleInfo, now t
 		out = append(out,
 			limitDTO{Key: "online.tokens", Label: "Judge tokens per day", Group: "Live scoring", Limit: b.Caps.JudgeTokensPerDay, Used: counted(b.Spent.JudgeTokens), Unit: "tokens",
 				Note: "Scoring of live sessions and the findings pass; resets at 00:00 UTC."},
-			limitDTO{Key: "online.jev", Label: "Jev calls per day", Group: "Live scoring", Limit: b.Caps.JevCallsPerDay, Used: counted(b.Spent.JevCalls), Unit: "calls"},
+			limitDTO{Key: "online.jev", Label: "Decision-model calls per day", Group: "Live scoring", Limit: b.Caps.JevCallsPerDay, Used: counted(b.Spent.JevCalls), Unit: "calls"},
 		)
 	}
 

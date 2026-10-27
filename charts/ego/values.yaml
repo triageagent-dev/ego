@@ -74,8 +74,21 @@ vertex:
   # -- Location of the Gemini judge alone. The newest Gemini models are served from "global" only; empty uses `location`.
   judgeLocation: global
 
-# -- Optional Secret holding JEV_API_KEY for the Jev judge models.
+# -- Optional Secret holding JEV_API_KEY for the decision-model judges (the jev_* metrics). A decision model
+# served at your own endpoint needs no key unless it asks for one.
 jevSecret: ego-jev
+
+# -- The decision model behind the jev_* metrics. Any server that speaks the decisions API
+# (`{model, state, questions}` in, `answers` out) works, for example a model served by Ollama at /v1/systemone.
+# Empty: the default hosted endpoint and model.
+decision:
+  # -- Endpoint, e.g. http://ollama:11434/v1/systemone.
+  url: ""
+  # -- Model name, sent as given to an endpoint of your own.
+  model: ""
+  # -- Shorten a state larger than this many bytes before it is sent (the longest texts first); 0 sends it whole.
+  # Set it for a model with a small context.
+  maxStateBytes: 0
 
 extraEnv: []
 

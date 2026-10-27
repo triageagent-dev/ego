@@ -246,8 +246,8 @@ export const QualityView: React.FC = () => {
               sub={egoScore === null ? (turnQuality.turns > 0 ? `from turns: ${turnQuality.ok.toLocaleString()} of ${turnQuality.turns.toLocaleString()} without a failure` : 'nothing scored in this window') : `mean of ${scoreCount.toLocaleString()} scores, last ${RANGES.find(r => r.hours === hours)?.label ?? `${hours}h`}`} />
             <Tile label="Judge tokens today" value={formatTokens(status.budget.spent.judgeTokens)}
               sub={status.budget.caps.judgeTokensPerDay ? `of ${formatTokens(status.budget.caps.judgeTokensPerDay)} cap` : 'no Gemini judges'} />
-            <Tile label="Jev calls today" value={String(status.budget.spent.jevCalls)}
-              sub={status.budget.caps.jevCallsPerDay ? `of ${status.budget.caps.jevCallsPerDay} cap` : 'no Jev judges'} />
+            <Tile label="Decision-model calls today" value={String(status.budget.spent.jevCalls)}
+              sub={status.budget.caps.jevCallsPerDay ? `of ${status.budget.caps.jevCallsPerDay} cap` : 'no decision-model judges'} />
             <Tile label="Sessions scored" value={(status.sessionsScored24h ?? sampled).toLocaleString()}
               sub={status.sessionsScored24h != null ? 'in the last 24 hours' : 'since the server started'} />
             <Tile label="Open alerts" value={String(openAlerts.length)}

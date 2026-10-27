@@ -169,9 +169,23 @@ Custom questions come from a JSON file; each becomes a `jev:<key>` metric. `expe
 ```
 
 ```bash
-export JEV_API_KEY=...      # JEV_MODEL picks the model (default jev-1.13)
+export EGO_DECISION_API_KEY=...   # the default hosted decision model (JEV_API_KEY works too); EGO_DECISION_MODEL picks the model (default jev-1.13)
 ego run trace.json -m jev_task_resolved -m jev_grounded --jev-questions questions.json
 ```
+
+The `jev_*` metrics are not tied to one model. They send each invocation as a `state` with typed `questions`
+(`choice`, `noul`) and read back `answers`, which is the decisions API that Jev and the decision models served by
+Ollama share. To use another one, point ego at its endpoint; an endpoint of your own needs no key unless it asks for one:
+
+```bash
+export EGO_DECISION_URL=http://localhost:11434/v1/systemone   # Ollama 0.35 or later
+export EGO_DECISION_MODEL=tev1:4b                              # sent as given
+export EGO_DECISION_MAX_STATE_BYTES=6000                       # for a small context: shorten the longest texts first
+ego run trace.json -m jev_task_resolved
+```
+
+`score` questions are not sent yet. A decision model that runs on a small context needs `EGO_DECISION_MAX_STATE_BYTES`;
+check its scores against labelled sessions before relying on them.
 
 ## Ingesting traces
 
@@ -292,7 +306,7 @@ export GEMINI_API_KEY=...
 ego serve --session-db ego.db --online-config online.json
 ```
 
-Scoring needs a judge model. `jev_*` evaluators use `JEV_API_KEY` and a `jevCallsPerDay` budget instead. Sampling
+Scoring needs a judge model. `jev_*` evaluators use a decision model (`EGO_DECISION_API_KEY`, or `EGO_DECISION_URL` for your own) and a `jevCallsPerDay` budget instead. Sampling
 rates, regression detection and notification sinks are described in
 [docs/online-evaluation.md](docs/online-evaluation.md).
 

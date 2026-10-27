@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/triageagent-dev/ego/internal/adk"
 	"github.com/triageagent-dev/ego/internal/eval"
@@ -192,7 +194,7 @@ func TestRequests(t *testing.T) {
 	}
 }
 
-func TestClientRequestRetryAndNamespace(t *testing.T) {
+func TestClientRequestAndRetry(t *testing.T) {
 	var attempts int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
@@ -207,8 +209,8 @@ func TestClientRequestRetryAndNamespace(t *testing.T) {
 			Model string `json:"model"`
 		}
 		json.NewDecoder(r.Body).Decode(&body)
-		if body.Model != apiNamespace+"jev-1.13" {
-			t.Errorf("model = %q, want the namespaced API ID", body.Model)
+		if body.Model != "jev-1.13" {
+			t.Errorf("model = %q, want the name as configured on an endpoint of your own", body.Model)
 		}
 		w.Write([]byte(`{"answers":{"q":{"type":"noul","noul":0.89}}}`))
 	}))
@@ -246,10 +248,121 @@ func TestClientNoRetryOnClientErrorAndKeyRequired(t *testing.T) {
 		t.Errorf("err = %v after %d attempts, want one HTTP 401", err, attempts)
 	}
 
+	t.Setenv("JEV_API_URL", "")
 	t.Setenv("JEV_API_KEY", "")
+	t.Setenv("EGO_DECISION_URL", "")
+	t.Setenv("EGO_DECISION_API_KEY", "")
 	if _, err := NewClient("", ""); err == nil || !strings.Contains(err.Error(), "JEV_API_KEY") {
 		t.Errorf("NewClient without key: err = %v", err)
 	}
+	if Configured() {
+		t.Error("Configured() with neither key nor endpoint")
+	}
+}
+
+// The default endpoint wants a namespace in front of a bare model name; an endpoint of your own is sent the name
+// as configured.
+func TestClientWireModel(t *testing.T) {
+	for _, tc := range []struct{ url, model, want string }{
+		{DefaultURL, "jev-1.13", "typesafe/jev-1.13"},
+		{DefaultURL, "typesafe/jev-1.13", "typesafe/jev-1.13"},
+		{DefaultURL, "other/model", "other/model"},
+		{"http://localhost:11434/v1/systemone", "tev1:4b", "tev1:4b"},
+		{"http://localhost:11434/v1/systemone", "tev1", "tev1"},
+	} {
+		c := &Client{url: tc.url, model: tc.model}
+		if got := c.wireModel(); got != tc.want {
+			t.Errorf("wireModel(%s, %s) = %q, want %q", tc.url, tc.model, got, tc.want)
+		}
+	}
+	if m := (&Client{model: "typesafe/jev-1.13"}).Model(); m != "jev-1.13" {
+		t.Errorf("Model() = %q", m)
+	}
+}
+
+// A decision model served by Ollama takes no key; the request must go out without an Authorization header, to the
+// endpoint named by EGO_DECISION_URL, with the model as named, and with a state shortened to the configured size.
+func TestClientOwnEndpointNeedsNoKeyAndFitsState(t *testing.T) {
+	var got struct {
+		Model string         `json:"model"`
+		State map[string]any `json:"state"`
+	}
+	var auth string
+	var size int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		raw, _ := io.ReadAll(r.Body)
+		size = len(raw)
+		json.Unmarshal(raw, &got)
+		w.Write([]byte(`{"answers":{"q":{"type":"choice","choice":"a","probabilities":{"a":0.9,"b":0.1},"confidence":0.8}},"usage":{"input_tokens":5,"output_tokens":1}}`))
+	}))
+	defer srv.Close()
+	t.Setenv("JEV_API_KEY", "")
+	t.Setenv("EGO_DECISION_API_KEY", "")
+	t.Setenv("JEV_API_URL", "")
+	t.Setenv("EGO_DECISION_URL", srv.URL)
+	t.Setenv("EGO_DECISION_MODEL", "tev1:4b")
+	t.Setenv("EGO_DECISION_MAX_STATE_BYTES", "600")
+	if !Configured() {
+		t.Fatal("Configured() = false with an endpoint set")
+	}
+	c, err := NewClient("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := map[string]any{"user_input": "Is this refundable?", "tool_calls": []map[string]any{{"name": "lookup", "result": strings.Repeat("x", 5000)}}}
+	answers, err := c.Decide(context.Background(), state, map[string]Question{"q": {Type: "choice", Criteria: map[string]string{"a": "A", "b": "B"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auth != "" {
+		t.Errorf("Authorization = %q, want none", auth)
+	}
+	if got.Model != "tev1:4b" {
+		t.Errorf("model = %q", got.Model)
+	}
+	if answers["q"].Choice != "a" || answers["q"].Probabilities["a"] != 0.9 {
+		t.Errorf("answers = %+v", answers)
+	}
+	if got.State["user_input"] != "Is this refundable?" {
+		t.Errorf("the short field was cut: %v", got.State["user_input"])
+	}
+	if size > 900 { // the state is under 600; the rest is the model and the questions
+		t.Errorf("request is %d bytes, the state was not fitted", size)
+	}
+
+	t.Setenv("EGO_DECISION_MAX_STATE_BYTES", "lots")
+	if _, err := NewClient("", ""); err == nil {
+		t.Error("a bad EGO_DECISION_MAX_STATE_BYTES was accepted")
+	}
+}
+
+func TestFitState(t *testing.T) {
+	state := map[string]any{
+		"user_input":     "short question",
+		"final_response": strings.Repeat("é", 3000),
+		"tool_calls":     []map[string]any{{"name": "t", "result": strings.Repeat("r", 4000)}},
+	}
+	got := fitState(state, 1000)
+	raw, _ := json.Marshal(got)
+	if len(raw) > 1000 {
+		t.Errorf("fitted state is %d bytes", len(raw))
+	}
+	if got["user_input"] != "short question" {
+		t.Errorf("user_input = %v", got["user_input"])
+	}
+	if s, _ := got["final_response"].(string); !strings.HasSuffix(s, cutMark) || !utf8.ValidString(s) {
+		t.Errorf("final_response not cut cleanly: valid=%v", utf8.ValidString(s))
+	}
+	// Under the limit it is returned as it is, and the caller's state is never changed.
+	if same := fitState(state, 1<<20); len(same["final_response"].(string)) != 6000 {
+		t.Error("a state under the limit was changed")
+	}
+	if len(state["final_response"].(string)) != 6000 {
+		t.Error("the caller's state was changed")
+	}
+	// Structure alone over the limit: no panic, no loop.
+	_ = fitState(map[string]any{"a": "b"}, 3)
 }
 
 func TestEvaluateDetails(t *testing.T) {

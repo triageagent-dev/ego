@@ -19,7 +19,7 @@ func configHandler(w http.ResponseWriter, r *http.Request) {
 				"google":    os.Getenv("GOOGLE_API_KEY") != "" || os.Getenv("GEMINI_API_KEY") != "" || vertexAIConfigured(),
 				"anthropic": os.Getenv("ANTHROPIC_API_KEY") != "",
 				"openai":    os.Getenv("OPENAI_API_KEY") != "",
-				"jev":       os.Getenv("JEV_API_KEY") != "",
+				"jev":       decision.Configured(),
 			},
 		},
 		"error": nil,

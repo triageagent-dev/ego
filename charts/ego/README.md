@@ -70,8 +70,8 @@ token, the OTLP receivers require one. The shared `otlpAuth` token keeps working
 ## Judges
 
 Judge metrics need a model. On GKE the default is Vertex AI through Workload Identity (`vertex.project`,
-`serviceAccount.annotations`); `vertex.enabled=false` leaves only the metrics that need no model. The Jev metrics read
-`JEV_API_KEY` from the Secret named by `jevSecret` (optional). Interactive evaluation is capped per day
+`serviceAccount.annotations`); `vertex.enabled=false` leaves only the metrics that need no model. The decision-model metrics (`jev_*`) read
+`JEV_API_KEY` from the Secret named by `jevSecret` (optional); `decision.url`, `decision.model` and `decision.maxStateBytes` point them at another decision model, such as one served by Ollama. Interactive evaluation is capped per day
 (`--eval-daily-tokens`, default 5M judge tokens).
 
 ## Verifying a release
