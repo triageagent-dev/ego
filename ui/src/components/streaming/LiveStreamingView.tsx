@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTraceContext } from '../../context/TraceContext';
 import { SessionCard } from './SessionCard';
 import { SessionDetails } from './SessionDetails';
@@ -69,6 +69,22 @@ function invocationsToElements(invocations: StreamingInvocation[]): Conversation
     }
     return elements;
   });
+}
+
+// The Temporal facts of a session, in the order the header lists them: the label shown and its attribute key.
+const TEMPORAL_ROWS: Array<[string, string]> = [
+  ['workflow', 'workflow.id'], ['run', 'run.id'], ['type', 'workflow.type'], ['namespace', 'namespace'],
+  ['queue', 'task_queue'], ['spot workflow', 'spot.id'], ['spot run', 'spot.run_id'], ['wake', 'wake.key'],
+];
+
+// One label and value of the open session's header; the value is monospace and selects whole on a triple click.
+function HeaderRow({ label, title, children }: { label: string; title?: string; children: ReactNode }) {
+  return (
+    <>
+      <span style={{ color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }} title={title}>{label}</span>
+      <span style={{ fontFamily: 'monospace', userSelect: 'all' }} title={title}>{children}</span>
+    </>
+  );
 }
 
 export function LiveStreamingView() {
@@ -1085,12 +1101,11 @@ export function LiveStreamingView() {
             borderRadius: 'var(--radius)',
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '12px' }}>
-              <div style={{ flex: 1, minWidth: 0, fontSize: '13px', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
-                <span style={{ color: 'var(--text-tertiary)' }}>session </span>
-                <span style={{ fontFamily: 'monospace', userSelect: 'all' }}>{openSession.sessionId}</span>
+              {/* Labels and values in two columns, so every row starts at the same place. */}
+              <div style={{ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', columnGap: '12px', rowGap: '3px', alignItems: 'baseline', fontSize: '13px', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
+                <HeaderRow label="session">{openSession.sessionId}</HeaderRow>
                 {openSession.thread && ((openSession.part ?? 1) > 1 || openSession.thread !== openSession.sessionId) && (
-                  <div title="The sender's own id for the work this session is a part of">
-                    <span style={{ color: 'var(--text-tertiary)' }}>thread </span>
+                  <HeaderRow label="thread" title="The sender's own id for the work this session is a part of">
                     <button
                       onClick={() => searchThread(openSession.thread!)}
                       title="List every part of this thread"
@@ -1098,31 +1113,12 @@ export function LiveStreamingView() {
                     >
                       {openSession.thread}
                     </button>
-                    <span style={{ color: 'var(--text-tertiary)' }}> · part {openSession.part ?? 1}</span>
-                  </div>
+                    <span style={{ color: 'var(--text-tertiary)', fontFamily: 'inherit' }}> · part {openSession.part ?? 1}</span>
+                  </HeaderRow>
                 )}
-                {openSession.temporal?.['workflow.id'] && (
-                  <div title="The Temporal workflow that ran this session">
-                    <span style={{ color: 'var(--text-tertiary)' }}>workflow </span>
-                    <span style={{ fontFamily: 'monospace', userSelect: 'all' }}>{openSession.temporal['workflow.id']}</span>
-                    {openSession.temporal['run.id'] && (
-                      <>
-                        <span style={{ color: 'var(--text-tertiary)' }}> · run </span>
-                        <span style={{ fontFamily: 'monospace', userSelect: 'all' }}>{openSession.temporal['run.id']}</span>
-                      </>
-                    )}
-                  </div>
-                )}
-                {openSession.temporal && (
-                  <div style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>
-                    {[
-                      ['type', 'workflow.type'], ['namespace', 'namespace'], ['queue', 'task_queue'],
-                      ['spot workflow', 'spot.id'], ['spot run', 'spot.run_id'], ['wake', 'wake.key'],
-                    ].filter(([, k]) => openSession.temporal![k]).map(([label, k], i) => (
-                      <span key={k}>{i > 0 && ' · '}{label} <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)', userSelect: 'all' }}>{openSession.temporal![k]}</span></span>
-                    ))}
-                  </div>
-                )}
+                {openSession.temporal && TEMPORAL_ROWS.filter(([, k]) => openSession.temporal![k]).map(([label, k]) => (
+                  <HeaderRow key={k} label={label} title="The Temporal workflow that ran this session">{openSession.temporal![k]}</HeaderRow>
+                ))}
               </div>
               <button
                 onClick={() => setOpenId(null)}

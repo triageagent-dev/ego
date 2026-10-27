@@ -192,3 +192,17 @@ func TestExtractModelInfoFromSpans_TurnStartedAt(t *testing.T) {
 		t.Errorf("TurnLatencyMs = %v, want 6000", info.TurnLatencyMs)
 	}
 }
+
+// A turn says how much of its input the prompt cache served, summed over its model calls.
+func TestExtractModelInfoFromSpans_CacheTokens(t *testing.T) {
+	call := func(read, write int64) *tracepkg.Span {
+		return &tracepkg.Span{OperationName: "chat", StartTime: 1, Duration: 1, Tags: map[string]any{
+			"gen_ai.request.model": "m", "gen_ai.usage.input_tokens": int64(1000), "gen_ai.usage.output_tokens": int64(10),
+			"gen_ai.usage.cache_read.input_tokens": read, "gen_ai.usage.cache_creation.input_tokens": write,
+		}}
+	}
+	info := extractModelInfoFromSpans([]*tracepkg.Span{call(800, 0), call(900, 50)})
+	if info == nil || info.CacheReadTokens != 1700 || info.CacheWriteTokens != 50 {
+		t.Fatalf("cache = %+v", info)
+	}
+}

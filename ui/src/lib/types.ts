@@ -589,6 +589,9 @@ export interface StreamingInvocation {
     models?: string[];
     inputTokens?: number;
     outputTokens?: number;
+    /** The parts of inputTokens read from and written to the prompt cache. */
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
     /** Wall-clock span of this turn's spans (earliest start to latest end), in ms. */
     turnLatencyMs?: number;
     /** When the turn's earliest span started, Unix ms. A session grows over time, so each turn has its own. */

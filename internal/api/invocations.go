@@ -29,10 +29,13 @@ type ToolResponseDTO struct {
 }
 
 type ModelInfoDTO struct {
-	Models        []string `json:"models,omitempty"`
-	InputTokens   int64    `json:"inputTokens,omitempty"`
-	OutputTokens  int64    `json:"outputTokens,omitempty"`
-	TurnLatencyMs float64  `json:"turnLatencyMs,omitempty"`
+	Models       []string `json:"models,omitempty"`
+	InputTokens  int64    `json:"inputTokens,omitempty"`
+	OutputTokens int64    `json:"outputTokens,omitempty"`
+	// CacheReadTokens and CacheWriteTokens are the parts of InputTokens read from and written to the prompt cache.
+	CacheReadTokens  int64   `json:"cacheReadTokens,omitempty"`
+	CacheWriteTokens int64   `json:"cacheWriteTokens,omitempty"`
+	TurnLatencyMs    float64 `json:"turnLatencyMs,omitempty"`
 	// TurnStartedAt is when the turn's earliest span started, in Unix milliseconds. A session accumulates turns
 	// over time, so each turn carries its own time.
 	TurnStartedAt int64  `json:"turnStartedAt,omitempty"`
@@ -261,6 +264,7 @@ func extractModelInfoFromSpans(spans []*tracepkg.Span) *ModelInfoDTO {
 	if provider != "" {
 		info.Provider = provider
 	}
+	info.CacheReadTokens, info.CacheWriteTokens = spanCacheTokens(llmSpans)
 
 	if len(info.Models) == 0 && info.InputTokens == 0 && info.OutputTokens == 0 && info.Provider == "" && info.TurnLatencyMs == 0 && info.TurnStartedAt == 0 {
 		return nil

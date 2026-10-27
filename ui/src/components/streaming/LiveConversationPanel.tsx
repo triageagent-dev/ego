@@ -14,6 +14,7 @@ interface TurnInvocationInfo {
   modelInfo?: {
     inputTokens?: number;
     outputTokens?: number;
+    cacheReadTokens?: number;
     turnLatencyMs?: number;
     turnStartedAt?: number;
   };
@@ -322,6 +323,7 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
                     flexShrink: 0,
                   }}>
                     ↓{(modelInfo?.inputTokens || 0).toLocaleString()} ↑{(modelInfo?.outputTokens || 0).toLocaleString()}
+                    {!!modelInfo?.cacheReadTokens && ` · ${modelInfo.cacheReadTokens.toLocaleString()} cached`}
                   </span>
                 )}
                 {modelInfo?.turnLatencyMs != null && (
