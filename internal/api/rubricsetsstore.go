@@ -60,30 +60,26 @@ func (s *SQLiteStore) SaveRubricSet(set rubricSetDTO) (rubricSetDTO, error) {
 		return rubricSetDTO{}, err
 	}
 	now := nowRFC3339()
-	created := now
-	err = s.db.QueryRow(`SELECT created_at FROM rubric_sets WHERE rubric_set_id = ?`, set.RubricSetID).Scan(&created)
-	if err != nil && err != sql.ErrNoRows {
-		return rubricSetDTO{}, err
-	}
-	if err == sql.ErrNoRows {
-		var n int
-		if err := s.db.QueryRow(`SELECT COUNT(*) FROM rubric_sets`).Scan(&n); err != nil {
-			return rubricSetDTO{}, err
-		}
-		if n >= maxRubricSets {
-			return rubricSetDTO{}, errTooManyRubricSets
-		}
-		created = now
-	}
-	if _, err := s.db.Exec(`INSERT INTO rubric_sets (rubric_set_id, name, description, kind, rubrics_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+	// The cap is part of the insert's own statement: a new id is inserted only while there is room, an existing id
+	// is always updated, and two saves racing for the last place cannot both pass a separate count.
+	res, err := s.db.Exec(`INSERT INTO rubric_sets (rubric_set_id, name, description, kind, rubrics_json, created_at, updated_at)
+		SELECT ?, ?, ?, ?, ?, ?, ?
+		WHERE EXISTS (SELECT 1 FROM rubric_sets WHERE rubric_set_id = ?) OR (SELECT COUNT(*) FROM rubric_sets) < ?
 		ON CONFLICT(rubric_set_id) DO UPDATE SET
 			name = excluded.name,
 			description = excluded.description,
 			kind = excluded.kind,
 			rubrics_json = excluded.rubrics_json,
 			updated_at = excluded.updated_at`,
-		set.RubricSetID, set.Name, set.Description, set.Kind, string(b), created, now); err != nil {
+		set.RubricSetID, set.Name, set.Description, set.Kind, string(b), now, now, set.RubricSetID, maxRubricSets)
+	if err != nil {
+		return rubricSetDTO{}, err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return rubricSetDTO{}, errTooManyRubricSets
+	}
+	created := now
+	if err := s.db.QueryRow(`SELECT created_at FROM rubric_sets WHERE rubric_set_id = ?`, set.RubricSetID).Scan(&created); err != nil {
 		return rubricSetDTO{}, err
 	}
 	set.CreatedAt, set.UpdatedAt = created, now
