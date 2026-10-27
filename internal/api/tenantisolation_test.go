@@ -1,6 +1,7 @@
 package api
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -158,5 +159,56 @@ func TestTenantNamesPerSenderAreBounded(t *testing.T) {
 	}
 	if names.Name("other/a") == "" {
 		t.Error("another sender's name was refused")
+	}
+}
+
+// A session restored from the archive is still held to its tenant: a trace of another tenant that lands on its id
+// is refused, as it is for a live session. A row archived before the key was stored gets it from its spans.
+func TestRestoredSessionRefusesATraceOfAnotherTenant(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "tenants.db")
+	restore := func() (*SessionStore, *SQLiteStore) {
+		archive, err := NewSQLiteStore(dbPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		store := NewSessionStoreWithArchive(nil, archive, SessionLimits{})
+		return store, archive
+	}
+
+	first, archive1 := restore()
+	first.IngestFor("core", labelledTracesBody("same", "aaaa", "s1", "t1"))
+	if err := first.flushPersist(); err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+	archive1.Close()
+
+	for _, old := range []bool{false, true} {
+		if old {
+			// A row written before the key was archived has no tenant_key in its data.
+			raw, err := NewSQLiteStore(dbPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := raw.db.Exec(`UPDATE sessions SET data = json_remove(data, '$.tenant_key')`); err != nil {
+				t.Fatal(err)
+			}
+			raw.Close()
+		}
+		second, archive2 := restore()
+		if err := second.LoadPersisted(); err != nil {
+			t.Fatal(err)
+		}
+		id := second.order[0]
+		if got := second.sessions[id].tenantKey; got != "core/t1" {
+			t.Fatalf("old row %v: restored tenant key = %q, want core/t1", old, got)
+		}
+		before := len(second.sessions[id].Spans)
+		second.IngestFor("core", labelledTracesBody("same", "cccc", "s3", "other"))
+		if after := len(second.sessions[id].Spans); after != before {
+			t.Errorf("old row %v: spans %d -> %d: a trace of another tenant was added to a restored session", old, before, after)
+		}
+		second.Close()
+		archive2.Close()
 	}
 }

@@ -37,8 +37,8 @@ const (
 // indexed query rather than a parse of ids.
 type Session struct {
 	ID string
-	// tenantKey is the tenant of the session's first trace for a named sender; it is not archived, so a session
-	// restored from the archive has none and is not checked.
+	// tenantKey is the tenant of the session's first trace for a named sender. It is archived with the session; a row
+	// archived before that gets it from its spans when it is restored (sessionHeader).
 	tenantKey string
 	// Segmented is true for a segment of a declared thread. Only those are split, kept in the thread routing, swept
 	// and scored at close.
@@ -800,8 +800,13 @@ func sessionHeader(snap sessionSnapshot, tenantAttr string) *Session {
 	for _, tid := range snap.TraceIDs {
 		traceIDs[tid] = struct{}{}
 	}
+	tenant := snap.TenantKey
+	if tenant == "" && snap.Sender != "" {
+		tenant = tenantKey(snap.Sender, traceTenantLabel(snap.Spans, tenantAttr))
+	}
 	sess := &Session{
 		ID:             snap.SessionID,
+		tenantKey:      tenant,
 		Segmented:      snap.Segmented,
 		Thread:         snapThread(snap),
 		Part:           snap.Part,

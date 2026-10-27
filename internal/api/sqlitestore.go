@@ -137,21 +137,24 @@ type sessionSnapshot struct {
 	SessionID string `json:"session_id"`
 	// Thread, Part, Closed and ClosedAt place the session in its thread (segments.go). Rows archived before
 	// segments existed have none of them: see sessionHeader.
-	Segmented   bool             `json:"segmented,omitempty"`
-	Thread      string           `json:"thread,omitempty"`
-	Part        int              `json:"part,omitempty"`
-	Closed      bool             `json:"closed,omitempty"`
-	ClosedAt    *time.Time       `json:"closed_at,omitempty"`
-	TraceID     string           `json:"trace_id"`
-	EvalSetID   string           `json:"eval_set_id,omitempty"`
-	Metadata    map[string]any   `json:"metadata,omitempty"`
-	TraceIDs    []string         `json:"trace_ids,omitempty"`
-	Spans       []*tracepkg.Span `json:"spans,omitempty"`
-	StartedAt   time.Time        `json:"started_at"`
-	Sender      string           `json:"sender,omitempty"`
-	HasRootSpan bool             `json:"has_root_span,omitempty"`
-	IsComplete  bool             `json:"is_complete,omitempty"`
-	CompletedAt *time.Time       `json:"completed_at,omitempty"`
+	Segmented bool             `json:"segmented,omitempty"`
+	Thread    string           `json:"thread,omitempty"`
+	Part      int              `json:"part,omitempty"`
+	Closed    bool             `json:"closed,omitempty"`
+	ClosedAt  *time.Time       `json:"closed_at,omitempty"`
+	TraceID   string           `json:"trace_id"`
+	EvalSetID string           `json:"eval_set_id,omitempty"`
+	Metadata  map[string]any   `json:"metadata,omitempty"`
+	TraceIDs  []string         `json:"trace_ids,omitempty"`
+	Spans     []*tracepkg.Span `json:"spans,omitempty"`
+	StartedAt time.Time        `json:"started_at"`
+	Sender    string           `json:"sender,omitempty"`
+	// TenantKey is the tenant the session belongs to for a named sender (see Session.tenantKey). Rows archived before
+	// it was stored have none; sessionHeader works it out from their spans.
+	TenantKey   string     `json:"tenant_key,omitempty"`
+	HasRootSpan bool       `json:"has_root_span,omitempty"`
+	IsComplete  bool       `json:"is_complete,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
 func snapshotOf(s *Session) sessionSnapshot {
@@ -177,6 +180,7 @@ func snapshotOf(s *Session) sessionSnapshot {
 		Closed:      s.Closed,
 		ClosedAt:    s.ClosedAt,
 		Sender:      s.Sender,
+		TenantKey:   s.tenantKey,
 		TraceID:     s.PrimaryTraceID,
 		EvalSetID:   s.EvalSetID,
 		Metadata:    s.Metadata,
