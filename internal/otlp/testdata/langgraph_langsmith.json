@@ -1,0 +1,1263 @@
+{
+ "resourceSpans": [
+  {
+   "resource": {
+    "attributes": [
+     {
+      "key": "service.name",
+      "value": {
+       "stringValue": "lg-probe"
+      }
+     },
+     {
+      "key": "langsmith.internal_provider",
+      "value": {
+       "boolValue": true
+      }
+     }
+    ]
+   },
+   "scopeSpans": [
+    {
+     "scope": {
+      "name": "langsmith"
+     },
+     "spans": [
+      {
+       "attributes": [
+        {
+         "key": "langsmith.span.kind",
+         "value": {
+          "stringValue": "chain"
+         }
+        },
+        {
+         "key": "langsmith.trace.name",
+         "value": {
+          "stringValue": "LangGraph"
+         }
+        },
+        {
+         "key": "langsmith.trace.session_name",
+         "value": {
+          "stringValue": "default"
+         }
+        },
+        {
+         "key": "gen_ai.operation.name",
+         "value": {
+          "stringValue": "chain"
+         }
+        },
+        {
+         "key": "gen_ai.system",
+         "value": {
+          "stringValue": "langchain"
+         }
+        },
+        {
+         "key": "langsmith.metadata.thread_id",
+         "value": {
+          "stringValue": "thread-42"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_integration",
+         "value": {
+          "stringValue": "langgraph"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_TRACING",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ENABLED",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ONLY",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "gen_ai.prompt",
+         "value": {
+          "stringValue": "{\"messages\":[[\"user\",\"What is the weather in Paris?\"]]}"
+         }
+        },
+        {
+         "key": "gen_ai.completion",
+         "value": {
+          "stringValue": "{\"messages\":[{\"content\":\"What is the weather in Paris?\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"human\",\"id\":\"9d5a137e-0e2e-4682-8d45-3f346dd7caed\"},{\"content\":\"\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"ai\",\"id\":\"lc_run--01a17cac-e513-735e-ad36-27622a69bcd2-0\",\"tool_calls\":[{\"name\":\"get_weather\",\"args\":{\"city\":\"Paris\"},\"id\":\"call_1\",\"type\":\"tool_call\"}],\"invalid_tool_calls\":[],\"usage_metadata\":{\"input_tokens\":40,\"output_tokens\":10,\"total_tokens\":50}},{\"content\":\"sunny, 21C in Paris\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"tool\",\"name\":\"get_weather\",\"id\":\"f0bc5d88-1393-4a3e-add6-a8229273c1d7\",\"tool_call_id\":\"call_1\",\"status\":\"success\"},{\"content\":\"It is sunny, 21C in Paris.\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"ai\",\"id\":\"lc_run--01a17cac-e515-735e-822e-f8547ae396c7-0\",\"tool_calls\":[],\"invalid_tool_calls\":[],\"usage_metadata\":{\"input_tokens\":60,\"output_tokens\":9,\"total_tokens\":69}}]}"
+         }
+        }
+       ],
+       "endTimeUnixNano": "1793093068054368000",
+       "flags": 256,
+       "kind": "SPAN_KIND_INTERNAL",
+       "name": "LangGraph",
+       "spanId": "d829bf1fc0502a4a",
+       "startTimeUnixNano": "1793093068016984064",
+       "status": {
+        "code": "STATUS_CODE_OK"
+       },
+       "traceId": "be315756617600251960fd04d4013a7d"
+      },
+      {
+       "attributes": [
+        {
+         "key": "langsmith.span.kind",
+         "value": {
+          "stringValue": "chain"
+         }
+        },
+        {
+         "key": "langsmith.trace.name",
+         "value": {
+          "stringValue": "agent"
+         }
+        },
+        {
+         "key": "langsmith.trace.session_name",
+         "value": {
+          "stringValue": "default"
+         }
+        },
+        {
+         "key": "gen_ai.operation.name",
+         "value": {
+          "stringValue": "chain"
+         }
+        },
+        {
+         "key": "gen_ai.system",
+         "value": {
+          "stringValue": "langchain"
+         }
+        },
+        {
+         "key": "langsmith.metadata.thread_id",
+         "value": {
+          "stringValue": "thread-42"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_integration",
+         "value": {
+          "stringValue": "langgraph"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_step",
+         "value": {
+          "intValue": "1"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_node",
+         "value": {
+          "stringValue": "agent"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_triggers",
+         "value": {
+          "stringValue": "[\"branch:to:agent\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_path",
+         "value": {
+          "stringValue": "[\"__pregel_pull\",\"agent\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_checkpoint_ns",
+         "value": {
+          "stringValue": "agent:9d420585-086f-4ec9-4918-46e99a8d7d80"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_TRACING",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ENABLED",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ONLY",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.span.tags",
+         "value": {
+          "stringValue": "graph:step:1"
+         }
+        },
+        {
+         "key": "gen_ai.prompt",
+         "value": {
+          "stringValue": "{\"messages\":[{\"content\":\"What is the weather in Paris?\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"human\",\"id\":\"9d5a137e-0e2e-4682-8d45-3f346dd7caed\"}]}"
+         }
+        },
+        {
+         "key": "gen_ai.completion",
+         "value": {
+          "stringValue": "{\"messages\":[{\"content\":\"\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"ai\",\"id\":\"lc_run--01a17cac-e513-735e-ad36-27622a69bcd2-0\",\"tool_calls\":[{\"name\":\"get_weather\",\"args\":{\"city\":\"Paris\"},\"id\":\"call_1\",\"type\":\"tool_call\"}],\"invalid_tool_calls\":[],\"usage_metadata\":{\"input_tokens\":40,\"output_tokens\":10,\"total_tokens\":50}}]}"
+         }
+        }
+       ],
+       "endTimeUnixNano": "1793093068052417024",
+       "flags": 256,
+       "kind": "SPAN_KIND_INTERNAL",
+       "name": "agent",
+       "parentSpanId": "d829bf1fc0502a4a",
+       "spanId": "10f315eeb93ba2cf",
+       "startTimeUnixNano": "1793093068050278912",
+       "status": {
+        "code": "STATUS_CODE_OK"
+       },
+       "traceId": "be315756617600251960fd04d4013a7d"
+      },
+      {
+       "attributes": [
+        {
+         "key": "langsmith.span.kind",
+         "value": {
+          "stringValue": "llm"
+         }
+        },
+        {
+         "key": "langsmith.trace.name",
+         "value": {
+          "stringValue": "Fake"
+         }
+        },
+        {
+         "key": "langsmith.trace.session_name",
+         "value": {
+          "stringValue": "default"
+         }
+        },
+        {
+         "key": "gen_ai.operation.name",
+         "value": {
+          "stringValue": "chat"
+         }
+        },
+        {
+         "key": "gen_ai.system",
+         "value": {
+          "stringValue": "openai"
+         }
+        },
+        {
+         "key": "gen_ai.request.model",
+         "value": {
+          "stringValue": "fake-gpt"
+         }
+        },
+        {
+         "key": "langsmith.metadata.thread_id",
+         "value": {
+          "stringValue": "thread-42"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_integration",
+         "value": {
+          "stringValue": "langchain_chat_model"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_step",
+         "value": {
+          "intValue": "1"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_node",
+         "value": {
+          "stringValue": "agent"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_triggers",
+         "value": {
+          "stringValue": "[\"branch:to:agent\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_path",
+         "value": {
+          "stringValue": "[\"__pregel_pull\",\"agent\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_checkpoint_ns",
+         "value": {
+          "stringValue": "agent:9d420585-086f-4ec9-4918-46e99a8d7d80"
+         }
+        },
+        {
+         "key": "langsmith.metadata.checkpoint_ns",
+         "value": {
+          "stringValue": "agent:9d420585-086f-4ec9-4918-46e99a8d7d80"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_provider",
+         "value": {
+          "stringValue": "fake"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_model_name",
+         "value": {
+          "stringValue": "fake-gpt"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_model_type",
+         "value": {
+          "stringValue": "chat"
+         }
+        },
+        {
+         "key": "langsmith.metadata.lc_versions",
+         "value": {
+          "stringValue": "{\"langchain-core\":\"1.7.0\"}"
+         }
+        },
+        {
+         "key": "langsmith.metadata._type",
+         "value": {
+          "stringValue": "fake-messages-list-chat-model"
+         }
+        },
+        {
+         "key": "langsmith.metadata.usage_metadata",
+         "value": {
+          "stringValue": "{\"input_tokens\":40,\"output_tokens\":10,\"total_tokens\":50}"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_TRACING",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ENABLED",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ONLY",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.span.tags",
+         "value": {
+          "stringValue": "seq:step:1"
+         }
+        },
+        {
+         "key": "gen_ai.serialized.name",
+         "value": {
+          "stringValue": "Fake"
+         }
+        },
+        {
+         "key": "gen_ai.prompt",
+         "value": {
+          "stringValue": "{\"messages\":[[{\"lc\":1,\"type\":\"constructor\",\"id\":[\"langchain\",\"schema\",\"messages\",\"HumanMessage\"],\"kwargs\":{\"content\":\"What is the weather in Paris?\",\"type\":\"human\",\"id\":\"9d5a137e-0e2e-4682-8d45-3f346dd7caed\"}}]]}"
+         }
+        },
+        {
+         "key": "gen_ai.usage.input_tokens",
+         "value": {
+          "intValue": "40"
+         }
+        },
+        {
+         "key": "gen_ai.usage.output_tokens",
+         "value": {
+          "intValue": "10"
+         }
+        },
+        {
+         "key": "gen_ai.usage.total_tokens",
+         "value": {
+          "intValue": "50"
+         }
+        },
+        {
+         "key": "gen_ai.completion",
+         "value": {
+          "stringValue": "{\"generations\":[[{\"text\":\"\",\"generation_info\":null,\"type\":\"ChatGeneration\",\"message\":{\"lc\":1,\"type\":\"constructor\",\"id\":[\"langchain\",\"schema\",\"messages\",\"AIMessage\"],\"kwargs\":{\"content\":\"\",\"type\":\"ai\",\"id\":\"lc_run--01a17cac-e513-735e-ad36-27622a69bcd2-0\",\"tool_calls\":[{\"name\":\"get_weather\",\"args\":{\"city\":\"Paris\"},\"id\":\"call_1\",\"type\":\"tool_call\"}],\"usage_metadata\":{\"input_tokens\":40,\"output_tokens\":10,\"total_tokens\":50},\"invalid_tool_calls\":[]}}}]],\"llm_output\":null,\"run\":null,\"type\":\"LLMResult\"}"
+         }
+        }
+       ],
+       "endTimeUnixNano": "1793093068052044032",
+       "flags": 256,
+       "kind": "SPAN_KIND_INTERNAL",
+       "name": "Fake",
+       "parentSpanId": "10f315eeb93ba2cf",
+       "spanId": "df1f962e1c0ac8bd",
+       "startTimeUnixNano": "1793093068051450880",
+       "status": {
+        "code": "STATUS_CODE_OK"
+       },
+       "traceId": "be315756617600251960fd04d4013a7d"
+      },
+      {
+       "attributes": [
+        {
+         "key": "langsmith.span.kind",
+         "value": {
+          "stringValue": "chain"
+         }
+        },
+        {
+         "key": "langsmith.trace.name",
+         "value": {
+          "stringValue": "tools_condition"
+         }
+        },
+        {
+         "key": "langsmith.trace.session_name",
+         "value": {
+          "stringValue": "default"
+         }
+        },
+        {
+         "key": "gen_ai.operation.name",
+         "value": {
+          "stringValue": "chain"
+         }
+        },
+        {
+         "key": "gen_ai.system",
+         "value": {
+          "stringValue": "langchain"
+         }
+        },
+        {
+         "key": "langsmith.metadata.thread_id",
+         "value": {
+          "stringValue": "thread-42"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_integration",
+         "value": {
+          "stringValue": "langgraph"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_step",
+         "value": {
+          "intValue": "1"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_node",
+         "value": {
+          "stringValue": "agent"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_triggers",
+         "value": {
+          "stringValue": "[\"branch:to:agent\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_path",
+         "value": {
+          "stringValue": "[\"__pregel_pull\",\"agent\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_checkpoint_ns",
+         "value": {
+          "stringValue": "agent:9d420585-086f-4ec9-4918-46e99a8d7d80"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_TRACING",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ENABLED",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ONLY",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.span.tags",
+         "value": {
+          "stringValue": "seq:step:3"
+         }
+        },
+        {
+         "key": "gen_ai.prompt",
+         "value": {
+          "stringValue": "{\"messages\":[{\"content\":\"What is the weather in Paris?\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"human\",\"id\":\"9d5a137e-0e2e-4682-8d45-3f346dd7caed\"},{\"content\":\"\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"ai\",\"id\":\"lc_run--01a17cac-e513-735e-ad36-27622a69bcd2-0\",\"tool_calls\":[{\"name\":\"get_weather\",\"args\":{\"city\":\"Paris\"},\"id\":\"call_1\",\"type\":\"tool_call\"}],\"invalid_tool_calls\":[],\"usage_metadata\":{\"input_tokens\":40,\"output_tokens\":10,\"total_tokens\":50}}]}"
+         }
+        },
+        {
+         "key": "gen_ai.completion",
+         "value": {
+          "stringValue": "{\"output\":\"tools\"}"
+         }
+        }
+       ],
+       "endTimeUnixNano": "1793093068052346880",
+       "flags": 256,
+       "kind": "SPAN_KIND_INTERNAL",
+       "name": "tools_condition",
+       "parentSpanId": "10f315eeb93ba2cf",
+       "spanId": "74d6c8606b564569",
+       "startTimeUnixNano": "1793093068052205056",
+       "status": {
+        "code": "STATUS_CODE_OK"
+       },
+       "traceId": "be315756617600251960fd04d4013a7d"
+      },
+      {
+       "attributes": [
+        {
+         "key": "langsmith.span.kind",
+         "value": {
+          "stringValue": "chain"
+         }
+        },
+        {
+         "key": "langsmith.trace.name",
+         "value": {
+          "stringValue": "tools"
+         }
+        },
+        {
+         "key": "langsmith.trace.session_name",
+         "value": {
+          "stringValue": "default"
+         }
+        },
+        {
+         "key": "gen_ai.operation.name",
+         "value": {
+          "stringValue": "chain"
+         }
+        },
+        {
+         "key": "gen_ai.system",
+         "value": {
+          "stringValue": "langchain"
+         }
+        },
+        {
+         "key": "langsmith.metadata.thread_id",
+         "value": {
+          "stringValue": "thread-42"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_integration",
+         "value": {
+          "stringValue": "langgraph"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_step",
+         "value": {
+          "intValue": "2"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_node",
+         "value": {
+          "stringValue": "tools"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_triggers",
+         "value": {
+          "stringValue": "[\"branch:to:tools\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_path",
+         "value": {
+          "stringValue": "[\"__pregel_pull\",\"tools\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_checkpoint_ns",
+         "value": {
+          "stringValue": "tools:b03566aa-07f7-274c-6056-8ea2bab416e7"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_TRACING",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ENABLED",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ONLY",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.span.tags",
+         "value": {
+          "stringValue": "graph:step:2"
+         }
+        },
+        {
+         "key": "gen_ai.prompt",
+         "value": {
+          "stringValue": "{\"messages\":[{\"content\":\"What is the weather in Paris?\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"human\",\"id\":\"9d5a137e-0e2e-4682-8d45-3f346dd7caed\"},{\"content\":\"\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"ai\",\"id\":\"lc_run--01a17cac-e513-735e-ad36-27622a69bcd2-0\",\"tool_calls\":[{\"name\":\"get_weather\",\"args\":{\"city\":\"Paris\"},\"id\":\"call_1\",\"type\":\"tool_call\"}],\"invalid_tool_calls\":[],\"usage_metadata\":{\"input_tokens\":40,\"output_tokens\":10,\"total_tokens\":50}}]}"
+         }
+        },
+        {
+         "key": "gen_ai.completion",
+         "value": {
+          "stringValue": "{\"messages\":[{\"content\":\"sunny, 21C in Paris\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"tool\",\"name\":\"get_weather\",\"tool_call_id\":\"call_1\",\"status\":\"success\"}]}"
+         }
+        }
+       ],
+       "endTimeUnixNano": "1793093068053417984",
+       "flags": 256,
+       "kind": "SPAN_KIND_INTERNAL",
+       "name": "tools",
+       "parentSpanId": "d829bf1fc0502a4a",
+       "spanId": "0030a8d320161c7a",
+       "startTimeUnixNano": "1793093068052675840",
+       "status": {
+        "code": "STATUS_CODE_OK"
+       },
+       "traceId": "be315756617600251960fd04d4013a7d"
+      },
+      {
+       "attributes": [
+        {
+         "key": "langsmith.span.kind",
+         "value": {
+          "stringValue": "tool"
+         }
+        },
+        {
+         "key": "langsmith.trace.name",
+         "value": {
+          "stringValue": "get_weather"
+         }
+        },
+        {
+         "key": "langsmith.trace.session_name",
+         "value": {
+          "stringValue": "default"
+         }
+        },
+        {
+         "key": "gen_ai.operation.name",
+         "value": {
+          "stringValue": "execute_tool"
+         }
+        },
+        {
+         "key": "gen_ai.system",
+         "value": {
+          "stringValue": "langchain"
+         }
+        },
+        {
+         "key": "gen_ai.tool.name",
+         "value": {
+          "stringValue": "get_weather"
+         }
+        },
+        {
+         "key": "gen_ai.tool.call.id",
+         "value": {
+          "stringValue": "call_1"
+         }
+        },
+        {
+         "key": "langsmith.metadata.thread_id",
+         "value": {
+          "stringValue": "thread-42"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_integration",
+         "value": {
+          "stringValue": "langgraph"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_step",
+         "value": {
+          "intValue": "2"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_node",
+         "value": {
+          "stringValue": "tools"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_triggers",
+         "value": {
+          "stringValue": "[\"branch:to:tools\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_path",
+         "value": {
+          "stringValue": "[\"__pregel_pull\",\"tools\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_checkpoint_ns",
+         "value": {
+          "stringValue": "tools:b03566aa-07f7-274c-6056-8ea2bab416e7"
+         }
+        },
+        {
+         "key": "langsmith.metadata.checkpoint_ns",
+         "value": {
+          "stringValue": "tools:b03566aa-07f7-274c-6056-8ea2bab416e7"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_TRACING",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ENABLED",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ONLY",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.span.tags",
+         "value": {
+          "stringValue": "seq:step:1"
+         }
+        },
+        {
+         "key": "gen_ai.prompt",
+         "value": {
+          "stringValue": "{\"city\":\"Paris\"}"
+         }
+        },
+        {
+         "key": "gen_ai.completion",
+         "value": {
+          "stringValue": "{\"output\":{\"content\":\"sunny, 21C in Paris\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"tool\",\"name\":\"get_weather\",\"tool_call_id\":\"call_1\",\"status\":\"success\"}}"
+         }
+        }
+       ],
+       "endTimeUnixNano": "1793093068053289984",
+       "flags": 256,
+       "kind": "SPAN_KIND_INTERNAL",
+       "name": "get_weather",
+       "parentSpanId": "0030a8d320161c7a",
+       "spanId": "595e72cb6aefb076",
+       "startTimeUnixNano": "1793093068053028096",
+       "status": {
+        "code": "STATUS_CODE_OK"
+       },
+       "traceId": "be315756617600251960fd04d4013a7d"
+      },
+      {
+       "attributes": [
+        {
+         "key": "langsmith.span.kind",
+         "value": {
+          "stringValue": "chain"
+         }
+        },
+        {
+         "key": "langsmith.trace.name",
+         "value": {
+          "stringValue": "agent"
+         }
+        },
+        {
+         "key": "langsmith.trace.session_name",
+         "value": {
+          "stringValue": "default"
+         }
+        },
+        {
+         "key": "gen_ai.operation.name",
+         "value": {
+          "stringValue": "chain"
+         }
+        },
+        {
+         "key": "gen_ai.system",
+         "value": {
+          "stringValue": "langchain"
+         }
+        },
+        {
+         "key": "langsmith.metadata.thread_id",
+         "value": {
+          "stringValue": "thread-42"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_integration",
+         "value": {
+          "stringValue": "langgraph"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_step",
+         "value": {
+          "intValue": "3"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_node",
+         "value": {
+          "stringValue": "agent"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_triggers",
+         "value": {
+          "stringValue": "[\"branch:to:agent\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_path",
+         "value": {
+          "stringValue": "[\"__pregel_pull\",\"agent\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_checkpoint_ns",
+         "value": {
+          "stringValue": "agent:627b8a5d-bc85-851a-6aa2-342bc24d09f9"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_TRACING",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ENABLED",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ONLY",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.span.tags",
+         "value": {
+          "stringValue": "graph:step:3"
+         }
+        },
+        {
+         "key": "gen_ai.prompt",
+         "value": {
+          "stringValue": "{\"messages\":[{\"content\":\"What is the weather in Paris?\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"human\",\"id\":\"9d5a137e-0e2e-4682-8d45-3f346dd7caed\"},{\"content\":\"\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"ai\",\"id\":\"lc_run--01a17cac-e513-735e-ad36-27622a69bcd2-0\",\"tool_calls\":[{\"name\":\"get_weather\",\"args\":{\"city\":\"Paris\"},\"id\":\"call_1\",\"type\":\"tool_call\"}],\"invalid_tool_calls\":[],\"usage_metadata\":{\"input_tokens\":40,\"output_tokens\":10,\"total_tokens\":50}},{\"content\":\"sunny, 21C in Paris\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"tool\",\"name\":\"get_weather\",\"id\":\"f0bc5d88-1393-4a3e-add6-a8229273c1d7\",\"tool_call_id\":\"call_1\",\"status\":\"success\"}]}"
+         }
+        },
+        {
+         "key": "gen_ai.completion",
+         "value": {
+          "stringValue": "{\"messages\":[{\"content\":\"It is sunny, 21C in Paris.\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"ai\",\"id\":\"lc_run--01a17cac-e515-735e-822e-f8547ae396c7-0\",\"tool_calls\":[],\"invalid_tool_calls\":[],\"usage_metadata\":{\"input_tokens\":60,\"output_tokens\":9,\"total_tokens\":69}}]}"
+         }
+        }
+       ],
+       "endTimeUnixNano": "1793093068054270976",
+       "flags": 256,
+       "kind": "SPAN_KIND_INTERNAL",
+       "name": "agent",
+       "parentSpanId": "d829bf1fc0502a4a",
+       "spanId": "c9a3c12b9b92dd9a",
+       "startTimeUnixNano": "1793093068053603840",
+       "status": {
+        "code": "STATUS_CODE_OK"
+       },
+       "traceId": "be315756617600251960fd04d4013a7d"
+      },
+      {
+       "attributes": [
+        {
+         "key": "langsmith.span.kind",
+         "value": {
+          "stringValue": "llm"
+         }
+        },
+        {
+         "key": "langsmith.trace.name",
+         "value": {
+          "stringValue": "Fake"
+         }
+        },
+        {
+         "key": "langsmith.trace.session_name",
+         "value": {
+          "stringValue": "default"
+         }
+        },
+        {
+         "key": "gen_ai.operation.name",
+         "value": {
+          "stringValue": "chat"
+         }
+        },
+        {
+         "key": "gen_ai.system",
+         "value": {
+          "stringValue": "openai"
+         }
+        },
+        {
+         "key": "gen_ai.request.model",
+         "value": {
+          "stringValue": "fake-gpt"
+         }
+        },
+        {
+         "key": "langsmith.metadata.thread_id",
+         "value": {
+          "stringValue": "thread-42"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_integration",
+         "value": {
+          "stringValue": "langchain_chat_model"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_step",
+         "value": {
+          "intValue": "3"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_node",
+         "value": {
+          "stringValue": "agent"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_triggers",
+         "value": {
+          "stringValue": "[\"branch:to:agent\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_path",
+         "value": {
+          "stringValue": "[\"__pregel_pull\",\"agent\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_checkpoint_ns",
+         "value": {
+          "stringValue": "agent:627b8a5d-bc85-851a-6aa2-342bc24d09f9"
+         }
+        },
+        {
+         "key": "langsmith.metadata.checkpoint_ns",
+         "value": {
+          "stringValue": "agent:627b8a5d-bc85-851a-6aa2-342bc24d09f9"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_provider",
+         "value": {
+          "stringValue": "fake"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_model_name",
+         "value": {
+          "stringValue": "fake-gpt"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_model_type",
+         "value": {
+          "stringValue": "chat"
+         }
+        },
+        {
+         "key": "langsmith.metadata.lc_versions",
+         "value": {
+          "stringValue": "{\"langchain-core\":\"1.7.0\"}"
+         }
+        },
+        {
+         "key": "langsmith.metadata._type",
+         "value": {
+          "stringValue": "fake-messages-list-chat-model"
+         }
+        },
+        {
+         "key": "langsmith.metadata.usage_metadata",
+         "value": {
+          "stringValue": "{\"input_tokens\":60,\"output_tokens\":9,\"total_tokens\":69}"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_TRACING",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ENABLED",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ONLY",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.span.tags",
+         "value": {
+          "stringValue": "seq:step:1"
+         }
+        },
+        {
+         "key": "gen_ai.serialized.name",
+         "value": {
+          "stringValue": "Fake"
+         }
+        },
+        {
+         "key": "gen_ai.prompt",
+         "value": {
+          "stringValue": "{\"messages\":[[{\"lc\":1,\"type\":\"constructor\",\"id\":[\"langchain\",\"schema\",\"messages\",\"HumanMessage\"],\"kwargs\":{\"content\":\"What is the weather in Paris?\",\"type\":\"human\",\"id\":\"9d5a137e-0e2e-4682-8d45-3f346dd7caed\"}},{\"lc\":1,\"type\":\"constructor\",\"id\":[\"langchain\",\"schema\",\"messages\",\"AIMessage\"],\"kwargs\":{\"content\":\"\",\"type\":\"ai\",\"id\":\"lc_run--01a17cac-e513-735e-ad36-27622a69bcd2-0\",\"tool_calls\":[{\"name\":\"get_weather\",\"args\":{\"city\":\"Paris\"},\"id\":\"call_1\",\"type\":\"tool_call\"}],\"usage_metadata\":{\"input_tokens\":40,\"output_tokens\":10,\"total_tokens\":50},\"invalid_tool_calls\":[]}},{\"lc\":1,\"type\":\"constructor\",\"id\":[\"langchain\",\"schema\",\"messages\",\"ToolMessage\"],\"kwargs\":{\"content\":\"sunny, 21C in Paris\",\"type\":\"tool\",\"name\":\"get_weather\",\"id\":\"f0bc5d88-1393-4a3e-add6-a8229273c1d7\",\"tool_call_id\":\"call_1\",\"status\":\"success\"}}]]}"
+         }
+        },
+        {
+         "key": "gen_ai.usage.input_tokens",
+         "value": {
+          "intValue": "60"
+         }
+        },
+        {
+         "key": "gen_ai.usage.output_tokens",
+         "value": {
+          "intValue": "9"
+         }
+        },
+        {
+         "key": "gen_ai.usage.total_tokens",
+         "value": {
+          "intValue": "69"
+         }
+        },
+        {
+         "key": "gen_ai.completion",
+         "value": {
+          "stringValue": "{\"generations\":[[{\"text\":\"It is sunny, 21C in Paris.\",\"generation_info\":null,\"type\":\"ChatGeneration\",\"message\":{\"lc\":1,\"type\":\"constructor\",\"id\":[\"langchain\",\"schema\",\"messages\",\"AIMessage\"],\"kwargs\":{\"content\":\"It is sunny, 21C in Paris.\",\"type\":\"ai\",\"id\":\"lc_run--01a17cac-e515-735e-822e-f8547ae396c7-0\",\"usage_metadata\":{\"input_tokens\":60,\"output_tokens\":9,\"total_tokens\":69},\"tool_calls\":[],\"invalid_tool_calls\":[]}}}]],\"llm_output\":null,\"run\":null,\"type\":\"LLMResult\"}"
+         }
+        }
+       ],
+       "endTimeUnixNano": "1793093068054073088",
+       "flags": 256,
+       "kind": "SPAN_KIND_INTERNAL",
+       "name": "Fake",
+       "parentSpanId": "c9a3c12b9b92dd9a",
+       "spanId": "6f4138461d64a06d",
+       "startTimeUnixNano": "1793093068053755136",
+       "status": {
+        "code": "STATUS_CODE_OK"
+       },
+       "traceId": "be315756617600251960fd04d4013a7d"
+      },
+      {
+       "attributes": [
+        {
+         "key": "langsmith.span.kind",
+         "value": {
+          "stringValue": "chain"
+         }
+        },
+        {
+         "key": "langsmith.trace.name",
+         "value": {
+          "stringValue": "tools_condition"
+         }
+        },
+        {
+         "key": "langsmith.trace.session_name",
+         "value": {
+          "stringValue": "default"
+         }
+        },
+        {
+         "key": "gen_ai.operation.name",
+         "value": {
+          "stringValue": "chain"
+         }
+        },
+        {
+         "key": "gen_ai.system",
+         "value": {
+          "stringValue": "langchain"
+         }
+        },
+        {
+         "key": "langsmith.metadata.thread_id",
+         "value": {
+          "stringValue": "thread-42"
+         }
+        },
+        {
+         "key": "langsmith.metadata.ls_integration",
+         "value": {
+          "stringValue": "langgraph"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_step",
+         "value": {
+          "intValue": "3"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_node",
+         "value": {
+          "stringValue": "agent"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_triggers",
+         "value": {
+          "stringValue": "[\"branch:to:agent\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_path",
+         "value": {
+          "stringValue": "[\"__pregel_pull\",\"agent\"]"
+         }
+        },
+        {
+         "key": "langsmith.metadata.langgraph_checkpoint_ns",
+         "value": {
+          "stringValue": "agent:627b8a5d-bc85-851a-6aa2-342bc24d09f9"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_TRACING",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ENABLED",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.metadata.LANGSMITH_OTEL_ONLY",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "langsmith.span.tags",
+         "value": {
+          "stringValue": "seq:step:3"
+         }
+        },
+        {
+         "key": "gen_ai.prompt",
+         "value": {
+          "stringValue": "{\"messages\":[{\"content\":\"What is the weather in Paris?\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"human\",\"id\":\"9d5a137e-0e2e-4682-8d45-3f346dd7caed\"},{\"content\":\"\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"ai\",\"id\":\"lc_run--01a17cac-e513-735e-ad36-27622a69bcd2-0\",\"tool_calls\":[{\"name\":\"get_weather\",\"args\":{\"city\":\"Paris\"},\"id\":\"call_1\",\"type\":\"tool_call\"}],\"invalid_tool_calls\":[],\"usage_metadata\":{\"input_tokens\":40,\"output_tokens\":10,\"total_tokens\":50}},{\"content\":\"sunny, 21C in Paris\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"tool\",\"name\":\"get_weather\",\"id\":\"f0bc5d88-1393-4a3e-add6-a8229273c1d7\",\"tool_call_id\":\"call_1\",\"status\":\"success\"},{\"content\":\"It is sunny, 21C in Paris.\",\"additional_kwargs\":{},\"response_metadata\":{},\"type\":\"ai\",\"id\":\"lc_run--01a17cac-e515-735e-822e-f8547ae396c7-0\",\"tool_calls\":[],\"invalid_tool_calls\":[],\"usage_metadata\":{\"input_tokens\":60,\"output_tokens\":9,\"total_tokens\":69}}]}"
+         }
+        },
+        {
+         "key": "gen_ai.completion",
+         "value": {
+          "stringValue": "{\"output\":\"__end__\"}"
+         }
+        }
+       ],
+       "endTimeUnixNano": "1793093068054236928",
+       "flags": 256,
+       "kind": "SPAN_KIND_INTERNAL",
+       "name": "tools_condition",
+       "parentSpanId": "c9a3c12b9b92dd9a",
+       "spanId": "eb5237462dd5fa0e",
+       "startTimeUnixNano": "1793093068054158080",
+       "status": {
+        "code": "STATUS_CODE_OK"
+       },
+       "traceId": "be315756617600251960fd04d4013a7d"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

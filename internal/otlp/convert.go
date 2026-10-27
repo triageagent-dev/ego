@@ -105,6 +105,7 @@ func parseSpan(spanData map[string]any, resourceAttrs map[string]any, scopeName,
 		Tags:          attrs,
 	}
 	normalizeClaudeCode(span)
+	normalizeLangSmith(span)
 	return span
 }
 

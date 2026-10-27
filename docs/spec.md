@@ -45,6 +45,10 @@ A closed segment takes no new trace and is scored once, with the end of the prev
 
 Claude Code's native traces (`claude_code.*` spans) are translated to GenAI attributes at ingest: sessions come from `session.id`, the agent from `service.name`, and tokens count cache reads and writes in the input. A tool call that failed or was rejected is a failed step. The cache parts are kept in the usage ledger so a cost estimate is not inflated by an agent that mostly reads its prompt from the cache.
 
+### LangChain and LangGraph
+
+LangSmith's OpenTelemetry export, which LangChain documents for LangChain and LangGraph, sends each run's input and output as the run's own JSON. ego translates it at ingest: the graph's thread id is the session, the root run is the agent invocation, the latest user message and the final answer come from the graph's state, and tool arguments and results are read from the tool runs. A tool call that the model made and the tool run that executed it count once.
+
 ## Senders and tenants
 
 A token identifies a **sender**. A sender sends many **tenants**, labelled on its spans, and the tenant key is `<sender>/<label>`. Two senders can both send a tenant called `acme` and stay apart. The label is read from the span or resource attribute named by `--usage-tenant-attr`; a span with no label belongs to `default`. The shared `--otlp-token` names no sender, so its tenants are bare labels.
@@ -276,7 +280,7 @@ No. It reads traces that already exist. The only outbound calls are to the judge
 
 **Which agents work with it?**
 
-Any that emits OpenTelemetry traces with GenAI, OpenInference or ADK attributes, and Claude Code through its own spans. Nothing in ego names a framework.
+Any that emits OpenTelemetry traces with GenAI, OpenInference or ADK attributes, Claude Code through its own spans, and LangChain and LangGraph through LangSmith's OpenTelemetry export.
 
 **Why does a session not appear in online scoring?**
 

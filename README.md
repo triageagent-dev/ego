@@ -217,6 +217,37 @@ Prompts and tool output the sender redacted are never stored as content. The ten
 (or `--usage-tenant-attr`) on the span or the resource, so set it with `OTEL_RESOURCE_ATTRIBUTES`; the agent is
 `service.name` (`claude-code` unless `OTEL_SERVICE_NAME` says otherwise).
 
+### LangChain and LangGraph
+
+LangChain's documented way to get OpenTelemetry out of LangChain and LangGraph is LangSmith's own export: install
+`langsmith[otel]`, set `LANGSMITH_OTEL_ENABLED=true` (and `LANGSMITH_OTEL_ONLY=true` to send traces only to the
+OTLP endpoint, not to LangSmith), and point the standard OTLP variables at ego:
+
+```bash
+pip install "langsmith[otel]"
+export LANGSMITH_TRACING=true LANGSMITH_OTEL_ENABLED=true LANGSMITH_OTEL_ONLY=true
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://ego:4318          # the base URL, without /v1/traces
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <ingest token>"
+export OTEL_SERVICE_NAME=my-agent                           # the agent's name in ego
+```
+
+LangSmith sends a run's whole input and output as the run's own JSON (`gen_ai.prompt`, `gen_ai.completion`:
+LangChain messages, a graph's state, a tool's arguments) and does not use the GenAI message attributes. At ingest
+ego adds those next to the originals, from spans carrying `langsmith.span.kind`. A value the sender already set is
+kept, and spans of any other sender are not touched.
+
+| LangSmith run | Added when absent |
+|---|---|
+| every run | `gen_ai.conversation.id` = metadata `thread_id`, else `conversation_id`, else `session_id` (unless `ego.session_name` or `gen_ai.conversation.id` is set), so a LangGraph thread is one ego session; the LangSmith project (`langsmith.trace.session_id`) is not a conversation |
+| the root `chain` run | `gen_ai.operation.name` = `invoke_agent`; `gen_ai.agent.name` = the run's name (`LangGraph` unless the graph is named); `input.value` = the latest user message of the state; `output.value` = the final message, when it is an answer |
+| `llm` | `gen_ai.request.model` (metadata `ls_model_name` or the response's model; `unknown` when the model class reports none); `gen_ai.input.messages` and `gen_ai.output.messages` with roles, text and tool calls |
+| `tool` | `gen_ai.tool.call.arguments` (an object, or the JSON inside a single string argument); `gen_ai.tool.call.result`, which is flagged as an error when the ToolMessage status is `error` |
+
+Messages are read as LangChain's constructor form, its plain dump, OpenAI roles, `("user", "text")` tuples and
+Anthropic `tool_use` blocks. LangSmith's exporter does not read `OTEL_RESOURCE_ATTRIBUTES`; to label a tenant, put
+a key in the run's metadata (`config={"metadata": {"tenant": "acme"}}`) and start ego with
+`--usage-tenant-attr langsmith.metadata.tenant`.
+
 Offline, `ego run` reads Jaeger JSON and OTLP JSON/JSONL files.
 
 The live feed is `GET /ws/ui-updates` (WebSocket). `GET /stream/ui-updates` (Server-Sent Events) is there for
