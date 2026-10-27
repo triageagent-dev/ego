@@ -82,3 +82,44 @@ func TestOTLPGRPCCodecRefusesTinyMessagesBeforeUnmarshalling(t *testing.T) {
 		t.Errorf("a real message: %d resource spans, err %v", len(req.ResourceSpans), err)
 	}
 }
+
+// The decode budget is the request's, not each resource's: an export of many resources, each with a payload that fits
+// its own limit, may not decode more than one budget's worth in all.
+func TestIngestSharesOneDecodeBudgetAcrossTheResourcesOfAnExport(t *testing.T) {
+	payload := `{"messages":[["user","` + strings.Repeat("a", 900_000) + `"]]}`
+	resource := func(i int) any {
+		return map[string]any{
+			"resource": map[string]any{"attributes": []any{
+				map[string]any{"key": sessionNameAttr, "value": map[string]any{"stringValue": "s"}},
+			}},
+			"scopeSpans": []any{map[string]any{"spans": []any{map[string]any{
+				"traceId": "aaaa", "spanId": "span" + strings.Repeat("x", i), "name": "ChatModel",
+				"startTimeUnixNano": "1000000000", "endTimeUnixNano": "1010000000",
+				"attributes": []any{
+					map[string]any{"key": "langsmith.span.kind", "value": map[string]any{"stringValue": "llm"}},
+					map[string]any{"key": "gen_ai.prompt", "value": map[string]any{"stringValue": payload}},
+				},
+			}}}},
+		}
+	}
+	var resources []any
+	for i := 0; i < 8; i++ {
+		resources = append(resources, resource(i))
+	}
+	store := NewSessionStore(nil)
+	store.Ingest(map[string]any{"resourceSpans": resources})
+
+	translated := 0
+	tr, ok := store.Trace("s")
+	if !ok {
+		t.Fatal("no session")
+	}
+	for _, sp := range tr.AllSpans {
+		if _, has := sp.Tags["gen_ai.input.messages"]; has {
+			translated++
+		}
+	}
+	if translated != 4 {
+		t.Errorf("%d of 8 payloads translated, want the 4 that fit one request's 4 MiB", translated)
+	}
+}

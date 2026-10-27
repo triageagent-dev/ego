@@ -13,8 +13,19 @@ const (
 // ParseExportRequest converts an OTLP JSON export dict (resourceSpans, as produced natively or bridged from
 // protobuf via DecodeProtobufTraces) into ego's normalized Trace/Span model, grouping spans by trace ID.
 func ParseExportRequest(body map[string]any) []*tracepkg.Trace {
+	return ParseExportRequestWithBudget(body, NewDecodeBudget())
+}
+
+// DecodeBudget is how much JSON text inside span attributes one request may still decode.
+type DecodeBudget = decodeBudget
+
+// NewDecodeBudget is the budget of one request. A receiver that parses an export in pieces passes the same budget to
+// every piece, so the limit is on the request and not on each piece.
+func NewDecodeBudget() *DecodeBudget { return newDecodeBudget() }
+
+// ParseExportRequestWithBudget is ParseExportRequest drawing on budget.
+func ParseExportRequestWithBudget(body map[string]any, budget *DecodeBudget) []*tracepkg.Trace {
 	var allSpans []*tracepkg.Span
-	budget := newDecodeBudget()
 
 	for _, rs := range asSlice(body["resourceSpans"]) {
 		resourceSpan := asMap(rs)

@@ -1159,6 +1159,7 @@ func (s *SessionStore) IngestBound(sender, tenant string, body map[string]any) i
 		traces                                 []*tracepkg.Trace
 	}
 	var parsed []parsedResource
+	budget := otlp.NewDecodeBudget() // one for the whole export, however many resources it holds
 	for _, rs := range asSlice(body["resourceSpans"]) {
 		resource := asMap(asMap(rs)["resource"])
 		p := parsedResource{resourceAttrs: otlp.DecodeAttributes(asSlice(resource["attributes"]))}
@@ -1166,7 +1167,7 @@ func (s *SessionStore) IngestBound(sender, tenant string, body map[string]any) i
 		p.conversationID, _ = p.resourceAttrs[genAIConversationID].(string)
 		p.evalSetID, _ = p.resourceAttrs[evalSetIDAttr].(string)
 		p.thread, _ = p.resourceAttrs[threadAttr].(string)
-		p.traces = otlp.ParseExportRequest(map[string]any{"resourceSpans": []any{rs}})
+		p.traces = otlp.ParseExportRequestWithBudget(map[string]any{"resourceSpans": []any{rs}}, budget)
 		if sender != "" && tenant != "" {
 			attr := cmp.Or(s.usageTenantAttr, DefaultTenantAttr)
 			for _, tr := range p.traces {
