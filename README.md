@@ -244,9 +244,9 @@ kept, and spans of any other sender are not touched.
 | `tool` | `gen_ai.tool.call.arguments` (an object, or the JSON inside a single string argument); `gen_ai.tool.call.result`, which is flagged as an error when the ToolMessage status is `error` |
 
 Messages are read as LangChain's constructor form, its plain dump, OpenAI roles, `("user", "text")` tuples and
-Anthropic `tool_use` blocks. LangSmith's exporter does not read `OTEL_RESOURCE_ATTRIBUTES`; to label a tenant, put
-a key in the run's metadata (`config={"metadata": {"tenant": "acme"}}`) and start ego with
-`--usage-tenant-attr langsmith.metadata.tenant`.
+Anthropic `tool_use` blocks. LangSmith's exporter does not read `OTEL_RESOURCE_ATTRIBUTES`, so label the tenant with the
+ingest token (a sender token created with a tenant labels every span it sends) or with a key in the run's metadata
+(`config={"metadata": {"tenant": "acme"}}`) and start ego with `--usage-tenant-attr langsmith.metadata.tenant`.
 
 Offline, `ego run` reads Jaeger JSON and OTLP JSON/JSONL files.
 
