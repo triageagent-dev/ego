@@ -18,8 +18,8 @@ import (
 	"github.com/triageagent-dev/ego/internal/decision"
 	"github.com/triageagent-dev/ego/internal/eval"
 	"github.com/triageagent-dev/ego/internal/judge"
+	"github.com/triageagent-dev/ego/internal/loader"
 	"github.com/triageagent-dev/ego/internal/logx"
-	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 	"github.com/triageagent-dev/ego/internal/vertexeval"
 )
 
@@ -331,12 +331,16 @@ func runCmd(args []string) error {
 	failures := 0
 
 	for _, path := range traceFiles {
-		traces, err := tracepkg.LoadJaegerJSON(path)
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("loading %s: %w", path, err)
+		}
+		traces, err := loader.ParseFile(path, content, "")
 		if err != nil {
 			return fmt.Errorf("loading %s: %w", path, err)
 		}
 		for _, tr := range traces {
-			conv := adk.ConvertADKTrace(tr)
+			conv := adk.ConvertTrace(tr)
 			for _, w := range conv.Warnings {
 				fmt.Fprintf(os.Stderr, "warning: %s\n", w)
 			}
