@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/triageagent-dev/ego/internal/adk"
 	"github.com/triageagent-dev/ego/internal/eval"
@@ -70,15 +71,29 @@ func buildHallucinationContext(inv adk.Invocation) string {
 			out = string(raw)
 		}
 		if len(out) > maxToolOutputChars {
-			out = out[:maxToolOutputChars] + " …"
+			out = clipUTF8(out, maxToolOutputChars) + " …"
 		}
 		if len(out) > budget {
-			out = out[:max(budget, 0)] + " …"
+			out = clipUTF8(out, budget) + " …"
 		}
-		budget -= len(out)
+		budget = max(budget-len(out), 0)
 		fmt.Fprintf(&b, "```tool_outputs\n%s\n```\n", out)
 	}
 	return b.String()
+}
+
+// clipUTF8 cuts s to at most n bytes without splitting a multi-byte character.
+func clipUTF8(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // toolResponseFor pairs a call with its result by id, else by position.

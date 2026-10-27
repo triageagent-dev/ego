@@ -2,8 +2,10 @@ package judge
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/triageagent-dev/ego/internal/adk"
 	"github.com/triageagent-dev/ego/internal/eval"
@@ -44,6 +46,30 @@ func TestBuildHallucinationContext_CapsLongToolOutputs(t *testing.T) {
 	}
 	if got := buildHallucinationContext(inv); len(got) > maxToolOutputChars+500 {
 		t.Errorf("context is %d characters, the result was not capped", len(got))
+	}
+}
+
+// A tool result is cut by bytes, and a cut inside a multi-byte character would put invalid UTF-8 into the prompt.
+func TestBuildHallucinationContext_CutsOnCharacterBoundaries(t *testing.T) {
+	inv := invocation("q", "a")
+	// Every character after the first is two bytes, so a cut at an even offset lands inside one.
+	text := "a" + strings.Repeat("é", maxToolOutputChars)
+	var uses []adk.FunctionCall
+	var responses []adk.FunctionResponse
+	for i := 0; i < 8; i++ {
+		uses = append(uses, adk.FunctionCall{Name: "t", ID: fmt.Sprint(i)})
+		responses = append(responses, adk.FunctionResponse{Name: "t", ID: fmt.Sprint(i), Response: map[string]any{"text": text}})
+	}
+	inv.IntermediateData = &adk.IntermediateData{ToolUses: uses, ToolResponses: responses}
+	got := buildHallucinationContext(inv)
+	if !utf8.ValidString(got) {
+		t.Error("the context holds a character cut in half")
+	}
+	if n := strings.Count(got, "```tool_outputs"); n != len(uses) {
+		t.Errorf("%d tool_outputs blocks, want one per call (%d), also after the total budget is spent", n, len(uses))
+	}
+	if len(got) > maxToolOutputsTotal+2000 {
+		t.Errorf("context is %d bytes, the total budget did not hold", len(got))
 	}
 }
 
