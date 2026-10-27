@@ -100,7 +100,7 @@ jobs:
           merge-multiple: true
       - name: Checksums
         run: cd dist && sha256sum ego_* > checksums.txt
-      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Sign checksums
         # Keyless: the signature is bound to this workflow's identity. Verify with `cosign verify-blob --bundle
         # checksums.txt.bundle --certificate-identity-regexp ... --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt`.
@@ -152,7 +152,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Sign image
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
