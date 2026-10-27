@@ -311,7 +311,7 @@ func MCPToolOptions() mcptools.Options {
 // mcpRoute is the MCP endpoint behind the same login and roles as /api. Agents also get in with the ingest token
 // of their sender, as a member limited to that sender's tenants.
 func mcpRoute(secret string, senders *SenderStore, roleStore *RoleStore, org string, ghTokens *githubTokenValidator, revoked *revocations, backend mcptools.Backend) http.Handler {
-	roled := withRole(roleStore, org, ghTokens, mcptools.NewHTTPHandler(backend, MCPToolOptions()).ServeHTTP)
+	roled := withRole(roleStore, org, ghTokens, delegateTenant(mcptools.NewHTTPHandler(backend, MCPToolOptions())).ServeHTTP)
 	return senderGate(secret, senders, roled, requireSession(secret, ghTokens, revoked, roled))
 }
 

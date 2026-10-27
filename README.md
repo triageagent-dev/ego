@@ -325,6 +325,13 @@ that sender's tenants, so one token covers sending traces and reading verdicts. 
 of an org member works too. `ego mcp` is the same registry on stdio, for a client that cannot reach the server
 over HTTP; it adds `evaluate_traces`, which scores local files.
 
+A client that answers for many tenants with one credential, such as a core serving several workspaces, should hold a
+delegate token instead: `ego auth mint-token --delegate --tenants 'core/*'`. It opens `/mcp` only, and every
+`tools/call` must pass `tenant`, one tenant key the token covers (not a pattern); ego narrows that call to it, for
+every tool. A call without a tenant, with one outside the token's grants or with a pattern is refused as invalid
+params (`-32602`) and logged at warn level with the token id and the tenant tried. A delegate token takes one request
+per POST (no batches), never acts as an admin (a tenant-limited admin manages nothing) and cannot be granted `*`.
+
 | Tool | Description |
 |---|---|
 | `get_quality` | Open alerts, hourly scores per metric, sessions scored, today's judge budget. |

@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"encoding/base64"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,8 +14,9 @@ import (
 // Tokens are what the browser cookie and the bearer credential of non-browser clients are made of. Both are
 // HMAC-signed under the session secret and carry:
 //
-//   - a kind: a session cookie (set at login, accepted only as the cookie) or an API token (minted with
-//     `ego auth mint-token`, accepted only as a bearer value), so a leaked cookie is not a bearer token;
+//   - a kind: a session cookie (set at login, accepted only as the cookie), an API token (minted with
+//     `ego auth mint-token`, accepted only as a bearer value) or a delegate token (the same, minted with --delegate,
+//     accepted at /mcp only; see delegate.go), so a leaked cookie is not a bearer token;
 //   - an id, so one token can be revoked;
 //   - the time it was issued, so everything issued to a subject before a moment can be revoked at once;
 //   - for an API token, the role it acts with and the tenants it is limited to, so its name does not pick up the
@@ -22,15 +24,17 @@ import (
 const (
 	tokenKindSession = "s"
 	tokenKindAPI     = "t"
-	tokenVersion     = "3"
+	// tokenKindDelegate is an API token for a client that acts for one tenant at a time and names it on every call.
+	tokenKindDelegate = "d"
+	tokenVersion      = "3"
 )
 
 type authToken struct {
 	Kind     string
 	ID       string
 	Username string
-	Role     Role     // API tokens only.
-	Tenants  []string // API tokens only; empty means every tenant.
+	Role     Role     // API and delegate tokens only.
+	Tenants  []string // API tokens: empty means every tenant. Delegate tokens: the grants a call may pick its tenant from, never empty.
 	IssuedAt int64
 	Expiry   int64
 }
@@ -62,7 +66,7 @@ func parseToken(value, secret string) (authToken, bool) {
 	}
 	// The username comes last, so it may itself contain the separator.
 	f := strings.SplitN(payload, "|", 8)
-	if len(f) != 8 || f[0] != tokenVersion || (f[1] != tokenKindSession && f[1] != tokenKindAPI) || f[2] == "" || f[7] == "" {
+	if len(f) != 8 || f[0] != tokenVersion || (f[1] != tokenKindSession && f[1] != tokenKindAPI && f[1] != tokenKindDelegate) || f[2] == "" || f[7] == "" {
 		return authToken{}, false
 	}
 	issued, err1 := strconv.ParseInt(f[3], 10, 64)
@@ -74,8 +78,11 @@ func parseToken(value, secret string) (authToken, bool) {
 	if f[6] != "" {
 		t.Tenants = strings.Split(f[6], ",")
 	}
-	if t.Kind == tokenKindAPI {
+	if t.Kind == tokenKindAPI || t.Kind == tokenKindDelegate {
 		if _, err := ParseRole(f[5]); err != nil {
+			return authToken{}, false
+		}
+		if t.Kind == tokenKindDelegate && len(t.Tenants) == 0 {
 			return authToken{}, false
 		}
 	} else if t.Role != "" || len(t.Tenants) > 0 {
@@ -91,6 +98,20 @@ func MintAPIToken(name, secret string, role Role, tenants []string, ttl time.Dur
 	now := time.Now()
 	t := authToken{Kind: tokenKindAPI, ID: newRandomID("tok"), Username: name, Role: role, Tenants: tenants, IssuedAt: now.Unix(), Expiry: now.Add(ttl).Unix()}
 	return t.encode(secret), t.ID
+}
+
+// MintDelegateToken signs a delegate token: an API token that acts for one tenant per call, chosen from tenants.
+// It needs at least one grant, and a delegate that could pick any tenant of any sender is not one.
+func MintDelegateToken(name, secret string, role Role, tenants []string, ttl time.Duration) (token, id string, err error) {
+	if len(tenants) == 0 {
+		return "", "", fmt.Errorf("a delegate token needs the tenants it may act for")
+	}
+	if slices.Contains(tenants, "*") {
+		return "", "", fmt.Errorf("a delegate token cannot be granted every tenant (*): name <sender>/* or tenant keys")
+	}
+	now := time.Now()
+	t := authToken{Kind: tokenKindDelegate, ID: newRandomID("tok"), Username: name, Role: role, Tenants: tenants, IssuedAt: now.Unix(), Expiry: now.Add(ttl).Unix()}
+	return t.encode(secret), t.ID, nil
 }
 
 func mintSessionCookie(username, secret string) string {

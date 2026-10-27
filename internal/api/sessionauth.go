@@ -19,7 +19,7 @@ const sessionCookieName = "ego_session"
 // value or re-checking it against GitHub a second time.
 type identityContextKey struct{}
 
-// identity is who a request authenticated as. Kind is the token kind (tokenKindSession, tokenKindAPI) or
+// identity is who a request authenticated as. Kind is the token kind (tokenKindSession, tokenKindAPI, tokenKindDelegate) or
 // identityGitHub for a raw GitHub access token.
 type identity struct {
 	Username string
@@ -79,6 +79,10 @@ func authenticate(r *http.Request, secret string, ghTokens *githubTokenValidator
 		token := strings.TrimSpace(auth[7:])
 		if t, ok := parseToken(token, secret); ok {
 			if t.Kind == tokenKindAPI && !revoked.revoked(t) {
+				return identity{Username: t.Username, Kind: t.Kind, Role: t.Role, Tenants: t.Tenants, TokenID: t.ID, Expiry: t.Expiry}, true
+			}
+			// A delegate token opens the MCP path only, where each call names its tenant.
+			if t.Kind == tokenKindDelegate && r.URL.Path == mcpPath && !revoked.revoked(t) {
 				return identity{Username: t.Username, Kind: t.Kind, Role: t.Role, Tenants: t.Tenants, TokenID: t.ID, Expiry: t.Expiry}, true
 			}
 			return identity{}, false

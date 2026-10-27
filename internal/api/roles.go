@@ -538,6 +538,10 @@ func roleForIdentity(r *http.Request, roleStore *RoleStore, org string, ghTokens
 		}
 		return RoleInfo{Role: RoleMember, Tenants: []string{grant}, FromSender: true}
 	}
+	// A delegate token is tenant-limited by construction; delegateTenant narrows it to the tenant each call names.
+	if id.Kind == tokenKindDelegate {
+		return RoleInfo{Role: id.Role, Tenants: id.Tenants}
+	}
 	if id.Kind == tokenKindAPI {
 		info := RoleInfo{Role: id.Role, IsAdmin: id.Role == RoleAdmin && len(id.Tenants) == 0}
 		if len(id.Tenants) > 0 {

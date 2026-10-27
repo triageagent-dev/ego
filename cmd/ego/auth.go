@@ -29,6 +29,7 @@ func authMintTokenCmd(args []string) error {
 	name := fs.String("name", "", "label for the token (e.g. 'triage-core-otlp' or 'claude-code-mcp'), embedded as the token's subject and logged wherever it authenticates - not a GitHub username, since non-browser clients have no GitHub identity of their own (required)")
 	role := fs.String("role", "member", "role the token acts with: admin, member or viewer. It is not looked up from role bindings, so a label equal to a GitHub login does not inherit that user's role")
 	tenantsFlag := fs.String("tenants", "", "comma-separated tenants the token is limited to: <sender>/<tenant>, <sender>/* or *; it then sees only their data (empty: every tenant)")
+	delegate := fs.Bool("delegate", false, "mint a delegate token: it opens /mcp only, and every tools/call must name the tenant it acts for in the `tenant` argument, which must be one of --tenants (required, no bare *). For a client that serves many tenants and must not read across them")
 	ttlDays := fs.Int("ttl-days", 90, "token lifetime in days (default 90); machine clients have no login flow to refresh it, so mint a new one before it ends - revoke one with POST /api/admin/revocations (the id is printed on stderr), or rotate --secret/EGO_SESSION_SECRET to invalidate every token and cookie at once")
 	secret := fs.String("secret", env("SESSION_SECRET"), "signing secret; falls back to EGO_SESSION_SECRET so this can run against the same secret the deployed server uses without pasting it into a flag")
 	if err := fs.Parse(args); err != nil {
@@ -56,8 +57,20 @@ func authMintTokenCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	token, id := api.MintAPIToken(*name, *secret, tokenRole, tenants, time.Duration(*ttlDays)*24*time.Hour)
-	fmt.Fprintf(os.Stderr, "token id: %s (role %s, valid %d days)\n", id, tokenRole, *ttlDays)
+	ttl := time.Duration(*ttlDays) * 24 * time.Hour
+	token, id := "", ""
+	if *delegate {
+		if token, id, err = api.MintDelegateToken(*name, *secret, tokenRole, tenants, ttl); err != nil {
+			return err
+		}
+	} else {
+		token, id = api.MintAPIToken(*name, *secret, tokenRole, tenants, ttl)
+	}
+	kind := "role"
+	if *delegate {
+		kind = "delegate, role"
+	}
+	fmt.Fprintf(os.Stderr, "token id: %s (%s %s, valid %d days)\n", id, kind, tokenRole, *ttlDays)
 	fmt.Println(token)
 	return nil
 }

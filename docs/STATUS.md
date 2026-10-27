@@ -52,6 +52,8 @@ What ego supports today, and what it does not.
 **Access**
 - GitHub OAuth restricted to an org, signed session cookies, bearer tokens from `ego auth mint-token`, or a raw
   GitHub token validated against org membership.
+- Delegate tokens (`ego auth mint-token --delegate --tenants …`, `delegate.go`): `/mcp` only; each `tools/call` names its
+  tenant and is narrowed to it. Existing tokens are unchanged.
 - Roles `admin`, `member`, `viewer`, optionally scoped to agent names (sessions, traces, runs and the live feed;
   Tokens, Quality and eval sets are closed to a scoped role); inert when no session secret is set. Unknown team
   membership is refused, never defaulted. A session with several agents is visible to a role scoped to any one.
