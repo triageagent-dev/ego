@@ -67,10 +67,26 @@ func rsiLoopHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetProm
 		[]mcp.PromptMessage{mcp.NewPromptMessage(mcp.RoleUser, mcp.NewTextContent(skills.EgoRSI))}), nil
 }
 
+// hints states all four behaviour hints of a tool explicitly. A host that finds one missing assumes the unsafe
+// default, and a directory that lists the server rejects the tool, so no tool leaves one out.
+func hints(readOnly, destructive, idempotent, openWorld bool) mcp.ToolOption {
+	return func(t *mcp.Tool) {
+		mcp.WithReadOnlyHintAnnotation(readOnly)(t)
+		mcp.WithDestructiveHintAnnotation(destructive)(t)
+		mcp.WithIdempotentHintAnnotation(idempotent)(t)
+		mcp.WithOpenWorldHintAnnotation(openWorld)(t)
+	}
+}
+
+// readsEgo is for a tool that only reads what ego holds: it changes nothing, gives the same answer to the same
+// question and talks to nothing outside ego.
+var readsEgo = hints(true, false, true, false)
+
 // Tools is the registry: each tool is defined here once, whatever the transport.
 func Tools(b Backend, o Options) []server.ServerTool {
 	tools := []server.ServerTool{
 		{Tool: mcp.NewTool("list_metrics",
+			readsEgo,
 			mcp.WithDescription("List all available evaluation metrics with their descriptions and requirements. "+
 				"Call this first to discover which metrics you can pass to evaluate_traces."),
 		), Handler: listMetricsHandler(b)},
@@ -78,6 +94,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 
 	if o.EvaluateTraces != nil {
 		tools = append(tools, server.ServerTool{Tool: mcp.NewTool("evaluate_traces",
+			hints(true, false, true, true),
 			mcp.WithDescription("Evaluate one or more local agent trace files against selected evaluators. "+
 				"Loads trace files from disk, converts them to the internal invocation format, and runs each "+
 				"requested evaluator. Does not require the ego server to be running."),
@@ -105,6 +122,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 
 	tools = append(tools,
 		server.ServerTool{Tool: mcp.NewTool("list_sessions",
+			readsEgo,
 			mcp.WithDescription("List recent streaming trace sessions, ordered most recent first, with the agent, tenant, "+
 				"service, error span count and total tokens of each. Use this to discover session IDs for "+
 				"summarize_session and get_session_spans (a session with error spans: get_session_spans with errors_only "+
@@ -132,6 +150,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: listSessionsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("list_threads",
+			readsEgo,
 			mcp.WithDescription("List the threads of the agents you may see, the one seen last first: a thread is the id the "+
 				"sender itself uses (an always-on agent keeps one for weeks), and ego cuts it into sessions (segments) of whole "+
 				"traces, the first one under the thread's id and the n-th as <thread>~n. Each row has when the thread was "+
@@ -151,6 +170,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: listThreadsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("summarize_session",
+			readsEgo,
 			mcp.WithDescription("Get a structured summary of a session showing its invocations, tool calls, and messages "+
 				"in human-readable form. Use this to understand what an agent did during a session before running "+
 				"evaluation. It reads messages: a session whose spans carry none (a Claude Code session, whose spans hold "+
@@ -161,6 +181,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: summarizeSessionHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_session_spans",
+			readsEgo,
 			mcp.WithDescription("The spans of one session, depth first: operation, depth, when it began (ms after the first span) and "+
 				"duration. Start with errors_only: every failed span comes back with its message (the status description, the "+
 				"exception or the error attribute), its attributes, the operations above it and the attributes of its parent "+
@@ -183,6 +204,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: getSessionSpansHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("list_runs",
+			readsEgo,
 			mcp.WithDescription("List past evaluation runs (run history), most recent first. Use this to discover run "+
 				"IDs for get_run_results. Requires the ego server to be running with --session-db/"+
 				"EGO_SESSION_DB_PATH set (run history storage). A tenant-limited caller sees only the online "+
@@ -195,6 +217,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: listRunsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_run_results",
+			readsEgo,
 			mcp.WithDescription("Get the full result detail for one evaluation run: its status, summary counts, "+
 				"per-metric averages, and the per-eval-case/per-evaluator result rows (scores, pass/fail, errors). "+
 				"Use this after list_runs to inspect why a run passed or failed. Requires the ego server to "+
@@ -204,6 +227,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: getRunResultsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_usage",
+			readsEgo,
 			mcp.WithDescription("Token usage of the LLM calls ego has seen, as the Usage view shows it: input, output and "+
 				"total tokens and the call count in the window, the same split by kind (the agent or workflow), tenant, "+
 				"model or service with the largest first, and the sessions that used the most tokens. Scoped to the "+
@@ -220,6 +244,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: getUsageHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_quality",
+			readsEgo,
 			mcp.WithDescription("How the quality of your agent is doing, in one call: open regression alerts, the hourly "+
 				"mean score of every metric, how many sessions were scored, and today's judge budget. Scoped to the "+
 				"tenants you may see. Requires online evaluation to be configured on the server."),
@@ -230,6 +255,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: getQualityHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_ego_score",
+			readsEgo,
 			mcp.WithDescription("Your ego: how you are doing, as numbers you can act on, read from your own turns with no "+
 				"judge and no model call. It is for an always-on agent that online evaluation does not rate "+
 				"(get_quality has nothing for it). A turn is one wake or one prompt; it fails when any of its spans "+
@@ -253,6 +279,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: getEgoScoreHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_ego_tools",
+			readsEgo,
 			mcp.WithDescription("Your ego by tool: how each tool you called did in the window, the ones that failed most "+
 				"first (at most 40): calls, failed, failure_rate, avg_ms and the MCP server it belongs to. Use it after "+
 				"get_ego_score shows failures, to see which tool is the cause and how bad it is: a tool that fails "+
@@ -270,6 +297,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: getEgoToolsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_ego_errors",
+			readsEgo,
 			mcp.WithDescription("Your ego by error: what failed in the window, grouped by tool and error text (digits "+
 				"aside, so a changing count or port is one kind of failure), the most frequent first (at most 25): the "+
 				"tool and its server, the text the tool gave, how many times, when first and last, and the session of "+
@@ -288,6 +316,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: getEgoErrorsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("explain_regression",
+			readsEgo,
 			mcp.WithDescription("Explain a quality alert: the alert, the version or model it is attributed to, and its "+
 				"worst sessions, each with the score of every metric and the judge's evidence: per-sentence verdicts "+
 				"for hallucinations_v1 (unsupported, contradictory and disputed first), per-rubric verdicts for "+
@@ -298,6 +327,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: explainRegressionHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("explain_session",
+			readsEgo,
 			mcp.WithDescription("The judge's evidence for one scored session: the score of every metric and why, in the "+
 				"same shape as the sessions of explain_regression. Use it to look at a session you pick yourself. Only a "+
 				"session online evaluation has scored has evidence (list_sessions with scored: true); for any other, or for "+
@@ -307,6 +337,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: explainSessionHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("get_findings",
+			readsEgo,
 			mcp.WithDescription("The diagnoses written for your agent's low scores, last updated first: the failure mode, "+
 				"a summary, a suggested correction, a confidence, the evidence sessions and the corrections already "+
 				"tried (history). A finding is open until a correction names it, then corrected until ego has "+
@@ -321,6 +352,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: getFindingsHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("register_correction",
+			hints(false, false, false, false),
 			mcp.WithDescription("Record what you changed in answer to a finding. The finding becomes corrected, the "+
 				"sampler scores your next sessions first, and ego verifies on its detector ticks whether the scores "+
 				"recovered: verified resolves the finding, failed reopens it with this attempt in its history. "+
@@ -341,6 +373,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: registerCorrectionHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("label_session",
+			hints(false, false, false, false),
 			mcp.WithDescription("Record a person's verdict on a judge's score: agree or disagree with the online score of "+
 				"one metric on one session, with the score you think is right and a note. The label is the score of "+
 				"record: a score you give replaces the judge's in every mean, alert, finding and verification; an "+
@@ -364,6 +397,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 		), Handler: labelSessionHandler(b)},
 
 		server.ServerTool{Tool: mcp.NewTool("list_corrections",
+			readsEgo,
 			mcp.WithDescription("The corrections registered for your tenants, newest first, each with its verification: the "+
 				"mean score before and after, how many sessions, and when the window ends. State is pending, verified "+
 				"or failed."),
@@ -377,11 +411,13 @@ func Tools(b Backend, o Options) []server.ServerTool {
 	if o.Admin {
 		tools = append(tools,
 			server.ServerTool{Tool: mcp.NewTool("list_role_bindings",
+				readsEgo,
 				mcp.WithDescription("List all admin/member/viewer role bindings (multi-user RBAC). Requires the caller "+
 					"to be an admin, and the server to be running with --session-secret (GitHub OAuth) enabled."),
 			), Handler: listRoleBindingsHandler(b)},
 
 			server.ServerTool{Tool: mcp.NewTool("set_role_binding",
+				hints(false, true, true, false),
 				mcp.WithDescription("Create or update a role binding: grants a role (admin/member/viewer), optionally "+
 					"scoped to specific agent names, to a GitHub user or team. Pass id to update an existing binding "+
 					"in place; omit it to create a new one. Requires the caller to be an admin."),
@@ -402,12 +438,14 @@ func Tools(b Backend, o Options) []server.ServerTool {
 			), Handler: setRoleBindingHandler(b)},
 
 			server.ServerTool{Tool: mcp.NewTool("run_findings",
+				hints(false, false, false, true),
 				mcp.WithDescription("Run the findings sweep now instead of waiting for findings.every: every series with "+
 					"enough low-scoring sessions in the window and no open finding gets a diagnosis. Spends judge budget like "+
 					"a scheduled sweep. Answers what the sweep did. Requires the caller to be an admin."),
 			), Handler: runFindingsHandler(b)},
 
 			server.ServerTool{Tool: mcp.NewTool("delete_role_binding",
+				hints(false, true, true, false),
 				mcp.WithDescription("Delete a role binding by ID (from list_role_bindings). Requires the caller to be an admin."),
 				mcp.WithString("id", mcp.Required(),
 					mcp.Description("ID of the role binding to delete.")),
