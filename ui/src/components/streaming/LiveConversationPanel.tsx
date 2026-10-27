@@ -138,13 +138,23 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
     if (containerRef.current) containerRef.current.scrollTop = 0;
   }, [page]);
 
+  // Following the newest element holds only while the reader is at the bottom: one who scrolled up, or opened a turn
+  // to read it, is not carried away by the next update.
+  const atBottomRef = useRef(true);
+  const onScroll = () => {
+    const el = containerRef.current;
+    if (el) atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  };
   useEffect(() => {
-    if (autoScroll && containerRef.current) {
+    if (autoScroll && atBottomRef.current && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
   }, [sortedElements, autoScroll]);
 
   const toggleTurn = (invocationId: string, currentlyExpanded: boolean) => {
+    atBottomRef.current = false;
+    // A live session follows its newest page until the reader moves; opening a turn is moving.
+    setPickedPage((cur) => cur ?? page);
     setExpandedOverrides(prev => ({ ...prev, [invocationId]: !currentlyExpanded }));
   };
 
@@ -226,6 +236,7 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
 
       <div
         ref={containerRef}
+        onScroll={onScroll}
         style={{
           maxHeight: '600px',
           overflowY: 'auto',
