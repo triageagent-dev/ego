@@ -39,7 +39,8 @@ func ensureRubricSetsSchema(db *sql.DB) error {
 	)`); err != nil {
 		return fmt.Errorf("creating rubric_sets table: %w", err)
 	}
-	return nil
+	// Who saved the set first; a set saved before this existed has none, and the next person to save it takes it.
+	return addColumn(db, "rubric_sets", "created_by", "TEXT NOT NULL DEFAULT ''")
 }
 
 // rubricSetDTO mirrors ui/src/lib/types.ts's RubricSet. A set is a few lines of text, so the list carries them.
@@ -51,10 +52,16 @@ type rubricSetDTO struct {
 	Rubrics     []string `json:"rubrics"`
 	CreatedAt   string   `json:"createdAt"`
 	UpdatedAt   string   `json:"updatedAt"`
+	// CreatedBy is who saved the set first: only they, or an admin, change or delete it.
+	CreatedBy string `json:"createdBy,omitempty"`
 }
 
-// SaveRubricSet upserts a set by its id: a re-save overwrites the content and keeps created_at.
-func (s *SQLiteStore) SaveRubricSet(set rubricSetDTO) (rubricSetDTO, error) {
+// errNotRubricSetOwner is the refusal of a change to a set another person saved.
+var errNotRubricSetOwner = errors.New("this rubric set was saved by someone else: only they or an admin can change it")
+
+// SaveRubricSet upserts a set by its id: a re-save overwrites the content and keeps created_at and its author. by
+// is who is saving; a set that has an author is changed only by that author or, with admin, by anyone.
+func (s *SQLiteStore) SaveRubricSet(set rubricSetDTO, by string, admin bool) (rubricSetDTO, error) {
 	b, err := json.Marshal(set.Rubrics)
 	if err != nil {
 		return rubricSetDTO{}, err
@@ -62,27 +69,38 @@ func (s *SQLiteStore) SaveRubricSet(set rubricSetDTO) (rubricSetDTO, error) {
 	now := nowRFC3339()
 	// The cap is part of the insert's own statement: a new id is inserted only while there is room, an existing id
 	// is always updated, and two saves racing for the last place cannot both pass a separate count.
-	res, err := s.db.Exec(`INSERT INTO rubric_sets (rubric_set_id, name, description, kind, rubrics_json, created_at, updated_at)
-		SELECT ?, ?, ?, ?, ?, ?, ?
+	isAdmin := 0
+	if admin {
+		isAdmin = 1
+	}
+	res, err := s.db.Exec(`INSERT INTO rubric_sets (rubric_set_id, name, description, kind, rubrics_json, created_at, updated_at, created_by)
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?
 		WHERE EXISTS (SELECT 1 FROM rubric_sets WHERE rubric_set_id = ?) OR (SELECT COUNT(*) FROM rubric_sets) < ?
 		ON CONFLICT(rubric_set_id) DO UPDATE SET
 			name = excluded.name,
 			description = excluded.description,
 			kind = excluded.kind,
 			rubrics_json = excluded.rubrics_json,
-			updated_at = excluded.updated_at`,
-		set.RubricSetID, set.Name, set.Description, set.Kind, string(b), now, now, set.RubricSetID, maxRubricSets)
+			updated_at = excluded.updated_at,
+			created_by = CASE WHEN rubric_sets.created_by = '' THEN excluded.created_by ELSE rubric_sets.created_by END
+		WHERE rubric_sets.created_by = '' OR rubric_sets.created_by = excluded.created_by OR ? = 1`,
+		set.RubricSetID, set.Name, set.Description, set.Kind, string(b), now, now, by, set.RubricSetID, maxRubricSets, isAdmin)
 	if err != nil {
 		return rubricSetDTO{}, err
 	}
 	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		// Nothing was written: either the set is another person's, or it is new and there is no room.
+		var exists int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM rubric_sets WHERE rubric_set_id = ?`, set.RubricSetID).Scan(&exists); err == nil && exists > 0 {
+			return rubricSetDTO{}, errNotRubricSetOwner
+		}
 		return rubricSetDTO{}, errTooManyRubricSets
 	}
-	created := now
-	if err := s.db.QueryRow(`SELECT created_at FROM rubric_sets WHERE rubric_set_id = ?`, set.RubricSetID).Scan(&created); err != nil {
+	created, author := now, ""
+	if err := s.db.QueryRow(`SELECT created_at, created_by FROM rubric_sets WHERE rubric_set_id = ?`, set.RubricSetID).Scan(&created, &author); err != nil {
 		return rubricSetDTO{}, err
 	}
-	set.CreatedAt, set.UpdatedAt = created, now
+	set.CreatedAt, set.UpdatedAt, set.CreatedBy = created, now, author
 	return set, nil
 }
 
@@ -90,7 +108,7 @@ func scanRubricSet(row interface{ Scan(...any) error }) (rubricSetDTO, error) {
 	var set rubricSetDTO
 	var desc sql.NullString
 	var rubrics string
-	if err := row.Scan(&set.RubricSetID, &set.Name, &desc, &set.Kind, &rubrics, &set.CreatedAt, &set.UpdatedAt); err != nil {
+	if err := row.Scan(&set.RubricSetID, &set.Name, &desc, &set.Kind, &rubrics, &set.CreatedAt, &set.UpdatedAt, &set.CreatedBy); err != nil {
 		return rubricSetDTO{}, err
 	}
 	set.Description = desc.String
@@ -100,7 +118,7 @@ func scanRubricSet(row interface{ Scan(...any) error }) (rubricSetDTO, error) {
 	return set, nil
 }
 
-const rubricSetColumns = `rubric_set_id, name, description, kind, rubrics_json, created_at, updated_at`
+const rubricSetColumns = `rubric_set_id, name, description, kind, rubrics_json, created_at, updated_at, created_by`
 
 // ListRubricSets returns the sets newest-updated first; a non-empty kind keeps only that kind.
 func (s *SQLiteStore) ListRubricSets(kind string) ([]rubricSetDTO, error) {
@@ -136,11 +154,21 @@ func (s *SQLiteStore) GetRubricSet(id string) (rubricSetDTO, bool, error) {
 }
 
 // DeleteRubricSet removes a set; ok is false when there was none.
-func (s *SQLiteStore) DeleteRubricSet(id string) (bool, error) {
-	res, err := s.db.Exec(`DELETE FROM rubric_sets WHERE rubric_set_id = ?`, id)
+func (s *SQLiteStore) DeleteRubricSet(id, by string, admin bool) (bool, error) {
+	isAdmin := 0
+	if admin {
+		isAdmin = 1
+	}
+	res, err := s.db.Exec(`DELETE FROM rubric_sets WHERE rubric_set_id = ? AND (created_by = '' OR created_by = ? OR ? = 1)`, id, by, isAdmin)
 	if err != nil {
 		return false, err
 	}
-	n, _ := res.RowsAffected()
-	return n > 0, nil
+	if n, _ := res.RowsAffected(); n > 0 {
+		return true, nil
+	}
+	var exists int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM rubric_sets WHERE rubric_set_id = ?`, id).Scan(&exists); err == nil && exists > 0 {
+		return false, errNotRubricSetOwner
+	}
+	return false, nil
 }

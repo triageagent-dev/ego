@@ -260,6 +260,8 @@ export interface RubricSet {
   rubrics: string[];
   createdAt: string;
   updatedAt: string;
+  // Who saved the set first; only they, or an admin, change or delete it.
+  createdBy?: string;
 }
 
 // EvalSet types

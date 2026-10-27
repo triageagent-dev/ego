@@ -102,9 +102,13 @@ func rubricSetsHandler(store *SQLiteStore) http.HandlerFunc {
 			if set.RubricSetID == "" {
 				set.RubricSetID = newRubricSetID()
 			}
-			saved, err := store.SaveRubricSet(set)
+			saved, err := store.SaveRubricSet(set, callerName(r.Context()), roleInfoOrOpen(r.Context()).IsAdmin)
 			if err == errTooManyRubricSets {
 				writeEvaluateError(w, http.StatusConflict, err.Error())
+				return
+			}
+			if err == errNotRubricSetOwner {
+				writeEvaluateError(w, http.StatusForbidden, err.Error())
 				return
 			}
 			if err != nil {
@@ -146,7 +150,11 @@ func rubricSetHandler(store *SQLiteStore) http.HandlerFunc {
 				writeEvaluateError(w, http.StatusForbidden, "this role cannot delete rubric sets")
 				return
 			}
-			ok, err := store.DeleteRubricSet(id)
+			ok, err := store.DeleteRubricSet(id, callerName(r.Context()), roleInfoOrOpen(r.Context()).IsAdmin)
+			if err == errNotRubricSetOwner {
+				writeEvaluateError(w, http.StatusForbidden, err.Error())
+				return
+			}
 			if err != nil {
 				writeEvaluateError(w, http.StatusInternalServerError, "failed to delete rubric set: "+err.Error())
 				return
