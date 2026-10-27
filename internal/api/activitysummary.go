@@ -1,7 +1,11 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"sort"
@@ -348,9 +352,60 @@ func egoErrors(store *SessionStore, info RoleInfo, q mcptools.ActivityQuery) []m
 	return out
 }
 
+// errEgoBusy is the answer of an ego tool while all the places to build an answer are taken.
+var errEgoBusy = errors.New("busy: try again in a moment")
+
+// egoAnswer is the one way an answer about an agent's turns is made, for the REST route and the MCP tools alike:
+// the JSON of build's answer for the caller's role, from the short cache while nothing in the store has changed, and
+// otherwise built in one of the few places there are (busy is true when they are all taken). Each build walks the
+// archive under the store lock, so neither door may skip the cache or the gate. The key is a hash of the query, as
+// the query values come from the caller and are not short.
+func egoAnswer(store *SessionStore, what string, info RoleInfo, q mcptools.ActivityQuery, build func(*SessionStore, RoleInfo, mcptools.ActivityQuery) any) (body []byte, busy bool, err error) {
+	if store == nil || store.egoReads == nil {
+		body, err = json.Marshal(build(store, info, q))
+		return body, false, err
+	}
+	h := sha256.New()
+	for _, part := range []string{what, roleKey(info), q.Agent, q.Tenant, q.Session, q.By, strconv.Itoa(q.Limit), strconv.Itoa(q.Hours), strconv.FormatUint(store.changes(), 10)} {
+		fmt.Fprintf(h, "%d:%s|", len(part), part)
+	}
+	key := hex.EncodeToString(h.Sum(nil))
+	c := store.egoReads
+	if body, ok := c.get(key); ok {
+		return body, false, nil
+	}
+	if !c.acquire() {
+		return nil, true, nil
+	}
+	defer c.release()
+	if body, err = json.Marshal(build(store, info, q)); err != nil {
+		return nil, false, err
+	}
+	c.put(key, body)
+	return body, false, nil
+}
+
+// egoTyped is egoAnswer for the MCP tools, which want the rows and not their JSON.
+func egoTyped[T any](store *SessionStore, what string, info RoleInfo, q mcptools.ActivityQuery, build func(*SessionStore, RoleInfo, mcptools.ActivityQuery) []T) ([]T, error) {
+	body, busy, err := egoAnswer(store, what, info, q, func(s *SessionStore, i RoleInfo, q mcptools.ActivityQuery) any { return build(s, i, q) })
+	if busy {
+		return nil, errEgoBusy
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []T
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []T{}
+	}
+	return out, nil
+}
+
 // egoHandler serves GET /api/activity/<what>?agent=&tenant=&hours=: the answer build gives for the caller's role.
 func egoHandler(store *SessionStore, what string, build func(*SessionStore, RoleInfo, mcptools.ActivityQuery) any) http.HandlerFunc {
-	cache := newReadCache()
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -381,27 +436,18 @@ func egoHandler(store *SessionStore, what string, build func(*SessionStore, Role
 			}
 			q.Hours = n
 		}
-		info := roleInfoOrOpen(r.Context())
-		key := what + "|" + roleKey(info) + "|" + q.Agent + "|" + q.Tenant + "|" + q.Session + "|" + q.By + "|" + strconv.Itoa(q.Limit) + "|" + strconv.Itoa(q.Hours) + "|" + strconv.FormatUint(store.changes(), 10)
-		w.Header().Set("Content-Type", "application/json")
-		if body, ok := cache.get(key); ok {
-			_, _ = w.Write(body)
-			return
-		}
-		if !cache.acquire() {
+		body, busy, err := egoAnswer(store, what, roleInfoOrOpen(r.Context()), q, build)
+		if busy {
 			w.Header().Set("Retry-After", "2")
 			writeEvaluateError(w, http.StatusTooManyRequests, "busy: try again in a moment")
 			return
 		}
-		defer cache.release()
-		body, err := json.Marshal(map[string]any{"data": build(store, info, q), "error": nil})
 		if err != nil {
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to encode the answer")
 			return
 		}
-		body = append(body, '\n')
-		cache.put(key, body)
-		_, _ = w.Write(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(append(append([]byte(`{"data":`), body...), []byte(",\"error\":null}\n")...))
 	}
 }
 

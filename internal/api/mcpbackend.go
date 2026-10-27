@@ -255,15 +255,15 @@ func (b *mcpBackend) DeleteRoleBinding(ctx context.Context, id string) (map[stri
 }
 
 func (b *mcpBackend) EgoScore(ctx context.Context, q mcptools.ActivityQuery) ([]mcptools.TurnScore, error) {
-	return turnScores(b.sessions, roleInfoOrOpen(ctx), q), nil
+	return egoTyped(b.sessions, "score", roleInfoOrOpen(ctx), q, turnScores)
 }
 
 func (b *mcpBackend) EgoTools(ctx context.Context, q mcptools.ActivityQuery) ([]mcptools.EgoTools, error) {
-	return egoTools(b.sessions, roleInfoOrOpen(ctx), q), nil
+	return egoTyped(b.sessions, "tools", roleInfoOrOpen(ctx), q, egoTools)
 }
 
 func (b *mcpBackend) EgoErrors(ctx context.Context, q mcptools.ActivityQuery) ([]mcptools.EgoErrors, error) {
-	return egoErrors(b.sessions, roleInfoOrOpen(ctx), q), nil
+	return egoTyped(b.sessions, "errors", roleInfoOrOpen(ctx), q, egoErrors)
 }
 
 func (b *mcpBackend) Quality(ctx context.Context, kind string, hours int) (*mcptools.Quality, error) {

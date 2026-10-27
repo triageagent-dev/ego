@@ -1,7 +1,11 @@
 package api
 
 import (
+	"context"
+	"fmt"
 	"math"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/triageagent-dev/ego/internal/mcptools"
@@ -142,5 +146,90 @@ func TestScoreRowsBySessionAndPeriod(t *testing.T) {
 	}
 	if only := onlySession(res, "s~2"); len(only.Turns) != 1 {
 		t.Fatalf("only a session: %d", len(only.Turns))
+	}
+}
+
+// The answers about an agent's own turns are cached for a few seconds and built a few at a time, whichever door they
+// come in by; the cache key does not grow with the query.
+func TestEgoAnswerCachesGatesAndKeepsAShortKey(t *testing.T) {
+	store := NewSessionStore(nil)
+	info := RoleInfo{}
+	builds := 0
+	build := func(*SessionStore, RoleInfo, mcptools.ActivityQuery) any { builds++; return []string{"row"} }
+	q := mcptools.ActivityQuery{Agent: "alpha", Hours: 24}
+
+	for i := 0; i < 3; i++ {
+		if _, busy, err := egoAnswer(store, "score", info, q, build); busy || err != nil {
+			t.Fatalf("busy %v err %v", busy, err)
+		}
+	}
+	if builds != 1 {
+		t.Errorf("%d builds for three identical questions, want 1 (the others from the cache)", builds)
+	}
+	store.Ingest(agentTracesBody("s1", "aaaa", "s1", "a"))
+	egoAnswer(store, "score", info, q, build)
+	if builds != 2 {
+		t.Errorf("%d builds after the store changed, want 2", builds)
+	}
+
+	// A query value is the caller's; a megabyte of it must not become a megabyte of key, 256 times over.
+	huge := q
+	huge.Agent = strings.Repeat("a", 1<<20)
+	egoAnswer(store, "score", info, huge, build)
+	store.egoReads.mu.Lock()
+	for key := range store.egoReads.m {
+		if len(key) > 64 {
+			t.Errorf("a cache key is %d bytes, want a fixed-size hash", len(key))
+		}
+	}
+	store.egoReads.mu.Unlock()
+
+	// Two builds at once is all there is room for.
+	release := make(chan struct{})
+	started := make(chan struct{}, 2)
+	slow := func(*SessionStore, RoleInfo, mcptools.ActivityQuery) any {
+		started <- struct{}{}
+		<-release
+		return []string{}
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < readConcurrency; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			egoAnswer(store, "score", info, mcptools.ActivityQuery{Agent: fmt.Sprint("slow", i), Hours: 24}, slow)
+		}(i)
+	}
+	for i := 0; i < readConcurrency; i++ {
+		<-started
+	}
+	if _, busy, _ := egoAnswer(store, "score", info, mcptools.ActivityQuery{Agent: "one more", Hours: 24}, build); !busy {
+		t.Error("a third build was started while two were running")
+	}
+	close(release)
+	wg.Wait()
+}
+
+// The MCP tools are subject to the same gate as the REST routes.
+func TestEgoToolsOverMCPAreGated(t *testing.T) {
+	store := NewSessionStore(nil)
+	b := &mcpBackend{sessions: store}
+	for i := 0; i < readConcurrency; i++ {
+		if !store.egoReads.acquire() {
+			t.Fatal("could not take a place")
+		}
+	}
+	q := mcptools.ActivityQuery{Hours: 24, By: mcptools.ScoreByAgent, Limit: 10}
+	if _, err := b.EgoScore(context.Background(), q); err != errEgoBusy {
+		t.Errorf("get_ego_score with every place taken = %v, want the busy answer", err)
+	}
+	if _, err := b.EgoErrors(context.Background(), q); err != errEgoBusy {
+		t.Errorf("get_ego_errors with every place taken = %v, want the busy answer", err)
+	}
+	for i := 0; i < readConcurrency; i++ {
+		store.egoReads.release()
+	}
+	if rows, err := b.EgoTools(context.Background(), q); err != nil || rows == nil {
+		t.Errorf("get_ego_tools with room = %v, %v; want an answer", rows, err)
 	}
 }
