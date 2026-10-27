@@ -22,7 +22,7 @@ func ParseJSONLSpans(content []byte) ([]*tracepkg.Trace, error) {
 		if err := json.Unmarshal(line, &spanData); err != nil {
 			return nil, fmt.Errorf("parsing OTLP JSONL line %d: %w", i+1, err)
 		}
-		spans = append(spans, parseSpan(spanData, nil, "", "", ""))
+		spans = append(spans, parseSpan(spanData, nil, "", "", "", nil))
 	}
 	return buildTraces(spans), nil
 }

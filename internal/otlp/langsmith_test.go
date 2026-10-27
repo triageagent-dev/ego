@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"reflect"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/triageagent-dev/ego/internal/adk"
@@ -67,7 +69,7 @@ func lsSpan(parent string, tags tagMap) *tracepkg.Span {
 
 func TestLangSmithOnlyTouchesLangSmithSpans(t *testing.T) {
 	s := lsSpan("", tagMap{"gen_ai.prompt": `{"messages":[["user","hi"]]}`, "langsmith.metadata.thread_id": "x"})
-	normalizeLangSmith(s)
+	normalizeLangSmith(s, nil)
 	if _, ok := s.Tags[attrConversationID]; ok || len(s.Tags) != 2 {
 		t.Errorf("a span without langsmith.span.kind was changed: %v", s.Tags)
 	}
@@ -82,7 +84,7 @@ func TestLangSmithFillsGapsOnly(t *testing.T) {
 		"gen_ai.conversation.id":       "mine",
 		"langsmith.metadata.thread_id": "other",
 	})
-	normalizeLangSmith(s)
+	normalizeLangSmith(s, nil)
 	if s.Tags["gen_ai.input.messages"] != `[{"role":"user","content":"kept"}]` || s.Tags[attrConversationID] != "mine" || s.Tags[attrRequestModel] != "gpt-x" {
 		t.Errorf("a value the sender set was replaced: %v", s.Tags)
 	}
@@ -90,12 +92,12 @@ func TestLangSmithFillsGapsOnly(t *testing.T) {
 
 func TestLangSmithLLMWithoutModelStillCounts(t *testing.T) {
 	s := lsSpan("p", tagMap{langSmithKind: "llm", "gen_ai.prompt": `{"messages":[[{"role":"user","content":"hi"}]]}`})
-	normalizeLangSmith(s)
+	normalizeLangSmith(s, nil)
 	if s.Tags[attrRequestModel] != "unknown" {
 		t.Errorf("model = %v, want the unknown sentinel so the span is an LLM call", s.Tags[attrRequestModel])
 	}
 	s = lsSpan("p", tagMap{langSmithKind: "llm", "langsmith.metadata.ls_model_name": "from-metadata"})
-	normalizeLangSmith(s)
+	normalizeLangSmith(s, nil)
 	if s.Tags[attrRequestModel] != "from-metadata" {
 		t.Errorf("model = %v, want the metadata's", s.Tags[attrRequestModel])
 	}
@@ -114,7 +116,7 @@ func TestLangSmithRootTakesTheLastTurn(t *testing.T) {
 	}
 	for _, c := range cases {
 		s := lsSpan("", tagMap{langSmithKind: "chain", "gen_ai.operation.name": "chain", "gen_ai.prompt": state, "gen_ai.completion": c.completion})
-		normalizeLangSmith(s)
+		normalizeLangSmith(s, nil)
 		if s.Tags[attrInputValue] != "second question" {
 			t.Errorf("%s: input = %v, want the latest user message, not the history", c.name, s.Tags[attrInputValue])
 		}
@@ -128,7 +130,7 @@ func TestLangSmithRootTakesTheLastTurn(t *testing.T) {
 	}
 
 	child := lsSpan("parent", tagMap{langSmithKind: "chain", "gen_ai.operation.name": "chain", "gen_ai.prompt": state})
-	normalizeLangSmith(child)
+	normalizeLangSmith(child, nil)
 	if _, ok := child.Tags[attrInputValue]; ok || child.Tags[attrOperationName] != "chain" {
 		t.Errorf("a node run was made an invocation: %v", child.Tags)
 	}
@@ -166,9 +168,9 @@ func TestLangSmithMessageShapes(t *testing.T) {
 	for _, tc := range tests {
 		var got []map[string]any
 		if tc.in {
-			got = lsInputMessages(tc.payload)
+			got = lsInputMessages(lsDecode(tc.payload, nil))
 		} else {
-			got = lsOutputMessages(tc.payload)
+			got = lsOutputMessages(lsDecode(tc.payload, nil))
 		}
 		if !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%s:\n got  %v\n want %v", tc.name, got, tc.want)
@@ -182,14 +184,14 @@ func TestLangSmithToolRun(t *testing.T) {
 		"gen_ai.prompt":     `{"city":"Paris"}`,
 		"gen_ai.completion": `{"output":{"content":"sunny","type":"tool","name":"w","tool_call_id":"c1","status":"success"}}`,
 	})
-	normalizeLangSmith(s)
+	normalizeLangSmith(s, nil)
 	if s.Tags[attrToolArguments] != `{"city":"Paris"}` || s.Tags[attrToolResult] != "sunny" {
 		t.Errorf("tool tags = %v", s.Tags)
 	}
 
 	s = lsSpan("p", tagMap{langSmithKind: "tool", "gen_ai.prompt": `{"input":"{\"q\": 1}"}`,
 		"gen_ai.completion": `{"output":{"content":"boom","type":"tool","status":"error"}}`})
-	normalizeLangSmith(s)
+	normalizeLangSmith(s, nil)
 	if s.Tags[attrToolArguments] != `{"q":1}` {
 		t.Errorf("a single string argument holding JSON was not unwrapped: %v", s.Tags[attrToolArguments])
 	}
@@ -198,7 +200,7 @@ func TestLangSmithToolRun(t *testing.T) {
 	}
 
 	s = lsSpan("p", tagMap{langSmithKind: "tool", "gen_ai.prompt": `{"input":"plain text"}`, "gen_ai.completion": `{"output":"done"}`})
-	normalizeLangSmith(s)
+	normalizeLangSmith(s, nil)
 	if s.Tags[attrToolArguments] != `{"input":"plain text"}` || s.Tags[attrToolResult] != "done" {
 		t.Errorf("tool tags = %v", s.Tags)
 	}
@@ -216,7 +218,7 @@ func TestLangSmithConversationIDFromMetadata(t *testing.T) {
 		{"the project is not a conversation", tagMap{langSmithKind: "chain", "langsmith.trace.session_id": "project", "langsmith.trace.session_name": "default"}, nil},
 	} {
 		s := lsSpan("p", tc.tags)
-		normalizeLangSmith(s)
+		normalizeLangSmith(s, nil)
 		if got := s.Tags[attrConversationID]; got != tc.want {
 			t.Errorf("%s: conversation id = %v, want %v", tc.name, got, tc.want)
 		}
@@ -259,5 +261,49 @@ func TestLangSmithRootWithARemoteParentStillConverts(t *testing.T) {
 	}
 	if meta := adk.ExtractTraceMetadata(tr, res.Invocations); meta.AgentName != "LangGraph" {
 		t.Errorf("agent = %q, want the run's name", meta.AgentName)
+	}
+}
+
+func allocated(f func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	f()
+	runtime.ReadMemStats(&after)
+	return after.TotalAlloc - before.TotalAlloc
+}
+
+// A sender can put a megabyte of tiny elements in an attribute: decoded into generic values it takes dozens of times
+// its size. Such a payload is left undecoded, and decoding it is cheap.
+func TestLangSmithDoesNotDecodeAnAmplifyingPayload(t *testing.T) {
+	hostile := "[" + strings.Repeat("0,", 400_000) + "0]" // 800 KB, 400000 elements
+	tooBig := `{"messages":[["user","` + strings.Repeat("a", maxPayloadBytes) + `"]]}`
+	for name, payload := range map[string]string{"many elements": hostile, "over the size": tooBig} {
+		s := lsSpan("p", tagMap{langSmithKind: "llm", "gen_ai.prompt": payload, "gen_ai.completion": payload})
+		bytes := allocated(func() { normalizeLangSmith(s, newDecodeBudget()) })
+		if _, ok := s.Tags[attrInputMessages]; ok {
+			t.Errorf("%s: a payload over the limits was decoded into messages", name)
+		}
+		if bytes > 8<<20 {
+			t.Errorf("%s: normalising allocated %d MiB, want next to nothing", name, bytes>>20)
+		}
+	}
+}
+
+// One request may decode only so much, whatever the number of spans in it.
+func TestLangSmithSharesOneBudgetAcrossARequest(t *testing.T) {
+	// 900 KB of text in one message: within the limit for a payload, and a budget of 4 MiB fits four of them.
+	payload := `{"messages":[["user","` + strings.Repeat("a", 900_000) + `"]]}`
+	budget := newDecodeBudget()
+	translated := 0
+	for i := 0; i < 8; i++ {
+		s := lsSpan("p", tagMap{langSmithKind: "llm", "gen_ai.prompt": payload})
+		normalizeLangSmith(s, budget)
+		if _, ok := s.Tags[attrInputMessages]; ok {
+			translated++
+		}
+	}
+	if translated != 4 {
+		t.Errorf("%d of 8 payloads translated, want the 4 that fit the request's budget", translated)
 	}
 }

@@ -7,6 +7,13 @@ import (
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 )
 
+// The most a span attribute may hold to be decoded for conversion. A model request with a long history is a few
+// megabytes; a sender can put 16 MiB of tiny elements in an attribute, which decodes to many times its size.
+const (
+	maxAttrJSONBytes    = 8 << 20
+	maxAttrJSONElements = 500_000
+)
+
 // parseJSON decodes raw into a generic JSON value. raw may already be a decoded map/slice (as produced by Go's
 // own json.Unmarshal of the surrounding tag), or a string containing embedded JSON (.
 func parseJSON(raw any) any {
@@ -14,6 +21,9 @@ func parseJSON(raw any) any {
 	case nil:
 		return nil
 	case string:
+		if !tracepkg.JSONFits(v, maxAttrJSONBytes, maxAttrJSONElements) {
+			return nil
+		}
 		var out any
 		if err := json.Unmarshal([]byte(v), &out); err != nil {
 			return nil
@@ -387,6 +397,9 @@ func parseToolResponseContent(content any) map[string]any {
 	switch v := content.(type) {
 	case string:
 		var parsed any
+		if !tracepkg.JSONFits(v, maxAttrJSONBytes, maxAttrJSONElements) {
+			return map[string]any{"result": v}
+		}
 		if err := json.Unmarshal([]byte(v), &parsed); err == nil {
 			if m, ok := parsed.(map[string]any); ok {
 				return m

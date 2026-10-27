@@ -29,7 +29,7 @@ const (
 	attrResponseModel  = "gen_ai.response.model"
 )
 
-func normalizeLangSmith(span *tracepkg.Span) {
+func normalizeLangSmith(span *tracepkg.Span, b *decodeBudget) {
 	kind, _ := span.Tags[langSmithKind].(string)
 	if kind == "" {
 		return
@@ -49,26 +49,26 @@ func normalizeLangSmith(span *tracepkg.Span) {
 
 	switch kind {
 	case "llm":
-		normalizeLangSmithLLM(tags)
+		normalizeLangSmithLLM(tags, b)
 	case "tool":
-		normalizeLangSmithTool(tags)
+		normalizeLangSmithTool(tags, b)
 	case "chain":
 		if span.ParentSpanID == "" {
-			normalizeLangSmithRoot(span)
+			normalizeLangSmithRoot(span, b)
 		}
 	}
 }
 
 // normalizeLangSmithRoot makes a trace's root run the agent invocation, with the turn's user message and answer
 // read from the graph's state.
-func normalizeLangSmithRoot(span *tracepkg.Span) {
+func normalizeLangSmithRoot(span *tracepkg.Span, b *decodeBudget) {
 	tags := span.Tags
 	if op, _ := tags[attrOperationName].(string); op == "" || op == "chain" {
 		tags[attrOperationName] = "invoke_agent"
 	}
 	setIfAbsent(tags, attrAgentName, span.OperationName)
 
-	if msgs := lsInputMessages(tags[attrPrompt]); len(msgs) > 0 {
+	if msgs := lsInputMessages(lsDecode(tags[attrPrompt], b)); len(msgs) > 0 {
 		for i := len(msgs) - 1; i >= 0; i-- {
 			if text := lsText(msgs[i]); msgs[i]["role"] == "user" && text != "" {
 				setIfAbsent(tags, attrInputValue, text)
@@ -77,7 +77,7 @@ func normalizeLangSmithRoot(span *tracepkg.Span) {
 		}
 	}
 	// The last message of the final state is the answer; an earlier assistant message belongs to an earlier turn.
-	if msgs := lsOutputMessages(tags[attrCompletion]); len(msgs) > 0 {
+	if msgs := lsOutputMessages(lsDecode(tags[attrCompletion], b)); len(msgs) > 0 {
 		last := msgs[len(msgs)-1]
 		if text := lsText(last); last["role"] == "assistant" && text != "" {
 			setIfAbsent(tags, attrOutputValue, text)
@@ -85,7 +85,7 @@ func normalizeLangSmithRoot(span *tracepkg.Span) {
 	}
 }
 
-func normalizeLangSmithLLM(tags map[string]any) {
+func normalizeLangSmithLLM(tags map[string]any, b *decodeBudget) {
 	// A span is an LLM call to ego when it names a model; LangSmith leaves the name out when the model class
 	// does not report one, and the call must still count.
 	model, _ := tags[attrRequestModel].(string)
@@ -101,27 +101,27 @@ func normalizeLangSmithLLM(tags map[string]any) {
 	setIfAbsent(tags, attrRequestModel, model)
 
 	if absent(tags, attrInputMessages) {
-		if msgs := lsInputMessages(tags[attrPrompt]); len(msgs) > 0 {
+		if msgs := lsInputMessages(lsDecode(tags[attrPrompt], b)); len(msgs) > 0 {
 			tags[attrInputMessages] = jsonString(msgs)
 		}
 	}
 	if absent(tags, attrOutputMessages) {
-		if msgs := lsOutputMessages(tags[attrCompletion]); len(msgs) > 0 {
+		if msgs := lsOutputMessages(lsDecode(tags[attrCompletion], b)); len(msgs) > 0 {
 			tags[attrOutputMessages] = jsonString(msgs)
 		}
 	}
 }
 
-func normalizeLangSmithTool(tags map[string]any) {
+func normalizeLangSmithTool(tags map[string]any, b *decodeBudget) {
 	setIfAbsent(tags, attrOperationName, "execute_tool")
 
 	if absent(tags, attrToolArguments) {
-		if args := lsToolArguments(tags[attrPrompt]); args != nil {
+		if args := lsToolArguments(lsDecode(tags[attrPrompt], b)); args != nil {
 			tags[attrToolArguments] = jsonString(args)
 		}
 	}
 	if absent(tags, attrToolResult) {
-		if res, ok := lsToolResult(tags[attrCompletion]); ok {
+		if res, ok := lsToolResult(lsDecode(tags[attrCompletion], b)); ok {
 			tags[attrToolResult] = res
 		}
 	}
@@ -129,8 +129,7 @@ func normalizeLangSmithTool(tags map[string]any) {
 
 // lsToolArguments reads a tool run's input. LangChain passes the arguments as an object; a tool called with a
 // single string argument arrives as {"input": "..."} and that string may itself be a JSON object.
-func lsToolArguments(raw any) map[string]any {
-	v := lsPayload(raw)
+func lsToolArguments(v any) map[string]any {
 	m, ok := v.(map[string]any)
 	if !ok {
 		if v == nil {
@@ -140,7 +139,7 @@ func lsToolArguments(raw any) map[string]any {
 	}
 	if s, isStr := m["input"].(string); isStr && len(m) == 1 {
 		var inner map[string]any
-		if json.Unmarshal([]byte(s), &inner) == nil {
+		if tracepkg.JSONFits(s, maxPayloadBytes, maxPayloadElements) && json.Unmarshal([]byte(s), &inner) == nil {
 			return inner
 		}
 	}
@@ -149,8 +148,7 @@ func lsToolArguments(raw any) map[string]any {
 
 // lsToolResult returns the tool run's output as the text ego stores for a tool result. A ToolMessage with
 // status "error" is a failed call and says so the way an MCP tool result does.
-func lsToolResult(raw any) (string, bool) {
-	v := lsPayload(raw)
+func lsToolResult(v any) (string, bool) {
 	if v == nil {
 		return "", false
 	}
@@ -177,10 +175,37 @@ func lsToolResult(raw any) (string, bool) {
 	return text, true
 }
 
-// lsPayload decodes the JSON a run's input or output was sent as.
-func lsPayload(raw any) any {
+// What a payload may cost to decode. A run's input or output is a conversation, rarely over a few hundred kilobytes;
+// a decoded value takes many times the room of its text, so a payload over the size or element limit is left as it
+// came, and one request may not decode more than maxRequestDecode bytes of them whatever their number.
+const (
+	maxPayloadBytes    = 1 << 20
+	maxPayloadElements = 100_000
+	maxRequestDecode   = 4 << 20
+)
+
+// decodeBudget is what one request may still decode. A nil budget has no limit of its own (a trace file read by
+// the CLI is the operator's); the limits on a single payload apply all the same.
+type decodeBudget struct{ left int }
+
+func newDecodeBudget() *decodeBudget { return &decodeBudget{left: maxRequestDecode} }
+
+func (b *decodeBudget) take(n int) bool {
+	if b == nil {
+		return true
+	}
+	if n > b.left {
+		return false
+	}
+	b.left -= n
+	return true
+}
+
+// lsDecode decodes the JSON a run's input or output was sent as; nil when it is not JSON, is too big to decode or
+// would use more than the request's share.
+func lsDecode(raw any, b *decodeBudget) any {
 	s, ok := raw.(string)
-	if !ok || strings.TrimSpace(s) == "" {
+	if !ok || strings.TrimSpace(s) == "" || !tracepkg.JSONFits(s, maxPayloadBytes, maxPayloadElements) || !b.take(len(s)) {
 		return nil
 	}
 	var v any
@@ -192,8 +217,8 @@ func lsPayload(raw any) any {
 
 // lsInputMessages reads the messages a run was given: a graph's state, a chat model's batch of messages, or a
 // string prompt.
-func lsInputMessages(raw any) []map[string]any {
-	switch v := lsPayload(raw).(type) {
+func lsInputMessages(payload any) []map[string]any {
+	switch v := payload.(type) {
 	case map[string]any:
 		if m, ok := v["messages"]; ok {
 			return lsMessages(m)
@@ -212,8 +237,8 @@ func lsInputMessages(raw any) []map[string]any {
 
 // lsOutputMessages reads what a run returned: a chat model's generations, a graph's state, an OpenAI-style
 // response, or a single message or string.
-func lsOutputMessages(raw any) []map[string]any {
-	switch v := lsPayload(raw).(type) {
+func lsOutputMessages(payload any) []map[string]any {
+	switch v := payload.(type) {
 	case map[string]any:
 		if gens, ok := v["generations"].([]any); ok {
 			for _, batch := range gens {
@@ -433,7 +458,7 @@ func lsArgs(v any) map[string]any {
 		return x
 	case string:
 		var m map[string]any
-		if json.Unmarshal([]byte(x), &m) == nil {
+		if tracepkg.JSONFits(x, maxPayloadBytes, maxPayloadElements) && json.Unmarshal([]byte(x), &m) == nil {
 			return m
 		}
 	}

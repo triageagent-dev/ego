@@ -14,6 +14,7 @@ const (
 // protobuf via DecodeProtobufTraces) into ego's normalized Trace/Span model, grouping spans by trace ID.
 func ParseExportRequest(body map[string]any) []*tracepkg.Trace {
 	var allSpans []*tracepkg.Span
+	budget := newDecodeBudget()
 
 	for _, rs := range asSlice(body["resourceSpans"]) {
 		resourceSpan := asMap(rs)
@@ -33,7 +34,7 @@ func ParseExportRequest(body map[string]any) []*tracepkg.Trace {
 
 			for _, sd := range asSlice(scopeSpan["spans"]) {
 				spanData := asMap(sd)
-				allSpans = append(allSpans, parseSpan(spanData, resourceAttrs, scopeName, scopeVersion, schemaURL))
+				allSpans = append(allSpans, parseSpan(spanData, resourceAttrs, scopeName, scopeVersion, schemaURL, budget))
 			}
 		}
 	}
@@ -43,7 +44,7 @@ func ParseExportRequest(body map[string]any) []*tracepkg.Trace {
 
 // parseSpan converts one OTLP JSON span dict to a normalized Span. Resource attributes are merged in last and
 // win on key collision.update(resource_attrs).
-func parseSpan(spanData map[string]any, resourceAttrs map[string]any, scopeName, scopeVersion, schemaURL string) *tracepkg.Span {
+func parseSpan(spanData map[string]any, resourceAttrs map[string]any, scopeName, scopeVersion, schemaURL string, budget *decodeBudget) *tracepkg.Span {
 	attrs := decodeAttributes(asSlice(spanData["attributes"]))
 
 	if scopeName != "" {
@@ -105,7 +106,7 @@ func parseSpan(spanData map[string]any, resourceAttrs map[string]any, scopeName,
 		Tags:          attrs,
 	}
 	normalizeClaudeCode(span)
-	normalizeLangSmith(span)
+	normalizeLangSmith(span, budget)
 	return span
 }
 

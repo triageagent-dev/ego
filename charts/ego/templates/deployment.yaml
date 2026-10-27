@@ -73,6 +73,10 @@ spec:
             - --online-config=/etc/ego/online.json
             {{- end }}
           env:
+            {{- if .Values.goMemLimit }}
+            - name: GOMEMLIMIT
+              value: {{ .Values.goMemLimit | quote }}
+            {{- end }}
             {{- if .Values.otlpAuth.enabled }}
             - name: EGO_OTLP_TOKEN
               valueFrom:

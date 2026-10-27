@@ -79,6 +79,11 @@ jevSecret: ego-jev
 
 extraEnv: []
 
+# The soft memory limit of the Go runtime: near it the collector works harder before the pod reaches its limit and is
+# killed, which matters when a sender posts a large batch that decodes to many times its size. About 80% of
+# resources.limits.memory; empty turns it off.
+goMemLimit: 400MiB
+
 resources:
   requests:
     cpu: 25m
