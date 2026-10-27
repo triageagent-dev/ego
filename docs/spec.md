@@ -23,7 +23,7 @@ Persistence is optional. Without a session database, ego keeps the newest sessio
 
 ## Ingest and sessions
 
-Traces arrive as OTLP over HTTP (`POST /v1/traces`, gzip accepted) or gRPC, or as files in Jaeger JSON, OTLP JSON or JSONL, which the loader tells apart on its own. Three attribute conventions are understood: ADK (`gcp.vertex.agent.*`), the OpenTelemetry GenAI semantic conventions and OpenInference. The converter turns a trace into invocations: the user input, the tool calls, and the final answer. The answer is the last call of the agent that opened the invocation, so a verifier or guard that speaks later is not scored as the answer.
+Traces arrive as OTLP over HTTP (`POST /v1/traces`) or gRPC, both accepting gzip, or as files in Jaeger JSON, OTLP JSON or JSONL, which the loader tells apart on its own. Three attribute conventions are understood: ADK (`gcp.vertex.agent.*`), the OpenTelemetry GenAI semantic conventions and OpenInference. The converter turns a trace into invocations: the user input, the tool calls, and the final answer. The answer is the last call of the agent that opened the invocation, so a verifier or guard that speaks later is not scored as the answer.
 
 ### Sessions
 

@@ -6,7 +6,7 @@ What ego supports today, and what it does not.
 
 **Traces in**
 - Files: Jaeger JSON, OTLP JSON and JSONL, auto-detected (`internal/loader`).
-- Live: OTLP/HTTP (`POST /v1/traces`, gzip accepted) and OTLP/gRPC, both feeding one session store.
+- Live: OTLP/HTTP (`POST /v1/traces`) and OTLP/gRPC, both accepting gzip and both feeding one session store.
 - Conventions: ADK (`gcp.vertex.agent.*`), OTel GenAI semantic conventions and OpenInference.
 - LangChain and LangGraph through LangSmith's OpenTelemetry export (`langsmith[otel]`, spans carrying `langsmith.span.kind`) are translated at ingest (`internal/otlp/langsmith.go`, README "LangChain and LangGraph"): the graph's thread is the session, the root run is the invocation, `gen_ai.prompt`/`gen_ai.completion` become messages, tool arguments and results. Checked against a real export (`internal/otlp/testdata`). Not covered: the OpenInference and Traceloop LangChain instrumentors (their message JSON in `input.value` is not unwrapped), and `/v1/logs`.
 - A tool call the model made and the tool span that ran it are one call: the model's arguments win, a span without an id joins the first unclaimed call of the same name (`extractGenAIToolCalls`). `ego run` reads Jaeger and OTLP files and converts them by their convention, like the server.

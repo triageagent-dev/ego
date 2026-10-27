@@ -91,3 +91,44 @@ func TestOTLPGRPCReceiver_LiveRoundTrip(t *testing.T) {
 		t.Errorf("trace ID = %q", sessions[0].TraceID)
 	}
 }
+
+// A sender that compresses (the OpenTelemetry Collector's gRPC exporter does by default) is refused with
+// Unimplemented unless the server registered the gzip decompressor. The test names the compressor and does not
+// import it, so only the server's own import can make this pass.
+func TestOTLPGRPCReceiver_AcceptsGzip(t *testing.T) {
+	store := NewSessionStore(nil)
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listening: %v", err)
+	}
+	server := newOTLPGRPCServer(store, nil)
+	go func() { _ = server.Serve(lis) }()
+	defer server.Stop()
+
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("dialing %s: %v", lis.Addr(), err)
+	}
+	defer conn.Close()
+
+	traceID, _ := hex.DecodeString("3e289017fe03ffd7c4145316d2eb3d0d")
+	spanID, _ := hex.DecodeString("e37fdd8f56146d31")
+	req := &coltracepb.ExportTraceServiceRequest{ResourceSpans: []*tracepb.ResourceSpans{{
+		Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{
+			{Key: sessionNameAttr, Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "gzip-sess"}}},
+		}},
+		ScopeSpans: []*tracepb.ScopeSpans{{
+			Scope: &commonpb.InstrumentationScope{Name: "gcp.vertex.agent"},
+			Spans: []*tracepb.Span{{TraceId: traceID, SpanId: spanID, Name: "invoke_agent test", StartTimeUnixNano: 1_000_000_000, EndTimeUnixNano: 1_002_000_000}},
+		}},
+	}}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := coltracepb.NewTraceServiceClient(conn).Export(ctx, req, grpc.UseCompressor("gzip")); err != nil {
+		t.Fatalf("gzip Export: %v", err)
+	}
+	if sessions := store.List(); len(sessions) != 1 || sessions[0].SessionID != "gzip-sess" {
+		t.Fatalf("sessions = %+v, want the gzip-compressed export ingested", sessions)
+	}
+}

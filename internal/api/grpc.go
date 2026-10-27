@@ -7,6 +7,7 @@ import (
 	"github.com/triageagent-dev/ego/internal/otlp"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
+	_ "google.golang.org/grpc/encoding/gzip" // registers the decompressor; the OpenTelemetry Collector's gRPC exporter sends gzip by default
 	"google.golang.org/grpc/keepalive"
 )
 
