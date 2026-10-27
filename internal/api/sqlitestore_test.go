@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -211,5 +213,38 @@ func TestSessionStore_NoArchiveIsNoop(t *testing.T) {
 	}
 	if err := store.Close(); err != nil {
 		t.Errorf("Close with no archive: %v", err)
+	}
+}
+
+// A pooled connection has its own busy timeout and synchronous level; a writer that meets the lock must wait for
+// it, not fail at once with SQLITE_BUSY, on every connection and not only the one that opened the file.
+func TestNewSQLiteStore_EveryConnectionWaitsForTheLock(t *testing.T) {
+	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "a directory", "archive.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	var conns []*sql.Conn
+	for i := 0; i < 3; i++ {
+		c, err := store.db.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		conns = append(conns, c)
+	}
+	for i, c := range conns {
+		var timeout, synchronous int
+		if err := c.QueryRowContext(ctx, `PRAGMA busy_timeout`).Scan(&timeout); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.QueryRowContext(ctx, `PRAGMA synchronous`).Scan(&synchronous); err != nil {
+			t.Fatal(err)
+		}
+		if timeout != 5000 || synchronous != 1 {
+			t.Errorf("connection %d: busy_timeout %d, synchronous %d, want 5000 and 1 (NORMAL)", i, timeout, synchronous)
+		}
 	}
 }

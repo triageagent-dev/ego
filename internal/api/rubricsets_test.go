@@ -148,8 +148,8 @@ func TestRubricSets_Refusals(t *testing.T) {
 	}
 }
 
-// Saves racing for the last places must not pass the cap together. A save may be refused as busy (the archive has
-// no busy timeout); it must never be stored beyond the cap.
+// Saves racing for the last places must not pass the cap together; the ones that lose are refused for lack of room,
+// not for a busy archive.
 func TestSaveRubricSet_CapHoldsUnderConcurrentSaves(t *testing.T) {
 	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "rubrics.db"))
 	if err != nil {
@@ -184,7 +184,7 @@ func TestSaveRubricSet_CapHoldsUnderConcurrentSaves(t *testing.T) {
 		switch {
 		case e == nil:
 			stored++
-		case e == errTooManyRubricSets, strings.Contains(e.Error(), "SQLITE_BUSY"):
+		case e == errTooManyRubricSets:
 		default:
 			t.Fatalf("save: %v", e)
 		}
@@ -193,8 +193,8 @@ func TestSaveRubricSet_CapHoldsUnderConcurrentSaves(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT COUNT(*) FROM rubric_sets`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n > maxRubricSets || stored > room {
-		t.Errorf("%d sets stored (%d of the racers), the cap is %d with %d places left", n, stored, maxRubricSets, room)
+	if n != maxRubricSets || stored != room {
+		t.Errorf("%d sets stored (%d of the racers), want the cap %d filled by exactly the %d places left", n, stored, maxRubricSets, room)
 	}
 
 	// An existing id is still saved at the cap, and keeps the date it was made.
@@ -202,7 +202,7 @@ func TestSaveRubricSet_CapHoldsUnderConcurrentSaves(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("set-000: found %v, err %v", found, err)
 	}
-	if n == maxRubricSets {
+	{
 		after, err := store.SaveRubricSet(rubricSetDTO{RubricSetID: "set-000", Name: "Renamed", Kind: "final_response", Rubrics: []string{"r"}})
 		if err != nil {
 			t.Fatalf("updating a set at the cap: %v", err)
