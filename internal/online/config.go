@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -337,6 +338,9 @@ func (c *Config) validate() error {
 	if err := c.Findings.validate(); err != nil {
 		return err
 	}
+	if len(c.Profiles) > maxProfiles {
+		return fmt.Errorf("online config: %d profiles, at most %d", len(c.Profiles), maxProfiles)
+	}
 	seen := map[string]bool{}
 	for _, p := range c.Profiles {
 		if p.Kind == "" {
@@ -355,6 +359,9 @@ func (c *Config) validate() error {
 		if len(p.Evaluators) == 0 {
 			return fmt.Errorf("online config: profile %q has no evaluators", p.Key())
 		}
+		if len(p.Evaluators) > maxEvaluatorsPerProfile {
+			return fmt.Errorf("online config: profile %q has %d evaluators, at most %d", p.Key(), len(p.Evaluators), maxEvaluatorsPerProfile)
+		}
 		if p.UsesJev() && c.Budget.JevCallsPerDay == 0 {
 			return fmt.Errorf("online config: profile %q uses jev_* evaluators but budget.jevCallsPerDay is 0", p.Key())
 		}
@@ -370,6 +377,12 @@ func (c *Config) validate() error {
 			}
 			if referenceMetrics[e.Name] {
 				return fmt.Errorf("online config: profile %q: %s needs a golden eval set, which live traffic has not", p.Key(), e.Name)
+			}
+			if e.JudgeModel != "" && !judgeModelName.MatchString(e.JudgeModel) {
+				return fmt.Errorf("online config: profile %q: %s judgeModel %q is not a model name", p.Key(), e.Name, e.JudgeModel)
+			}
+			if len(e.Rubrics) > maxRubricsPerEvaluator {
+				return fmt.Errorf("online config: profile %q: %s has %d rubrics, at most %d", p.Key(), e.Name, len(e.Rubrics), maxRubricsPerEvaluator)
 			}
 			if strings.HasPrefix(e.Name, "rubric_based_") && !hasText(e.Rubrics) {
 				return fmt.Errorf("online config: profile %q: %s needs rubrics", p.Key(), e.Name)
@@ -456,6 +469,16 @@ func (p Profile) UsesJev() bool {
 	}
 	return false
 }
+
+// What one configuration may ask for. The judge model name is the pattern the interactive path accepts; the counts
+// are far above any real use and keep a mistaken or hostile configuration from making every session cost without end.
+const (
+	maxProfiles             = 100
+	maxEvaluatorsPerProfile = 20
+	maxRubricsPerEvaluator  = 50
+)
+
+var judgeModelName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 // judgeEvaluators are the Gemini judges that need no golden set, so live traffic can use them.
 var judgeEvaluators = map[string]bool{

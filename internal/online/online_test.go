@@ -3,6 +3,7 @@ package online
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -452,6 +453,37 @@ func TestConfigValidate_Evaluators(t *testing.T) {
 		if _, err := Parse([]byte(cfg(ev))); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
+	}
+}
+
+// A configuration may not ask for a model name that is no name, or for more than any real use needs.
+func TestConfigValidate_Bounds(t *testing.T) {
+	profile := func(kind, evaluators string) string {
+		return `{"kind":"` + kind + `","evaluators":[` + evaluators + `]}`
+	}
+	cfg := func(profiles ...string) string {
+		return `{"budget":{"judgeTokensPerDay":1000,"jevCallsPerDay":10},"profiles":[` + strings.Join(profiles, ",") + `]}`
+	}
+	if _, err := Parse([]byte(cfg(profile("chat", `{"name":"hallucinations_v1","judgeModel":"gemini-3-flash-preview"}`)))); err != nil {
+		t.Errorf("an ordinary model name: %v", err)
+	}
+	for name, doc := range map[string]string{
+		"model with a slash":  cfg(profile("chat", `{"name":"hallucinations_v1","judgeModel":"../../etc"}`)),
+		"model with a space":  cfg(profile("chat", `{"name":"hallucinations_v1","judgeModel":"a b"}`)),
+		"model name too long": cfg(profile("chat", `{"name":"hallucinations_v1","judgeModel":"`+strings.Repeat("a", 65)+`"}`)),
+		"too many evaluators": cfg(profile("chat", strings.TrimSuffix(strings.Repeat(`{"name":"jev_grounded"},`, 21), ","))),
+		"too many rubrics":    cfg(profile("chat", `{"name":"rubric_based_final_response_quality_v1","rubrics":[`+strings.TrimSuffix(strings.Repeat(`"r",`, 51), ",")+`]}`)),
+	} {
+		if _, err := Parse([]byte(doc)); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+	var profiles []string
+	for i := 0; i <= maxProfiles; i++ {
+		profiles = append(profiles, profile(fmt.Sprintf("kind-%d", i), `{"name":"jev_grounded"}`))
+	}
+	if _, err := Parse([]byte(cfg(profiles...))); err == nil {
+		t.Error("more profiles than the limit: want an error")
 	}
 }
 
