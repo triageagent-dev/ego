@@ -268,6 +268,7 @@ export function LiveStreamingView() {
       scored?: boolean;
       thread?: string;
       part?: number;
+      temporal?: Record<string, string>;
     };
 
     // Folds server summaries into the shared session map: unknown ones are added, known ones take the server's
@@ -293,6 +294,10 @@ export function LiveStreamingView() {
             }
             if (s.thread && (s.thread !== existing.thread || s.part !== existing.part)) {
               existing = { ...existing, thread: s.thread, part: s.part };
+              newMap.set(s.sessionId, existing);
+            }
+            if (s.temporal && JSON.stringify(s.temporal) !== JSON.stringify(existing.temporal)) {
+              existing = { ...existing, temporal: s.temporal };
               newMap.set(s.sessionId, existing);
             }
             if (s.agents?.join() !== existing.agents?.join() || s.models?.join() !== existing.models?.join() || s.tenants?.join() !== existing.tenants?.join()) {
@@ -350,6 +355,7 @@ export function LiveStreamingView() {
             scored: s.scored,
             thread: s.thread,
             part: s.part,
+            temporal: s.temporal,
           });
         }
         return newMap;
@@ -453,6 +459,7 @@ export function LiveStreamingView() {
               durationMs: data.session.durationMs,
               thread: data.session.thread,
               part: data.session.part,
+              temporal: data.session.temporal,
             });
             return newMap;
           });
@@ -1092,6 +1099,28 @@ export function LiveStreamingView() {
                       {openSession.thread}
                     </button>
                     <span style={{ color: 'var(--text-tertiary)' }}> · part {openSession.part ?? 1}</span>
+                  </div>
+                )}
+                {openSession.temporal?.['workflow.id'] && (
+                  <div title="The Temporal workflow that ran this session">
+                    <span style={{ color: 'var(--text-tertiary)' }}>workflow </span>
+                    <span style={{ fontFamily: 'monospace', userSelect: 'all' }}>{openSession.temporal['workflow.id']}</span>
+                    {openSession.temporal['run.id'] && (
+                      <>
+                        <span style={{ color: 'var(--text-tertiary)' }}> · run </span>
+                        <span style={{ fontFamily: 'monospace', userSelect: 'all' }}>{openSession.temporal['run.id']}</span>
+                      </>
+                    )}
+                  </div>
+                )}
+                {openSession.temporal && (
+                  <div style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>
+                    {[
+                      ['type', 'workflow.type'], ['namespace', 'namespace'], ['queue', 'task_queue'],
+                      ['spot workflow', 'spot.id'], ['spot run', 'spot.run_id'], ['wake', 'wake.key'],
+                    ].filter(([, k]) => openSession.temporal![k]).map(([label, k], i) => (
+                      <span key={k}>{i > 0 && ' · '}{label} <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)', userSelect: 'all' }}>{openSession.temporal![k]}</span></span>
+                    ))}
                   </div>
                 )}
               </div>

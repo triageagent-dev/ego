@@ -168,3 +168,24 @@ func TestSessionSummaryGivesTheTokenSplit(t *testing.T) {
 		t.Fatalf("tokens = in %d out %d total %d", sum.InputTokens, sum.OutputTokens, sum.TotalTokens)
 	}
 }
+
+func TestSessionSummaryGivesTheTemporalIds(t *testing.T) {
+	root := &tracepkg.Span{OperationName: "turn", Tags: map[string]any{
+		"temporal.workflow.id": "wf-1", "temporal.run.id": "run-1", "temporal.task_queue": "q", "tria.wake.key": "tick",
+		"temporal.namespace": "",
+	}}
+	later := &tracepkg.Span{OperationName: "chat", Tags: map[string]any{"temporal.workflow.id": "wf-2"}}
+	got := summarize(&Session{ID: "s", Spans: []*tracepkg.Span{root, later}}).Temporal
+	want := map[string]string{"workflow.id": "wf-1", "run.id": "run-1", "task_queue": "q", "wake.key": "tick"}
+	if len(got) != len(want) {
+		t.Fatalf("temporal = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("temporal[%s] = %q, want %q", k, got[k], v)
+		}
+	}
+	if none := summarize(&Session{ID: "o", Spans: []*tracepkg.Span{{OperationName: "chat"}}}).Temporal; none != nil {
+		t.Errorf("a session without them has %v", none)
+	}
+}

@@ -135,6 +135,9 @@ type SessionSummary struct {
 	// latest span end, in milliseconds. Not CompletedAt - StartedAt, which
 	// is ingest wall-clock and includes the completion grace.
 	DurationMs int64 `json:"durationMs"`
+	// Temporal is where a Temporal workflow ran this session (temporal.* span attributes, prefix removed:
+	// workflow.id, run.id, ...) plus the wake it served (tria.wake.key as wake.key), for the sender that sets them.
+	Temporal map[string]string `json:"temporal,omitempty"`
 }
 
 func summarize(s *Session) SessionSummary {
@@ -161,6 +164,7 @@ func summarize(s *Session) SessionSummary {
 	service, inTokens, outTokens := spanServiceAndTokens(s.Spans)
 	cacheRead, cacheWrite := spanCacheTokens(s.Spans)
 	return SessionSummary{
+		Temporal:         spanTemporal(s.Spans),
 		CacheReadTokens:  cacheRead,
 		CacheWriteTokens: cacheWrite,
 		Service:          service,
@@ -192,6 +196,37 @@ func summarize(s *Session) SessionSummary {
 }
 
 const maxIdentities = 6
+
+const (
+	temporalAttrPrefix = "temporal."
+	wakeKeyAttr        = "tria.wake.key"
+)
+
+// spanTemporal collects the first value of each temporal.* attribute on the spans (a sender puts them on the root
+// span of a turn, so a trace leads to its workflow and the other way round), and the wake key. Nil when there are none.
+func spanTemporal(spans []*tracepkg.Span) map[string]string {
+	var out map[string]string
+	put := func(k, v string) {
+		if v == "" {
+			return
+		}
+		if out == nil {
+			out = map[string]string{}
+		}
+		if _, seen := out[k]; !seen {
+			out[k] = v
+		}
+	}
+	for _, sp := range spans {
+		for k := range sp.Tags {
+			if rest, ok := strings.CutPrefix(k, temporalAttrPrefix); ok {
+				put(rest, sp.TagString(k))
+			}
+		}
+		put("wake.key", sp.TagString(wakeKeyAttr))
+	}
+	return out
+}
 
 // spanServiceAndTokens returns the first service.name on spans and the input and output tokens their LLM spans
 // reported.

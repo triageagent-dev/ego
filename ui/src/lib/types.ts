@@ -638,6 +638,9 @@ export interface LiveSession {
   // thread's id and the n-th as `<thread>~n`.
   thread?: string;
   part?: number;
+  // Where a Temporal workflow ran the session, for a sender that says so: workflow.id, run.id, workflow.type,
+  // namespace, task_queue, spot.id, spot.run_id, and the wake.key it served.
+  temporal?: Record<string, string>;
 }
 
 // One row of GET /api/activity: an agent in a tenant whose sessions are made of turns.
