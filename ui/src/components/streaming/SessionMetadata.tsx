@@ -72,13 +72,16 @@ export function SessionMetadata({ session, liveStats, modelName }: SessionMetada
   const provider = session.invocations?.[0]?.modelInfo?.provider;
   const totalCacheCreation = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheCreationTokens || 0), 0) || 0;
   const totalCacheRead = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheReadTokens || 0), 0) || 0;
+  // The server's totals cover the whole session, spans without invocations included; the invocations are the fallback.
+  const cacheRead = session.cacheReadTokens ?? totalCacheRead;
+  const cacheWrite = session.cacheWriteTokens ?? totalCacheCreation;
   // Elapsed time only while active. A completed session's span window is the
   // header chip; wall-clock here would add the 3s completion grace.
   const duration = formatElapsed(session.startedAt, session.completedAt);
   const estimatedCost = totalTokens > 0
     ? estimateCostUsd(
         modelName, liveStats.totalInputTokens, liveStats.totalOutputTokens,
-        session.cacheReadTokens ?? totalCacheRead, session.cacheWriteTokens ?? totalCacheCreation,
+        cacheRead, cacheWrite,
       )
     : null;
 
@@ -146,12 +149,12 @@ export function SessionMetadata({ session, liveStats, modelName }: SessionMetada
         </MetadataItem>
       )}
 
-      {(totalCacheCreation > 0 || totalCacheRead > 0) && (
+      {(cacheWrite > 0 || cacheRead > 0) && (
         <MetadataItem label="Cache Tokens">
           <span style={{ color: '#f59e0b' }}>
-            {totalCacheRead > 0 && `${totalCacheRead.toLocaleString()} read`}
-            {totalCacheCreation > 0 && totalCacheRead > 0 && ' / '}
-            {totalCacheCreation > 0 && `${totalCacheCreation.toLocaleString()} created`}
+            {cacheRead > 0 && `${cacheRead.toLocaleString()} read`}
+            {cacheWrite > 0 && cacheRead > 0 && ' / '}
+            {cacheWrite > 0 && `${cacheWrite.toLocaleString()} created`}
           </span>
         </MetadataItem>
       )}
