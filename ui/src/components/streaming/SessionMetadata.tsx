@@ -105,7 +105,7 @@ export function SessionMetadata({ session, liveStats, modelName }: SessionMetada
             color: 'var(--text-tertiary)',
             marginLeft: '6px',
           }}>
-            (↓{liveStats.totalInputTokens.toLocaleString()} ↑{liveStats.totalOutputTokens.toLocaleString()})
+            (↓{liveStats.totalInputTokens.toLocaleString()} ↑{liveStats.totalOutputTokens.toLocaleString()}{cacheRead > 0 && ` c${cacheRead.toLocaleString()}`})
           </span>
         </MetadataItem>
       )}
@@ -146,16 +146,6 @@ export function SessionMetadata({ session, liveStats, modelName }: SessionMetada
           {session.status === 'active' && !session.completedAt && (
             <span style={{ color: '#10b981', marginLeft: '4px' }}>●</span>
           )}
-        </MetadataItem>
-      )}
-
-      {(cacheWrite > 0 || cacheRead > 0) && (
-        <MetadataItem label="Cache Tokens">
-          <span style={{ color: '#f59e0b' }}>
-            {cacheRead > 0 && `${cacheRead.toLocaleString()} read`}
-            {cacheWrite > 0 && cacheRead > 0 && ' / '}
-            {cacheWrite > 0 && `${cacheWrite.toLocaleString()} created`}
-          </span>
         </MetadataItem>
       )}
 
