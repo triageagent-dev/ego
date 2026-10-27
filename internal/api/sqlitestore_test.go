@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -245,6 +247,26 @@ func TestNewSQLiteStore_EveryConnectionWaitsForTheLock(t *testing.T) {
 		}
 		if timeout != 5000 || synchronous != 1 {
 			t.Errorf("connection %d: busy_timeout %d, synchronous %d, want 5000 and 1 (NORMAL)", i, timeout, synchronous)
+		}
+	}
+}
+
+// The path is an operator's, and it is a path: whatever characters it holds, the archive is that file.
+func TestNewSQLiteStore_PathWithSpecialCharacters(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "odd ?dir #1 %20")
+	path := filepath.Join(dir, "a?b#c%d.db")
+	store, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("the archive is not at the path it was given: %v", err)
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "a") && !strings.HasPrefix(e.Name(), "a?b#c%d.db") {
+			t.Errorf("a stray file %q: part of the path was read as a query or an escape", e.Name())
 		}
 	}
 }

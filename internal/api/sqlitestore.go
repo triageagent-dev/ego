@@ -38,6 +38,13 @@ func (s *SQLiteStore) announce(topic string, err error) error {
 	return err
 }
 
+// sqliteDSN is the connection string for the archive at path: a file URI, so that a path holding "?", "#" or "%" is
+// that path and not the start of a query, with the pragmas every connection of the pool needs.
+func sqliteDSN(path string) string {
+	escaped := strings.NewReplacer("%", "%25", "?", "%3f", "#", "%23").Replace(path)
+	return "file:" + escaped + "?_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
+}
+
 // NewSQLiteStore opens (creating if needed) the archive at path, in WAL
 // mode so the periodic snapshot writer and a startup load never block each
 // other.
@@ -51,7 +58,7 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	// The pragmas are in the DSN, not run once after opening: the pool opens more connections than the one a Exec
 	// reaches, and each of them needs the busy timeout (a writer waits for the lock instead of failing at once with
 	// SQLITE_BUSY) and the synchronous level, which are per connection.
-	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)")
+	db, err := sql.Open("sqlite", sqliteDSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("opening session archive: %w", err)
 	}
