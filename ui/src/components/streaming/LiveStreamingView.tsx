@@ -395,17 +395,27 @@ export function LiveStreamingView() {
       }
     };
 
-    // One re-fetch for a burst of resync signals or unknown-session events. Only the newest page follows the
-    // live feed; a page further back is a stable position and is left as it is.
-    let resyncTimer: ReturnType<typeof setTimeout> | null = null;
+    // One re-fetch for a burst of resync signals or unknown-session events: while it is out, further requests
+    // fold into a single one after it. Only the newest page follows the live feed; a page further back is a
+    // stable position and is left as it is.
+    let resyncing = false;
+    let resyncAgain = false;
     loadSessionRef.current = (id) => void fetchExistingSessions(id);
     fetchPageRef.current = (cursor) => void fetchPage(cursor);
     const requestResync = () => {
-      if (resyncTimer || cursorsRef.current.length > 1) return;
-      resyncTimer = setTimeout(() => {
-        resyncTimer = null;
-        fetchPage('');
-      }, 1000);
+      if (cursorsRef.current.length > 1) return;
+      if (resyncing) {
+        resyncAgain = true;
+        return;
+      }
+      resyncing = true;
+      void fetchPage('').finally(() => {
+        resyncing = false;
+        if (resyncAgain && mountedRef.current) {
+          resyncAgain = false;
+          requestResync();
+        }
+      });
     };
 
     // The socket itself is the app's (lib/connection.ts); this view takes the events while it is on screen.
@@ -665,7 +675,6 @@ export function LiveStreamingView() {
       offMessage();
       offOpen();
       mountedRef.current = false;
-      if (resyncTimer) clearTimeout(resyncTimer);
     };
   }, []);
 

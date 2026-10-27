@@ -50,7 +50,6 @@ export function describe(s: Snapshot): string {
 
 // The server sends a heartbeat every 15 s; a socket that has said nothing for three of them is dropped and redone.
 const STALE_MS = 45_000;
-const WATCH_MS = 5_000;
 const PROBE_TIMEOUT_MS = 4_000;
 const MAX_BACKOFF_MS = 10_000;
 // A socket that has neither opened nor closed by then is stuck; closing it hands over to the reconnect in onclose.
@@ -60,7 +59,7 @@ let ws: WebSocket | null = null;
 let started = false;
 let backoff = 1_000;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
-let watchTimer: ReturnType<typeof setInterval> | null = null;
+let watchTimer: ReturnType<typeof setTimeout> | null = null;
 // When the open socket last said anything; 0 until its first message (the heartbeat counts), so a socket that
 // opened and then stays silent is judged from openedAt.
 let lastSeen = 0;
@@ -104,6 +103,21 @@ function stale(): boolean {
   return Date.now() - (lastSeen || openedAt) > STALE_MS;
 }
 
+// Silence is the one thing no message can announce, so each message (the heartbeat included) re-arms a single
+// dead-man timer that drops the socket when the next one does not come.
+function armWatch(socket: WebSocket) {
+  if (watchTimer) clearTimeout(watchTimer);
+  watchTimer = setTimeout(() => {
+    watchTimer = null;
+    if (ws === socket && socket.readyState === WebSocket.OPEN) socket.close();
+  }, STALE_MS);
+}
+
+function disarmWatch() {
+  if (watchTimer) clearTimeout(watchTimer);
+  watchTimer = null;
+}
+
 function scheduleRetry() {
   retryTimer = setTimeout(() => {
     retryTimer = null;
@@ -138,6 +152,7 @@ function connect() {
     probeSeq++;
     backoff = 1_000;
     openedAt = Date.now();
+    armWatch(socket);
     set({ server: 'up', feed: 'open', checkedAt: Date.now() });
     openListeners.forEach((l) => l());
     void health().then((h) => h?.version && set({ version: h.version }));
@@ -146,6 +161,7 @@ function connect() {
   socket.onmessage = (event) => {
     if (ws !== socket) return;
     lastSeen = Date.now();
+    armWatch(socket);
     let data: any;
     try {
       data = JSON.parse(event.data);
@@ -161,6 +177,7 @@ function connect() {
     clearTimeout(connectTimer);
     if (ws !== socket) return;
     ws = null;
+    disarmWatch();
     if (!started) return;
     set({ feed: 'closed', checkedAt: Date.now() });
     const probe = ++probeSeq;
@@ -188,10 +205,6 @@ export function startConnectionMonitor(): () => void {
   started = true;
   connect();
 
-  watchTimer = setInterval(() => {
-    if (ws?.readyState === WebSocket.OPEN && stale()) ws.close();
-  }, WATCH_MS);
-
   const onVisible = () => {
     if (document.visibilityState !== 'visible') return;
     if (ws?.readyState === WebSocket.OPEN && stale()) ws.close();
@@ -205,8 +218,7 @@ export function startConnectionMonitor(): () => void {
 
   return () => {
     started = false;
-    if (watchTimer) clearInterval(watchTimer);
-    watchTimer = null;
+    disarmWatch();
     if (retryTimer) clearTimeout(retryTimer);
     retryTimer = null;
     window.removeEventListener('online', onOnline);
@@ -219,54 +231,48 @@ export function startConnectionMonitor(): () => void {
   };
 }
 
-// A change that arrives this soon after a load finished waits for the rest of the gap, so continuous ingest costs
-// one refetch per gap instead of one per message.
-const LIVE_GAP_MS = 2_000;
-
 /** Runs load now, whenever the server says data of the topic(s) changed, and after the feed reconnects or resyncs.
  * load may change (its filters did): it then runs again at once. Replaces a refresh timer and its button.
- * load gets a function that says whether its call is still the newest; an older, slower answer must be dropped
- * rather than shown over the newer one. */
+ * A change that arrives while load is running is not lost and not stacked: load runs once more when it ends, so
+ * continuous ingest costs one refetch per answer. load gets a function that says whether its call is still the
+ * newest; an older, slower answer must be dropped rather than shown over the newer one. */
 export function useLiveData(topic: string | string[], load: (current: () => boolean) => unknown): void {
   const latest = useRef(load);
   latest.current = load;
   const seq = useRef(0);
-  const doneAt = useRef(0);
+  const busy = useRef(false);
+  const again = useRef(false);
   const run = useRef(async () => {
-    const mine = ++seq.current;
+    if (busy.current) {
+      again.current = true;
+      return;
+    }
+    busy.current = true;
     try {
-      await latest.current(() => mine === seq.current);
+      do {
+        again.current = false;
+        const mine = ++seq.current;
+        await latest.current(() => mine === seq.current);
+      } while (again.current);
     } finally {
-      doneAt.current = Date.now();
+      busy.current = false;
     }
   });
   useEffect(() => {
+    // The old call, if one is running, is already out of date.
+    seq.current++;
     void run.current();
   }, [load]);
   const topics = ([] as string[]).concat(topic).join('|');
   useEffect(() => {
     const wanted = topics.split('|');
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const again = () => {
-      if (timer) return;
-      const wait = LIVE_GAP_MS - (Date.now() - doneAt.current);
-      if (wait <= 0) {
-        void run.current();
-        return;
-      }
-      timer = setTimeout(() => {
-        timer = null;
-        void run.current();
-      }, wait);
-    };
     const offMessage = onFeedMessage((data) => {
-      if (data?.type === 'resync' || (data?.type === 'changed' && wanted.includes(data.topic))) again();
+      if (data?.type === 'resync' || (data?.type === 'changed' && wanted.includes(data.topic))) void run.current();
     });
-    const offOpen = onFeedOpen(again);
+    const offOpen = onFeedOpen(() => void run.current());
     return () => {
       offMessage();
       offOpen();
-      if (timer) clearTimeout(timer);
     };
   }, [topics]);
 }

@@ -1,4 +1,5 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { onFeedMessage, onFeedOpen } from './connection';
 
 // The tenant the reader picked in the switcher; '' means every tenant their role covers. A tenant key is
 // "<sender>/<tenant>" (two senders can both send a tenant called "acme"); "<sender>/*" means all of a sender's.
@@ -88,19 +89,20 @@ function setNames(options: TenantOption[]): void {
   window.dispatchEvent(new Event(NAMES_CHANGED));
 }
 
-const NAMES_REFRESH_MS = 60_000;
-let namesLoadedAt = 0;
+let namesLoaded = false;
 let namesLoading = false;
 
-// Loads the names unless they are fresh: whoever shows a name asks for it, so it does not depend on the tenant
-// switcher (which is not on screen when the sidebar is hidden) having been drawn.
+// Loads the names once: whoever shows a name asks for it, so it does not depend on the tenant switcher (which is
+// not on screen when the sidebar is hidden) having been drawn. Later changes arrive with the switcher's reloads.
 function ensureNames(): void {
-  if (namesLoading || Date.now() - namesLoadedAt < NAMES_REFRESH_MS) return;
+  if (namesLoading || namesLoaded) return;
   namesLoading = true;
   fetchTenants()
+    .then(() => {
+      namesLoaded = true;
+    })
     .catch(() => undefined)
     .finally(() => {
-      namesLoadedAt = Date.now();
       namesLoading = false;
     });
 }
@@ -127,28 +129,56 @@ export async function fetchTenants(): Promise<TenantOption[]> {
   return options;
 }
 
-const OPTIONS_REFRESH_MS = 60_000;
-
-/** The tenants the reader may pick from, refreshed every minute; null until the first answer. A refresh that fails
+/** The tenants the reader may pick from, read again when the feed says sessions were written for one the list does
+ * not have, or that data changed, or after it reconnects; null until the first answer. A refresh that fails
  * (a sign-in that lapsed, a rollout) keeps the last list, so the pick is not judged against an empty one. A
  * remembered pick that a successful answer does not cover is dropped rather than shown as an empty view. */
 export function useTenantOptions(): TenantOption[] | null {
   const picked = useSelectedTenant();
   const [options, setOptions] = useState<TenantOption[] | null>(null);
+  const known = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let active = true;
-    const load = () =>
+    let busy = false;
+    let again = false;
+    // A change that arrives while the list is being read folds into one more read after it.
+    const load = () => {
+      if (busy) {
+        again = true;
+        return;
+      }
+      busy = true;
       fetchTenants()
-        .then((o) => active && setOptions(o))
+        .then((o) => {
+          if (!active) return;
+          known.current = new Set(o.map((x) => x.key));
+          setOptions(o);
+        })
         .catch(() => {
           // keep the previous list; a transient failure must not reset the pick
+        })
+        .finally(() => {
+          busy = false;
+          if (again && active) {
+            again = false;
+            load();
+          }
         });
+    };
     load();
-    const id = setInterval(load, OPTIONS_REFRESH_MS);
+    const offMessage = onFeedMessage((data) => {
+      if (data?.type === 'resync' || (data?.type === 'changed' && data.topic === 'usage')) load();
+      else if (data?.type === 'session_started') {
+        const keys: string[] = data.session?.tenants ?? [];
+        if (keys.some((k) => !known.current.has(k))) load();
+      }
+    });
+    const offOpen = onFeedOpen(load);
     return () => {
       active = false;
-      clearInterval(id);
+      offMessage();
+      offOpen();
     };
   }, []);
 

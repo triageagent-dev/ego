@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
 
 interface SessionMetadataProps {
@@ -59,19 +58,11 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-/** Live-ticking while the session is still active and has no completedAt yet; frozen once it does. */
-function useDuration(startedAt: string, completedAt: string | null | undefined, isActive: boolean): string | null {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!isActive || completedAt) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [isActive, completedAt]);
-
+/** Up to now while the session has no completedAt yet, as of the last update that redrew it; frozen once it has one. */
+function formatElapsed(startedAt: string, completedAt: string | null | undefined): string | null {
   const start = Date.parse(startedAt);
   if (Number.isNaN(start)) return null;
-  const end = completedAt ? Date.parse(completedAt) : now;
+  const end = completedAt ? Date.parse(completedAt) : Date.now();
   if (Number.isNaN(end)) return null;
   return formatDuration(end - start);
 }
@@ -81,9 +72,9 @@ export function SessionMetadata({ session, liveStats, modelName }: SessionMetada
   const provider = session.invocations?.[0]?.modelInfo?.provider;
   const totalCacheCreation = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheCreationTokens || 0), 0) || 0;
   const totalCacheRead = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheReadTokens || 0), 0) || 0;
-  // Live ticker only while active. A completed session's span window is the
+  // Elapsed time only while active. A completed session's span window is the
   // header chip; wall-clock here would add the 3s completion grace.
-  const duration = useDuration(session.startedAt, session.completedAt, session.status === 'active');
+  const duration = formatElapsed(session.startedAt, session.completedAt);
   const estimatedCost = totalTokens > 0
     ? estimateCostUsd(
         modelName, liveStats.totalInputTokens, liveStats.totalOutputTokens,
