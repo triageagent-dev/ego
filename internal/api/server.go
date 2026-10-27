@@ -3,6 +3,7 @@ package api
 import (
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -354,12 +355,25 @@ func otlpTracesHandler(store *SessionStore) http.HandlerFunc {
 			}
 			body, err = otlp.DecodeProtobufTraces(raw)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				status := http.StatusBadRequest
+				if errors.Is(err, otlp.ErrBodyTooDense) {
+					status = http.StatusRequestEntityTooLarge
+				}
+				http.Error(w, err.Error(), status)
 				return
 			}
 		} else {
-			if err := json.NewDecoder(reqBody).Decode(&body); err != nil {
+			raw, err := io.ReadAll(reqBody)
+			if err != nil {
 				writeBodyError(w, err)
+				return
+			}
+			if body, err = otlp.DecodeJSONBody(raw); err != nil {
+				if errors.Is(err, otlp.ErrBodyTooDense) {
+					http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+					return
+				}
+				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 		}

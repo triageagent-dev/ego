@@ -2,13 +2,19 @@ package api
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/otlp"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/encoding"
 	_ "google.golang.org/grpc/encoding/gzip" // registers the decompressor; the OpenTelemetry Collector's gRPC exporter sends gzip by default
+	protoname "google.golang.org/grpc/encoding/proto"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/mem"
+	"google.golang.org/grpc/status"
 )
 
 // traceServiceServer implements coltracepb.TraceServiceServer, the OTLP/gRPC
@@ -25,6 +31,9 @@ type traceServiceServer struct {
 
 func (s *traceServiceServer) Export(ctx context.Context, req *coltracepb.ExportTraceServiceRequest) (*coltracepb.ExportTraceServiceResponse, error) {
 	body, err := otlp.ExportRequestToMap(req)
+	if errors.Is(err, otlp.ErrBodyTooDense) {
+		return nil, status.Error(codes.ResourceExhausted, err.Error())
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +55,27 @@ func newOTLPGRPCServer(store *SessionStore, auth *ingestAuth) *grpc.Server {
 	if auth != nil {
 		opts = append(opts, grpc.InTapHandle(auth.tapHandle()))
 	}
+	opts = append(opts, grpc.ForceServerCodecV2(denseGuardCodec{encodingProto()}))
 	s := grpc.NewServer(opts...)
 	coltracepb.RegisterTraceServiceServer(s, &traceServiceServer{store: store})
 	return s
 }
+
+// denseGuardCodec is grpc-go's protobuf codec, except that an export holding more nested messages than a trace can is
+// refused before it is unmarshalled: unmarshalling is where a few megabytes of tiny messages become a gigabyte.
+type denseGuardCodec struct{ encoding.CodecV2 }
+
+func (c denseGuardCodec) Unmarshal(data mem.BufferSlice, v any) error {
+	if _, ok := v.(*coltracepb.ExportTraceServiceRequest); ok {
+		buf := data.MaterializeToBuffer(mem.DefaultBufferPool())
+		dense := otlp.ExportTooDense(buf.ReadOnlyData())
+		buf.Free()
+		if dense {
+			return otlp.ErrBodyTooDense
+		}
+	}
+	return c.CodecV2.Unmarshal(data, v)
+}
+
+// encodingProto is grpc-go's own protobuf codec, which the guard wraps.
+func encodingProto() encoding.CodecV2 { return encoding.GetCodecV2(protoname.Name) }

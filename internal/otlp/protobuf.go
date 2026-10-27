@@ -3,14 +3,19 @@ package otlp
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 
+	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
 func DecodeProtobufTraces(raw []byte) (map[string]any, error) {
+	if ExportTooDense(raw) {
+		return nil, ErrBodyTooDense
+	}
 	msg := &coltracepb.ExportTraceServiceRequest{}
 	if err := proto.Unmarshal(raw, msg); err != nil {
 		return nil, fmt.Errorf("decoding protobuf ExportTraceServiceRequest: %w", err)
@@ -30,8 +35,8 @@ func ExportRequestToMap(msg *coltracepb.ExportTraceServiceRequest) (map[string]a
 		return nil, fmt.Errorf("marshaling protobuf to JSON: %w", err)
 	}
 
-	var data map[string]any
-	if err := json.Unmarshal(jsonBytes, &data); err != nil {
+	data, err := DecodeJSONBody(jsonBytes)
+	if err != nil {
 		return nil, fmt.Errorf("decoding protojson output: %w", err)
 	}
 
@@ -60,4 +65,30 @@ func fixProtobufIDFields(data any) {
 			fixProtobufIDFields(item)
 		}
 	}
+}
+
+// A real OTLP/JSON export has an element (a comma, an opening bracket or an opening brace) about every 20 to 30
+// bytes; a body of tiny elements has one every 2 and decodes to about 120 times its size, which the pod's memory
+// does not stand. A body is decoded only if it has no more than one element per 8 bytes, and never more than
+// maxBodyElements however large it is.
+const (
+	minBytesPerElement = 8
+	maxBodyElements    = 2_000_000
+)
+
+// ErrBodyTooDense is returned for a body that would decode to much more than its size.
+var ErrBodyTooDense = errors.New("the body has too many elements for its size")
+
+// DecodeJSONBody decodes an OTLP/JSON export into the generic form ParseExportRequest reads, refusing a body whose
+// elements are denser than a trace's can be.
+func DecodeJSONBody(raw []byte) (map[string]any, error) {
+	limit := min(len(raw)/minBytesPerElement+1000, maxBodyElements)
+	if !tracepkg.JSONFitsBytes(raw, len(raw), limit) {
+		return nil, ErrBodyTooDense
+	}
+	var data map[string]any
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, err
+	}
+	return data, nil
 }

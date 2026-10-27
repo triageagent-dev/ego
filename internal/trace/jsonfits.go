@@ -1,6 +1,9 @@
 package trace
 
-import "strings"
+import (
+	"bytes"
+	"strings"
+)
 
 // JSONFits reports whether the JSON text s is small enough to decode into generic values. A decoded value takes many
 // times the room of its text (a megabyte of `0,0,0,...` becomes dozens), so the size alone does not bound the
@@ -11,4 +14,12 @@ func JSONFits(s string, maxBytes, maxElements int) bool {
 		return false
 	}
 	return strings.Count(s, ",")+strings.Count(s, "[")+strings.Count(s, "{") <= maxElements
+}
+
+// JSONFitsBytes is JSONFits for text already held as bytes.
+func JSONFitsBytes(b []byte, maxBytes, maxElements int) bool {
+	if len(b) > maxBytes {
+		return false
+	}
+	return bytes.Count(b, []byte(","))+bytes.Count(b, []byte("["))+bytes.Count(b, []byte("{")) <= maxElements
 }
