@@ -189,3 +189,27 @@ func TestSessionSummaryGivesTheTemporalIds(t *testing.T) {
 		t.Errorf("a session without them has %v", none)
 	}
 }
+
+func TestSessionSummaryListsTheFailedSpans(t *testing.T) {
+	ok := &tracepkg.Span{OperationName: "chat", StartTime: 1_000_000}
+	canceled := &tracepkg.Span{OperationName: "invoke_agent a", StartTime: 3_000_000, Tags: map[string]any{
+		"otel.status_code": "ERROR", "otel.status_description": "context canceled",
+	}}
+	tool := &tracepkg.Span{OperationName: "execute_tool k8s_get", StartTime: 2_000_000, Tags: map[string]any{
+		"otel.status_code": "ERROR", "otel.status_description": "tool error",
+		"gen_ai.tool.call.result": `{"isError":true,"result":"get pod failed: exit status 1"}`,
+	}}
+	sum := summarize(&Session{ID: "s", Spans: []*tracepkg.Span{ok, canceled, tool}})
+	if sum.Errors != 2 || len(sum.Failures) != 2 {
+		t.Fatalf("errors = %d, failures = %v", sum.Errors, sum.Failures)
+	}
+	if f := sum.Failures[0]; f.Operation != "execute_tool k8s_get" || f.Message != "get pod failed: exit status 1" || f.AtMs != 2000 {
+		t.Errorf("first failure = %+v", f)
+	}
+	if f := sum.Failures[1]; f.Operation != "invoke_agent a" || f.Message != "context canceled" {
+		t.Errorf("second failure = %+v", f)
+	}
+	if none := summarize(&Session{ID: "o", Spans: []*tracepkg.Span{ok}}).Failures; none != nil {
+		t.Errorf("a clean session has %v", none)
+	}
+}

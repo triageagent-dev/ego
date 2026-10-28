@@ -106,6 +106,8 @@ type SessionSummary struct {
 	LLMCalls     int             `json:"llmCalls"`
 	// Errors counts spans whose status is ERROR (otel.status_code).
 	Errors int `json:"errors"`
+	// Failures says what those spans were, the first maxSessionFailures in start order.
+	Failures []SessionFailure `json:"failures,omitempty"`
 	// Turns counts the prompts of a Claude Code session (its claude_code.interaction spans). Its spans carry no
 	// message text for the invocation count to be made of, so this is its turn count; 0 (omitted) for any other session.
 	Turns int `json:"turns,omitempty"`
@@ -177,6 +179,7 @@ func summarize(s *Session) SessionSummary {
 		RootSpanName:     rootName,
 		LLMCalls:         llmCalls,
 		Errors:           errs,
+		Failures:         spanFailures(s.Spans),
 		Turns:            claudeCodeTurns(s.Spans),
 		DurationMs:       spanWindowMs(s.Spans),
 		SessionID:        s.ID,
@@ -383,6 +386,34 @@ func spanOutline(spans []*tracepkg.Span) (rootName string, llmCalls, errs int) {
 		}
 	}
 	return rootName, llmCalls, errs
+}
+
+// maxSessionFailures bounds the failed spans listed for one session; Errors still counts all of them.
+const maxSessionFailures = 50
+
+// SessionFailure is one span of a session that ended with an error status: what it was and what it said.
+type SessionFailure struct {
+	Operation string `json:"operation"`
+	Message   string `json:"message"`
+	// AtMs is the span's start, in Unix milliseconds.
+	AtMs int64 `json:"atMs"`
+}
+
+// spanFailures lists the spans with an error status, earliest first. A failed tool call gives the text the tool
+// returned (errorText), since its status description is often only "tool error".
+func spanFailures(spans []*tracepkg.Span) []SessionFailure {
+	var out []SessionFailure
+	for _, sp := range spans {
+		if !spanErrored(sp) {
+			continue
+		}
+		out = append(out, SessionFailure{Operation: sp.OperationName, Message: errorText(sp), AtMs: sp.StartTime / 1000})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].AtMs < out[j].AtMs })
+	if len(out) > maxSessionFailures {
+		out = out[:maxSessionFailures]
+	}
+	return out
 }
 
 // sessionStartedEvent. WSSpanReceivedEvent is not sent; see Ingest.

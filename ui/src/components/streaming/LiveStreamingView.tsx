@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTraceContext } from '../../context/TraceContext';
 import { SessionCard } from './SessionCard';
 import { SessionDetails } from './SessionDetails';
@@ -9,7 +9,7 @@ import { CursorPager } from '../ui/Pager';
 import { useSelectedTenant } from '../../lib/tenant';
 import { store, stored } from '../../lib/stored';
 import { SessionEvalSetFile, SessionTraceFile } from '../../lib/sessionFiles';
-import type { ConversationElement, LiveSession, StreamingInvocation } from '../../lib/types';
+import type { ConversationElement, LiveSession, SessionFailure, StreamingInvocation } from '../../lib/types';
 import { ActivityPanel } from './ActivityPanel';
 import { PageTitle } from '../shell/PageTitle';
 import { subtitleStyle, titleStyle } from '../ui/page';
@@ -84,6 +84,26 @@ function HeaderRow({ label, title, children }: { label: string; title?: string; 
       <span style={{ color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }} title={title}>{label}</span>
       <span style={{ fontFamily: 'monospace', userSelect: 'all' }} title={title}>{children}</span>
     </>
+  );
+}
+
+// The spans of the open session that ended with an error, folded away until asked for.
+function FailureList({ failures, total }: { failures: SessionFailure[]; total: number }) {
+  return (
+    <details style={{ marginBottom: '12px', fontSize: '13px' }}>
+      <summary style={{ cursor: 'pointer', color: '#ef4444', fontWeight: 600 }}>
+        {total} error{total === 1 ? '' : 's'}
+      </summary>
+      <div style={{ display: 'grid', gridTemplateColumns: 'max-content max-content minmax(0, 1fr)', columnGap: '12px', rowGap: '4px', marginTop: '6px', color: 'var(--text-secondary)' }}>
+        {failures.map((f, i) => (
+          <Fragment key={i}>
+            <span style={{ color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{new Date(f.atMs).toLocaleTimeString()}</span>
+            <span style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{f.operation}</span>
+            <span style={{ wordBreak: 'break-word', userSelect: 'all' }}>{f.message}</span>
+          </Fragment>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -286,6 +306,7 @@ export function LiveStreamingView() {
       thread?: string;
       part?: number;
       temporal?: Record<string, string>;
+      failures?: SessionFailure[];
     };
 
     // Folds server summaries into the shared session map: unknown ones are added, known ones take the server's
@@ -315,6 +336,10 @@ export function LiveStreamingView() {
             }
             if (s.temporal && JSON.stringify(s.temporal) !== JSON.stringify(existing.temporal)) {
               existing = { ...existing, temporal: s.temporal };
+              newMap.set(s.sessionId, existing);
+            }
+            if (s.failures && JSON.stringify(s.failures) !== JSON.stringify(existing.failures)) {
+              existing = { ...existing, failures: s.failures };
               newMap.set(s.sessionId, existing);
             }
             if (s.agents?.join() !== existing.agents?.join() || s.models?.join() !== existing.models?.join() || s.tenants?.join() !== existing.tenants?.join()) {
@@ -373,6 +398,7 @@ export function LiveStreamingView() {
             thread: s.thread,
             part: s.part,
             temporal: s.temporal,
+            failures: s.failures,
           });
         }
         return newMap;
@@ -477,6 +503,7 @@ export function LiveStreamingView() {
               thread: data.session.thread,
               part: data.session.part,
               temporal: data.session.temporal,
+              failures: data.session.failures,
             });
             return newMap;
           });
@@ -1149,6 +1176,7 @@ export function LiveStreamingView() {
                 ×
               </button>
             </div>
+            {openSession.failures && openSession.failures.length > 0 && <FailureList failures={openSession.failures} total={openSession.errors ?? 0} />}
             <SessionDetails key={openSession.sessionId} session={openSession} />
           </aside>
         )}
