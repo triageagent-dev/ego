@@ -170,9 +170,6 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
   // A Claude Code session has no invocations to count (its spans carry no messages): the server counts its prompts.
   const turnCount = session.turns || session.invocations?.length || 0;
 
-  const totalCacheCreation = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheCreationTokens || 0), 0) || 0;
-  const totalCacheRead = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheReadTokens || 0), 0) || 0;
-
   // The text after the badges: what ran, and errors last.
   const details: Array<{ key: string; text: string; color: string }> = [];
   if (session.rootSpanName) details.push({ key: 'root', text: session.rootSpanName, color: KIND_COLOR });
@@ -341,21 +338,6 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
                 fontVariantNumeric: 'tabular-nums',
               }}>
                 {formatSpanDuration(session.durationMs)}
-              </span>
-            )}
-
-            {(totalCacheCreation > 0 || totalCacheRead > 0) && (
-              <span style={{
-                fontSize: '12.5px',
-                fontWeight: 500,
-                color: '#f59e0b',
-                background: 'rgba(245, 158, 11, 0.1)',
-                padding: '1px 7px',
-                borderRadius: 'var(--radius)',
-              }}>
-                cache {totalCacheRead > 0 ? `${totalCacheRead.toLocaleString()} read` : ''}
-                {totalCacheCreation > 0 && totalCacheRead > 0 ? ' / ' : ''}
-                {totalCacheCreation > 0 ? `${totalCacheCreation.toLocaleString()} created` : ''}
               </span>
             )}
 
