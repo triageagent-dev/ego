@@ -100,8 +100,8 @@ export function TurnQualityView({ q, hours, scoreIsTurns }: { q: TurnQuality; ho
     return {
       labels: buckets.map((b) => bucketLabel(b, day)),
       datasets: [
-        { label: 'without a failure', data: buckets.map((b) => counts.get(b)!.ok), backgroundColor: GOOD, borderRadius: 2 },
-        { label: 'with a failure', data: buckets.map((b) => counts.get(b)!.failed), backgroundColor: BAD, borderRadius: 2 },
+        { label: 'ok', data: buckets.map((b) => counts.get(b)!.ok), backgroundColor: GOOD, borderRadius: 2 },
+        { label: 'failure', data: buckets.map((b) => counts.get(b)!.failed), backgroundColor: BAD, borderRadius: 2 },
       ],
     };
   }, [data, hours]);
