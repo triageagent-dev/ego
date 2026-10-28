@@ -139,6 +139,7 @@ export function LiveStreamingView() {
     setNextCursor(null);
     setListTotal(null);
     setOpenId(null);
+    autoOpened.current = false;
     setSelectedGoldenId(null);
   }, [pickedTenant]);
   const loadSessionRef = useRef<(id: string) => void>(() => {});
@@ -769,6 +770,14 @@ export function LiveStreamingView() {
   const listedSessions = sessions
     .filter(s => s.status === 'active' || !hideDone || byId)
     .sort(byStartedAtDesc);
+  // The newest session opens by default, once: after the reader closes it or opens another, the choice is theirs.
+  const autoOpened = useRef(false);
+  const newestId = listedSessions[0]?.sessionId;
+  useEffect(() => {
+    if (autoOpened.current || !newestId) return;
+    autoOpened.current = true;
+    setOpenId((cur) => cur ?? newestId);
+  }, [newestId]);
   const renderPager = (inline: boolean) => !focused && !hideDone && (pageIdx > 0 || nextCursor) ? (
     <CursorPager
       inline={inline}

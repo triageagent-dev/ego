@@ -490,7 +490,7 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
               transition: 'all 0.2s',
             }}
           >
-            ▸
+            {isOpen ? '◂' : '▸'}
           </button>
         </div>
       </div>
