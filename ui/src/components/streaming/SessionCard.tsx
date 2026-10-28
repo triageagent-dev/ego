@@ -38,7 +38,7 @@ const HideIcon: React.FC<{ size: number }> = ({ size }) => (
 export interface SessionCardProps {
   /** The session whose details are open in the side panel. */
   isOpen?: boolean;
-  /** Open (or close) its details: a double click on the row, or the arrow. */
+  /** Open (or close) its details: a click on the row, or the arrow. */
   onOpen?: () => void;
   session: {
     sessionId: string;
@@ -194,12 +194,15 @@ export function SessionCard({ session, isSelected, isOpen, onOpen, onSelect, onR
       }}
     >
       <div
-        onDoubleClick={(e) => {
-          // A double-click on the row opens its details; one on a control inside it does its own thing.
+        onClick={(e) => {
+          // A click on the row opens its details (the arrow closes them); one on a control inside it does its own
+          // thing, and so does the end of a text selection.
           if ((e.target as HTMLElement).closest('button, a, input, select, textarea, label')) return;
-          onOpen?.();
+          if (window.getSelection()?.toString()) return;
+          if (!isOpen) onOpen?.();
         }}
         style={{
+        cursor: 'pointer',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',

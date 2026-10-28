@@ -110,7 +110,7 @@ export function LiveStreamingView() {
   useEffect(() => store('ego.search', searchQuery), [searchQuery]);
   // A session linked to by id (#sessions?session=...): shown alone and opened.
   const [focusId, setFocusId] = useState<string | null>(() => parseHash(location.hash).params.get('session'));
-  // The session whose details are open in the side panel (a double click on its row).
+  // The session whose details are open in the side panel (a click on its row).
   const [openId, setOpenId] = useState<string | null>(null);
   const toggleOpen = (id: string) => setOpenId((cur) => (cur === id ? null : id));
   useEffect(() => {
