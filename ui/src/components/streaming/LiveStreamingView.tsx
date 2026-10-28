@@ -870,8 +870,9 @@ export function LiveStreamingView() {
             padding: '2px 12px',
             borderRadius: 'var(--radius)',
             border: 'none',
-            background: listMode === mode ? 'var(--bg-selected)' : 'transparent',
-            color: listMode === mode ? 'var(--accent-magenta)' : 'var(--text-tertiary)',
+            // The live view is soft red while it is on: the page is following an agent as it works.
+            background: listMode !== mode ? 'transparent' : mode === 'activity' ? 'rgba(248, 113, 113, 0.14)' : 'var(--bg-selected)',
+            color: listMode !== mode ? 'var(--text-tertiary)' : mode === 'activity' ? '#f87171' : 'var(--accent-magenta)',
             fontSize: '13px',
             cursor: 'pointer',
           }}

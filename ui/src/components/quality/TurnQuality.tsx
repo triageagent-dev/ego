@@ -121,6 +121,21 @@ export function TurnQualityView({ q, hours, scoreIsTurns }: { q: TurnQuality; ho
     return [...m.entries()].map(([name, t]) => ({ name, ...t })).sort((a, b) => b.failed - a.failed || b.calls - a.calls);
   }, [data]);
 
+  // The record of each model the agent called, the worst first, to set the models side by side.
+  const models = useMemo(() => {
+    const m = new Map<string, { calls: number; failed: number; ms: number }>();
+    for (const r of data?.turns ?? []) {
+      for (const [name, c] of Object.entries(r.modelCalls ?? {})) {
+        const t = m.get(name) ?? { calls: 0, failed: 0, ms: 0 };
+        t.calls += c.calls;
+        t.failed += c.failed ?? 0;
+        t.ms += c.ms ?? 0;
+        m.set(name, t);
+      }
+    }
+    return [...m.entries()].map(([name, t]) => ({ name, ...t })).sort((a, b) => b.failed / b.calls - a.failed / a.calls || b.calls - a.calls);
+  }, [data]);
+
   const requests = useMemo(() => (data?.turns ?? []).reduce((n, r) => n + r.requests, 0), [data]);
 
   if (q.subjects.length === 0 || !subject) return null;
@@ -222,6 +237,29 @@ export function TurnQualityView({ q, hours, scoreIsTurns }: { q: TurnQuality; ho
             </div>
           )}
         </section>
+
+        {models.length > 0 && (
+          <section css={cardStyle} style={{ gridColumn: '1 / -1' }}>
+            <h2 css={cardTitleStyle}>Models</h2>
+            <div css={tableWrapStyle}>
+              <table css={tableStyle}>
+                <thead>
+                  <tr><th>model</th><th>requests</th><th>failed</th><th>average</th></tr>
+                </thead>
+                <tbody>
+                  {models.map((t) => (
+                    <tr key={t.name}>
+                      <td>{t.name}</td>
+                      <td>{t.calls.toLocaleString()}</td>
+                      <td css={t.failed > 0 ? failStyle : undefined}>{t.failed > 0 ? `${t.failed} (${pct(t.failed / t.calls)})` : ''}</td>
+                      <td>{t.ms > 0 ? fmtDuration(t.ms / t.calls) : ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
       </div>
     </>
   );
