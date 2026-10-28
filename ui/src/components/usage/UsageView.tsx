@@ -56,6 +56,10 @@ const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300',
 const KIND_SLOTS = [...SLOTS, '#e66767', '#887800', '#a858b8', '#80a010', '#20a0b8', '#7060e0', '#a86048'];
 const OTHER_COLOR = '#6b7586';
 const OTHER = 'Other';
+// The part of the input the prompt cache served, drawn under every group's own colour; a light grey-blue that no
+// group slot uses.
+const CACHED = 'Cached';
+const CACHED_COLOR = '#b8c4d6';
 const OTHER_NAMED = 3;
 const NONE = '(none)';
 
@@ -210,24 +214,36 @@ export const UsageView: React.FC = () => {
     }
     // Per time bucket, what Other is made of, so its tooltip can name it.
     const otherParts = starts.map(() => new Map<string, number>());
+    // The cached part of each bucket is drawn as its own segment, so a group's segment is what it paid in full.
+    const cached = new Array(starts.length).fill(0);
     for (const b of series.buckets) {
       const i = index.get(b.start);
       if (i == null) continue;
       const g = groupName(b, dim);
-      const tokens = b.inputTokens + b.outputTokens;
+      const cachedHere = Math.min(b.cacheReadTokens ?? 0, b.inputTokens);
+      const tokens = b.inputTokens + b.outputTokens - cachedHere;
+      cached[i] += cachedHere;
       stacks.get(folded(g))![i] += tokens;
       if (!kept.has(g)) otherParts[i].set(g, (otherParts[i].get(g) ?? 0) + tokens);
     }
 
-    const datasetOrder = [...stacks.keys()];
-    const datasets = datasetOrder.map((g, di) => ({
-      label: g === OTHER ? `${OTHER} (${memberList(otherMembers)})` : g,
-      data: stacks.get(g)!,
-      backgroundColor: colour.get(g) ?? OTHER_COLOR,
+    const layers: Array<{ label: string; data: number[]; color: string }> = [];
+    if (cached.some(n => n > 0)) layers.push({ label: CACHED, data: cached, color: CACHED_COLOR });
+    for (const g of stacks.keys()) {
+      layers.push({
+        label: g === OTHER ? `${OTHER} (${memberList(otherMembers)})` : g,
+        data: stacks.get(g)!,
+        color: colour.get(g) ?? OTHER_COLOR,
+      });
+    }
+    const datasets = layers.map((l, di) => ({
+      label: l.label,
+      data: l.data,
+      backgroundColor: l.color,
       borderColor: SURFACE,
-      borderWidth: { top: di === datasetOrder.length - 1 ? 0 : 2 },
+      borderWidth: { top: di === layers.length - 1 ? 0 : 2 },
       borderSkipped: 'bottom' as const,
-      borderRadius: di === datasetOrder.length - 1 ? { topLeft: 4, topRight: 4 } : 0,
+      borderRadius: di === layers.length - 1 ? { topLeft: 4, topRight: 4 } : 0,
       maxBarThickness: 28,
     }));
 
