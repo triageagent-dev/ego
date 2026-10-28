@@ -427,15 +427,17 @@ type sessionStartedEvent struct {
 // LiveStreamingView.tsx's `data.invocations?.length` check (an empty/absent list leaves whatever
 // internal/incremental already broadcast live untouched).
 type sessionCompleteEvent struct {
-	Type         string          `json:"type"`
-	SessionID    string          `json:"sessionId"`
-	Invocations  []InvocationDTO `json:"invocations"`
-	CompletedAt  *string         `json:"completedAt"`
-	RootSpanName string          `json:"rootSpanName,omitempty"`
-	LLMCalls     int             `json:"llmCalls"`
-	Errors       int             `json:"errors"`
-	Turns        int             `json:"turns,omitempty"`
-	DurationMs   int64           `json:"durationMs"`
+	Type         string            `json:"type"`
+	SessionID    string            `json:"sessionId"`
+	Invocations  []InvocationDTO   `json:"invocations"`
+	CompletedAt  *string           `json:"completedAt"`
+	RootSpanName string            `json:"rootSpanName,omitempty"`
+	LLMCalls     int               `json:"llmCalls"`
+	Errors       int               `json:"errors"`
+	Failures     []SessionFailure  `json:"failures,omitempty"`
+	Temporal     map[string]string `json:"temporal,omitempty"`
+	Turns        int               `json:"turns,omitempty"`
+	DurationMs   int64             `json:"durationMs"`
 }
 
 // SessionStore holds every session ingested since process start, in memory,

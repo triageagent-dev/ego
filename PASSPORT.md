@@ -8,7 +8,7 @@
 | Description | Scores AI agent behavior from OpenTelemetry traces: REST API, embedded web UI, OTLP receivers, offline CLI, MCP server (stdio and HTTP), findings and corrections for self-correcting agents |
 | Repo | github.com/triageagent-dev/ego |
 | Registry | ghcr.io/triageagent-dev/ego (image); oci://ghcr.io/triageagent-dev/charts (Helm chart) |
-| Version | Latest tag v0.3.2; `git describe`: v0.3.2-20-gdf014fa (20 commits after the tag); Helm chart in the repository 0.1.2, appVersion 0.1.0 (the release workflow packages the chart with the release version); build version injected at link time via `internal/api.Version` |
+| Version | v0.4.18 (this passport is part of the release commit; the previous tag is v0.4.17); Helm chart in the repository 0.1.2, appVersion 0.1.0 (the release workflow packages the chart with the release version); build version injected at link time via `internal/api.Version` |
 | Owner | triageagent-dev |
 | License | Apache-2.0 |
 | Passport date | 2026-10-27 |
@@ -30,7 +30,7 @@
 | Production data access | Read/write to its own SQLite database; receives agent traces pushed by producers; read-only calls to GitHub, Gemini/Vertex AI and the Jev API; notification sinks (Discord, webhook, event) receive alert, finding and correction messages |
 | PII | Traces carry user prompts, agent responses, tool-call arguments and results; stored verbatim. Findings quote user messages (first 500 characters) and judge rationales. Activity answers carry the text of failed tool calls (up to 5 per turn, 240 characters each) |
 | Sensitivity | Trace content stored on disk for the retention window (default 720h in the chart, 30 days in the binary); GitHub logins and team memberships; SHA-256 hashes of sender tokens; token revocation records; the login or token label of each rubric set's author; labels and corrections with the caller's identity or a caller-supplied label |
-| Authentication mode | Session secret (at least 32 bytes) enables GitHub OAuth, cookies, API tokens and roles. Without one, `serve` listens on loopback only and refuses other addresses unless `--no-auth` is given; chart default `auth.enabled: true`. Default role for a signed-in user no role binding covers: `member` (binary and chart default), settable to `none` (no access). On `/mcp` only, a sender ingest token also authenticates, as a `member` limited to `<sender>/*` (to the one bound tenant when the token is bound) |
+| Authentication mode | Session secret (at least 32 bytes) enables GitHub OAuth, cookies, API tokens and roles. Without one, `serve` listens on loopback only and refuses other addresses unless `--no-auth` is given; chart default `auth.enabled: true`. Default role for a signed-in user no role binding covers: `member` (binary and chart default), settable to `none` (no access). On `/mcp` only, a sender ingest token also authenticates, as a `member` limited to `<sender>/*` (to the one bound tenant when the token is bound)A delegate token (`auth mint-token --delegate --tenants ...`) opens `/mcp` only, for a client that serves many tenants: its role and tenants are fixed at minting, each `tools/call` must name one tenant the token covers and is narrowed to it for every tool, and a token with no tenants or an unknown role reads nothing or less, never more |
 
 ## 3. Artifact
 

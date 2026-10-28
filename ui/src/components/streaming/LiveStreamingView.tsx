@@ -688,6 +688,8 @@ export function LiveStreamingView() {
                 rootSpanName: data.rootSpanName,
                 llmCalls: data.llmCalls,
                 errors: data.errors,
+                failures: data.failures,
+                temporal: data.temporal,
                 turns: data.turns,
                 durationMs: data.durationMs,
               });
@@ -703,6 +705,8 @@ export function LiveStreamingView() {
                 rootSpanName: data.rootSpanName,
                 llmCalls: data.llmCalls,
                 errors: data.errors,
+                failures: data.failures ?? session.failures,
+                temporal: data.temporal ?? session.temporal,
                 turns: data.turns,
                 durationMs: data.durationMs,
               });

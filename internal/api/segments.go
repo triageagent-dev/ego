@@ -557,6 +557,8 @@ func (s *SessionStore) completeLocked(session *Session) completion {
 			RootSpanName: rootName,
 			LLMCalls:     llmCalls,
 			Errors:       errs,
+			Failures:     spanFailures(session.Spans),
+			Temporal:     spanTemporal(session.Spans),
 			Turns:        claudeCodeTurns(session.Spans),
 			DurationMs:   spanWindowMs(session.Spans),
 		},

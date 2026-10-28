@@ -257,3 +257,15 @@ func TestDelegateToken_MintAndParse(t *testing.T) {
 		t.Errorf("API token = %+v ok=%v", got, ok)
 	}
 }
+
+func TestDelegateRoleInfo_FailsClosed(t *testing.T) {
+	if got := delegateRoleInfo(identity{Role: RoleMember}); got.Tenants == nil || len(got.Tenants) != 0 {
+		t.Errorf("a delegate token without tenants reads %v, want the empty set", got.Tenants)
+	}
+	if got := delegateRoleInfo(identity{Role: Role("owner"), Tenants: []string{"a/*"}}); got.Role != RoleViewer {
+		t.Errorf("an unknown role became %q, want viewer", got.Role)
+	}
+	if got := delegateRoleInfo(identity{Role: RoleAdmin, Tenants: []string{"a/*"}}); got.Role != RoleAdmin || len(got.Tenants) != 1 {
+		t.Errorf("a valid token changed: %+v", got)
+	}
+}

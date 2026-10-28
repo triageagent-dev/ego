@@ -31,6 +31,17 @@ var delegateMethods = map[string]bool{
 	"prompts/get":               true,
 }
 
+// delegateRoleInfo is the access of a delegate token before a call names its tenant. It fails closed: a token with
+// no tenants gets an empty (not nil, which means every tenant) set, and one with a role this build does not know is a
+// viewer, so a malformed token reads less, never more.
+func delegateRoleInfo(id identity) RoleInfo {
+	role, err := ParseRole(string(id.Role))
+	if err != nil {
+		role = RoleViewer
+	}
+	return RoleInfo{Role: role, Tenants: append([]string{}, id.Tenants...)}
+}
+
 // delegateTenant wraps the MCP handler: a request from any other identity passes through unchanged.
 func delegateTenant(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +108,7 @@ func delegateTenant(next http.Handler) http.Handler {
 		}
 
 		// The role the token was minted with, limited to this call's tenant and nothing wider.
-		ctx := withRoleInfo(r.Context(), RoleInfo{Role: id.Role, Tenants: []string{tenant}})
+		ctx := withRoleInfo(r.Context(), RoleInfo{Role: delegateRoleInfo(id).Role, Tenants: []string{tenant}})
 		r = r.WithContext(ctx)
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		next.ServeHTTP(w, r)
