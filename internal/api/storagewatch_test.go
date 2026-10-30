@@ -10,7 +10,7 @@ import (
 func testWatch(free, total uint64) (*storageWatch, *[]string, *time.Time) {
 	var sent []string
 	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
-	w := newStorageWatch("/data/archive.db")
+	w := newStorageWatch("/data/archive.db", 0)
 	w.now = func() time.Time { return now }
 	w.free = func(string) (uint64, uint64, error) { return free, total, nil }
 	w.notice = func(text string) { sent = append(sent, text) }
@@ -74,9 +74,23 @@ func TestStorageWatch_RoomyVolumeSaysNothing(t *testing.T) {
 }
 
 func TestStorageWatch_NoNoticeSinkStillTracksHealth(t *testing.T) {
-	w := newStorageWatch("/data/archive.db")
+	w := newStorageWatch("/data/archive.db", 0)
 	w.writeFailed(errors.New("disk full"))
 	if w.health()["status"] != "failing" {
 		t.Error("a failure without a sink is not tracked")
+	}
+}
+
+// The threshold is a parameter, so the warning can be seen working on a volume that is not nearly full.
+func TestStorageWatch_AlertPercentIsAParameter(t *testing.T) {
+	w, sent, _ := testWatch(60<<30, 100<<30)
+	w.check()
+	if len(*sent) != 0 {
+		t.Fatalf("60%% free warned at the default threshold: %q", *sent)
+	}
+	w.lowFraction = 0.70
+	w.check()
+	if len(*sent) != 1 || w.health()["status"] != "low" {
+		t.Errorf("60%% free did not warn at a 70%% threshold: %q, %v", *sent, w.health())
 	}
 }

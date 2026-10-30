@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -56,5 +57,44 @@ func TestUsageLedgerKeepsTheCacheSplit(t *testing.T) {
 	}
 	if in != 1500 || read != 1200 || write != 150 {
 		t.Errorf("cells = %+v, want 1200 read, 150 written of 1500 input", cells)
+	}
+}
+
+// A start names kindless ledger rows from their trace's root span, reading only the sessions of those rows: a row
+// whose session is gone stays kindless and must not make every start read the whole archive.
+func TestStartNamesKindlessRowsFromTheirSessionsOnly(t *testing.T) {
+	archive, err := NewSQLiteStore(filepath.Join(t.TempDir(), "k.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+
+	snap, err := json.Marshal(sessionSnapshot{SessionID: "has-root", Spans: []*tracepkg.Span{
+		{SpanID: "root", TraceID: "t1", OperationName: "reflection", StartTime: 1_000_000},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := archive.db.Exec(`INSERT INTO sessions (session_id, data, updated_at) VALUES ('has-root', ?, '2026-10-30T00:00:00Z')`, string(snap)); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []struct{ span, trace, session string }{{"a", "t1", "has-root"}, {"b", "t2", "gone"}} {
+		if _, err := archive.db.Exec(`INSERT INTO llm_calls (span_id, trace_id, session_id, start_ms, duration_ms, service, tenant, kind, model, name, input_tokens, output_tokens, is_error, thread, cache_read_tokens, cache_write_tokens)
+			VALUES (?, ?, ?, 1, 1, '', '', '', 'm', '', 5, 5, 0, ?, 0, 0)`, r.span, r.trace, r.session, r.session); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	store := NewSessionStoreWithArchive(nil, archive, SessionLimits{})
+	if err := store.LoadPersisted(); err != nil {
+		t.Fatal(err)
+	}
+	var kind string
+	if err := archive.db.QueryRow(`SELECT kind FROM llm_calls WHERE span_id = 'a'`).Scan(&kind); err != nil || kind != "reflection" {
+		t.Errorf("kind of the row with a root = %q err=%v, want reflection", kind, err)
+	}
+	left, err := archive.UsageKindlessSessions()
+	if err != nil || len(left) != 1 || left[0] != "gone" {
+		t.Errorf("kindless sessions after the start = %v err=%v, want only the one with no session", left, err)
 	}
 }

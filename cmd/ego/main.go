@@ -128,7 +128,7 @@ func usage() {
 
 Usage:
   ego run <trace-file>... --eval-set <path> -m <metric> [-m <metric>...] [flags]
-  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--segment-idle 30m] [--segment-max-spans n] [--segment-max-age 6h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth] [--audit-log] [--log-level info]
+  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--archive-alert-percent 10] [--segment-idle 30m] [--segment-max-spans n] [--segment-max-age 6h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth] [--audit-log] [--log-level info]
                    [--admin-github-users user1,user2] [--default-role member]
   ego auth mint-token --name <label> [--ttl-days 90] [--secret ...]
   ego mcp [--server-url http://localhost:8001] [--session-token ...] [--trace-dir dir] [--admin-tools]
@@ -442,6 +442,8 @@ func serveCmd(args []string) error {
 		"completed sessions kept in memory with --session-db; older ones stay in the archive and load on demand (0 = no cap); falls back to EGO_SESSION_MEMORY")
 	sessionRetention := fs.Duration("session-retention", envDurationOrDefault("SESSION_RETENTION", api.DefaultSessionRetention),
 		"delete archived sessions not updated for this long, once a day, then compact the file (0 = keep forever); falls back to EGO_SESSION_RETENTION")
+	archiveAlertPercent := fs.Float64("archive-alert-percent", envFloatOrDefault("ARCHIVE_ALERT_PERCENT", api.DefaultArchiveAlertPercent),
+		"warn the Discord sinks, /api/health and the UI when the session archive's volume has less than this percent free; set it above the volume's free space to see the warning work; falls back to EGO_ARCHIVE_ALERT_PERCENT")
 	segmentIdle := fs.Duration("segment-idle", envDurationOrDefault("SEGMENT_IDLE", api.DefaultSegmentIdle),
 		"a thread's segment (the session that is scored) closes for good when its last span ended more than this long ago and a new trace arrives, or when it has been quiet this long; a trace within this window joins it; falls back to EGO_SEGMENT_IDLE")
 	segmentMaxSpans := fs.Int("segment-max-spans", envIntOrDefault("SEGMENT_MAX_SPANS", api.DefaultSegmentMaxSpans),
@@ -491,7 +493,7 @@ func serveCmd(args []string) error {
 		}
 	}
 	return api.Serve(*addr, *otlpAddr, *otlpGRPCAddr, *healthAddr, *sessionDB, *sessionSecret, githubOAuth, adminUsers, *defaultRole,
-		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens,
+		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, ArchiveAlertPercent: *archiveAlertPercent, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens,
 			SegmentIdle: *segmentIdle, SegmentMaxSpans: *segmentMaxSpans, SegmentMaxAge: *segmentMaxAge}, *onlineConfig, *otlpToken)
 }
 
@@ -500,6 +502,16 @@ func serveCmd(args []string) error {
 func envIntOrDefault(key string, def int) int {
 	if v, err := strconv.Atoi(env(key)); err == nil {
 		return v
+	}
+	return def
+}
+
+// envFloatOrDefault reads a float env var, falling back to def when it is unset or invalid.
+func envFloatOrDefault(key string, def float64) float64 {
+	if v := env(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
 	}
 	return def
 }

@@ -175,14 +175,23 @@ func (s *SQLiteStore) FillUsageKinds(roots map[string]string) error {
 	return tx.Commit()
 }
 
-// UsageKindless reports whether any row still has no kind.
-func (s *SQLiteStore) UsageKindless() (bool, error) {
-	var one int
-	err := s.db.QueryRow("SELECT 1 FROM llm_calls WHERE kind = '' LIMIT 1").Scan(&one)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
+// UsageKindlessSessions lists the sessions of the rows that still have no kind. A row whose trace never had a root
+// span stays kindless for good, so the startup pass must read these sessions only, never the whole archive.
+func (s *SQLiteStore) UsageKindlessSessions() ([]string, error) {
+	rows, err := s.db.Query("SELECT DISTINCT session_id FROM llm_calls WHERE kind = ''")
+	if err != nil {
+		return nil, err
 	}
-	return err == nil, err
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // UsageCacheUnknown reports whether any row was written before the cache split.

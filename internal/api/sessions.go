@@ -590,6 +590,9 @@ const (
 type SessionLimits struct {
 	Memory    int
 	Retention time.Duration
+	// ArchiveAlertPercent is the free space, in percent of the archive's volume, below which ego warns that the
+	// volume is running out; 0 means DefaultArchiveAlertPercent.
+	ArchiveAlertPercent float64
 	// UsageTenantAttr is the span attribute the usage ledger reads the
 	// tenant from; empty records no tenant.
 	UsageTenantAttr string
@@ -643,7 +646,7 @@ func (s *SessionStore) markChangedLocked(session *Session) {
 func NewSessionStoreWithArchive(hub *sseHub, store *SQLiteStore, limits SessionLimits) *SessionStore {
 	s := NewSessionStore(hub)
 	s.store = store
-	s.storage = newStorageWatch(store.path)
+	s.storage = newStorageWatch(store.path, limits.ArchiveAlertPercent)
 	s.usageRetention = DefaultUsageRetention
 	s.maxMemory = limits.Memory
 	s.sessionRetention = limits.Retention
@@ -676,6 +679,16 @@ func (s *SessionStore) LoadPersisted() error {
 	if s.store == nil {
 		return nil
 	}
+	// A start that takes long says which step it was in, so the next slow one is found by reading the log.
+	began := time.Now()
+	step := began
+	phase := func(name string) {
+		if d := time.Since(step); d >= 2*time.Second {
+			logx.Infof("session archive: start step %q took %s", name, d.Round(time.Millisecond))
+		}
+		step = time.Now()
+	}
+	defer func() { logx.Infof("session archive: loaded in %s", time.Since(began).Round(time.Millisecond)) }()
 
 	// Backfill the usage ledger from archived spans, so token history
 	// starts with the archive rather than with the first deploy that has
@@ -717,6 +730,7 @@ func (s *SessionStore) LoadPersisted() error {
 			return fmt.Errorf("backfilling usage ledger: %w", werr)
 		}
 	}
+	phase("usage backfill")
 	// Split the input of rows written before the ledger kept the cache parts, from the archived spans.
 	if unknown, err := s.store.UsageCacheUnknown(); err != nil {
 		return fmt.Errorf("checking usage ledger cache split: %w", err)
@@ -751,36 +765,40 @@ func (s *SessionStore) LoadPersisted() error {
 			return fmt.Errorf("finishing usage cache split: %w", err)
 		}
 	}
+	phase("usage cache split")
 	// Name kindless rows after their trace's root span, for rows written
-	// before roots were used as the fallback or whose root came later.
-	if kindless, err := s.store.UsageKindless(); err != nil {
+	// before roots were used as the fallback or whose root came later. Only the sessions of those rows are read:
+	// a row whose trace has no root stays kindless, and reading the whole archive for it on every start took
+	// minutes at full CPU.
+	kindless, err := s.store.UsageKindlessSessions()
+	if err != nil {
 		return fmt.Errorf("checking usage ledger kinds: %w", err)
-	} else if kindless {
+	}
+	if len(kindless) > 0 {
 		roots := map[string]string{}
-		var werr error
-		flush := func() {
-			if werr == nil && len(roots) > 0 {
-				werr = s.store.FillUsageKinds(roots)
+		for _, id := range kindless {
+			snap, ok, err := s.store.Load(id)
+			if err != nil {
+				logx.Warnf("session archive: reading session %s for usage kinds: %v", id, err)
+				continue
 			}
-			clear(roots)
-		}
-		if err := s.store.ForEachSnapshot(func(snap sessionSnapshot) {
+			if !ok {
+				continue
+			}
 			for _, span := range snap.Spans {
 				if span.ParentSpanID == "" {
 					roots[span.TraceID] = span.OperationName
 				}
 			}
-			if len(roots) >= migrationBatch {
-				flush()
-			}
-		}); err != nil {
-			return fmt.Errorf("reading session archive for usage kinds: %w", err)
 		}
-		if flush(); werr != nil {
-			return fmt.Errorf("filling usage kinds: %w", werr)
+		if len(roots) > 0 {
+			if err := s.store.FillUsageKinds(roots); err != nil {
+				return fmt.Errorf("filling usage kinds: %w", err)
+			}
 		}
 	}
 
+	phase("usage kinds")
 	// Only the newest sessions come back into memory; the rest stay in the
 	// archive and are read on demand. A few extra beyond maxMemory leave
 	// room for still-active sessions among the newest.
@@ -792,6 +810,8 @@ func (s *SessionStore) LoadPersisted() error {
 	if err != nil {
 		return fmt.Errorf("loading session archive: %w", err)
 	}
+
+	phase("loading the newest sessions")
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

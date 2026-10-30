@@ -12,9 +12,11 @@ import (
 // restart drops what was never saved. The watch turns that into a notice to the Discord sinks, and a field in
 // /api/health, the moment a snapshot fails or the volume runs low.
 const (
-	// storageLowFraction and storageLowBytes: free space below either one is "running out".
-	storageLowFraction = 0.10
-	storageLowBytes    = 256 << 20
+	// DefaultArchiveAlertPercent is the free space, in percent of the volume, under which it is "running out".
+	DefaultArchiveAlertPercent = 10
+
+	// storageLowBytes: free space below this is "running out" on a volume of any size.
+	storageLowBytes = 256 << 20
 
 	// A condition that lasts is repeated, not announced once and forgotten.
 	storageFailRepeat = time.Hour
@@ -26,6 +28,8 @@ type storageWatch struct {
 	notice func(text string)
 	now    func() time.Time
 	free   func(path string) (freeBytes, totalBytes uint64, err error)
+	// lowFraction is the share of the volume that must stay free.
+	lowFraction float64
 
 	mu        sync.Mutex
 	failing   bool
@@ -36,8 +40,11 @@ type storageWatch struct {
 	freeFrac  float64 // -1 until measured
 }
 
-func newStorageWatch(path string) *storageWatch {
-	return &storageWatch{path: path, now: time.Now, free: volumeFree, freeFrac: -1}
+func newStorageWatch(path string, alertPercent float64) *storageWatch {
+	if alertPercent <= 0 {
+		alertPercent = DefaultArchiveAlertPercent
+	}
+	return &storageWatch{path: path, now: time.Now, free: volumeFree, freeFrac: -1, lowFraction: alertPercent / 100}
 }
 
 func (w *storageWatch) send(text string) {
@@ -83,7 +90,7 @@ func (w *storageWatch) check() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.freeFrac = frac
-	if frac >= storageLowFraction && free >= storageLowBytes {
+	if frac >= w.lowFraction && free >= storageLowBytes {
 		w.lowSent = time.Time{}
 		return
 	}
@@ -105,7 +112,7 @@ func (w *storageWatch) health() map[string]any {
 	switch {
 	case w.failing:
 		status = "failing"
-	case w.freeFrac >= 0 && w.freeFrac < storageLowFraction:
+	case w.freeFrac >= 0 && w.freeFrac < w.lowFraction:
 		status = "low"
 	}
 	out := map[string]any{"status": status}

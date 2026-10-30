@@ -63,6 +63,7 @@ spec:
             - --session-db=/data/{{ .Values.persistence.dbFile }}
             - --session-memory={{ .Values.persistence.memorySessions }}
             - --session-retention={{ .Values.persistence.retention }}
+            - --archive-alert-percent={{ .Values.persistence.alertPercent }}
             {{- with .Values.usageTenantAttr }}
             - --usage-tenant-attr={{ . }}
             {{- end }}

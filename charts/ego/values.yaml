@@ -37,6 +37,9 @@ persistence:
   # -- Delete sessions not updated for this long, daily, then compact the
   # file (Go duration; "0" = keep forever).
   retention: 720h
+  # -- Warn (Discord, /api/health, the UI) when the volume has less than this
+  # percent free. Set it above the free space to see the warning work.
+  alertPercent: 10
 
 # -- Span attribute the token usage view reads the tenant from
 # (--usage-tenant-attr); empty records no tenant.
