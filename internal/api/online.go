@@ -127,6 +127,15 @@ func NewOnlineEngine(cfg *online.Config, store *SQLiteStore, sessions *SessionSt
 	return e
 }
 
+// Notice sends text to the discord sinks, best effort: it is for trouble the operator must see, such as a full volume.
+func (e *OnlineEngine) Notice(text string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := e.notifier.Notice(ctx, text); err != nil {
+		logx.Warnf("notice not delivered: %v", err)
+	}
+}
+
 // Enqueue is the session-complete hook. It never blocks.
 func (e *OnlineEngine) Enqueue(sessionID string) {
 	select {

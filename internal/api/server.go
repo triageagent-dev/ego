@@ -76,7 +76,6 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		}
 		stop := make(chan struct{})
 		defer close(stop)
-		store.StartPersistence(persistInterval, stop)
 		defer store.Close()
 	} else {
 		store = NewSessionStore(hub)
@@ -95,9 +94,16 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		}
 		onlineEngine = NewOnlineEngine(cfg, archive, store, limits.UsageTenantAttr)
 		store.SetOnComplete(onlineEngine.Enqueue)
+		store.SetStorageNotice(onlineEngine.Notice)
 		onlineStop := make(chan struct{})
 		defer close(onlineStop)
 		onlineEngine.Start(onlineStop)
+	}
+
+	if archive != nil {
+		persistStop := make(chan struct{})
+		defer close(persistStop)
+		store.StartPersistence(persistInterval, persistStop)
 	}
 
 	senderStore, err := NewSenderStore(archive)
@@ -211,7 +217,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	}
 
 	healthMux := http.NewServeMux()
-	healthMux.HandleFunc("/api/health", healthHandler)
+	healthMux.HandleFunc("/api/health", healthFor(store))
 
 	if sessionSecret != "" {
 		logx.Infof("gh-auth enabled for %s: requires a signed ego_session cookie", addr)
@@ -253,7 +259,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	if githubOAuth != nil {
 		roleOrg = githubOAuth.Org
 	}
-	topMux.HandleFunc("/api/health", healthHandler)
+	topMux.HandleFunc("/api/health", healthFor(store))
 	topMux.HandleFunc("/auth/me", authMeHandler(sessionSecret, ghTokens, revoked, roleStore, roleOrg))
 	if githubOAuth != nil {
 		topMux.HandleFunc("/auth/login", authLoginHandler(githubOAuth))
@@ -317,15 +323,22 @@ func mcpRoute(secret string, senders *SenderStore, roleStore *RoleStore, org str
 
 // healthHandler implements GET /api/health, enveloped the same way..., "error": null} response shape (confirmed
 // by a live side-by-side call, not assumed).
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"data": map[string]string{
+func healthHandler(w http.ResponseWriter, r *http.Request) { healthFor(nil)(w, r) }
+
+// healthFor is healthHandler that also reports the archive: its "status" stays "ok" whatever it says, because the
+// Kubernetes probes read this endpoint and a full volume is no reason to restart the pod.
+func healthFor(store *SessionStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		data := map[string]any{
 			"status":  "ok",
 			"version": Version,
-		},
-		"error": nil,
-	})
+		}
+		if archive := store.StorageHealth(); archive != nil {
+			data["archive"] = archive
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": data, "error": nil})
+	}
 }
 
 // otlpTracesHandler implements POST /v1/traces (ExportTraceServiceRequest), accepting both

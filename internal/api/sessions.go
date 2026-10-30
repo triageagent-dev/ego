@@ -516,6 +516,9 @@ type SessionStore struct {
 	quotaLogged map[string]time.Time
 	// persistMu serialises a flush of the archive with a purge of tenants.
 	persistMu sync.Mutex
+
+	// storage reports a failing archive or a volume running out; nil without an archive.
+	storage *storageWatch
 	// tenantNamer receives the display name a named sender gives its tenant (TenantNameAttr).
 	tenantNamer func(key, name string)
 }
@@ -640,6 +643,7 @@ func (s *SessionStore) markChangedLocked(session *Session) {
 func NewSessionStoreWithArchive(hub *sseHub, store *SQLiteStore, limits SessionLimits) *SessionStore {
 	s := NewSessionStore(hub)
 	s.store = store
+	s.storage = newStorageWatch(store.path)
 	s.usageRetention = DefaultUsageRetention
 	s.maxMemory = limits.Memory
 	s.sessionRetention = limits.Retention
@@ -929,6 +933,22 @@ func (s *SessionStore) lookupLocked(sessionID string) (*Session, bool) {
 	return restoreSession(snap, s.usageTenantAttr), true
 }
 
+// SetStorageNotice sends the archive's trouble (failed writes, a volume running out) to notice. Call before
+// StartPersistence.
+func (s *SessionStore) SetStorageNotice(notice func(text string)) {
+	if s.storage != nil {
+		s.storage.notice = notice
+	}
+}
+
+// StorageHealth is the archive's state for /api/health; nil without an archive.
+func (s *SessionStore) StorageHealth() map[string]any {
+	if s == nil || s.storage == nil {
+		return nil
+	}
+	return s.storage.health()
+}
+
 // StartPersistence begins a background loop snapshotting every session to
 // the archive every interval, until stop is closed. A no-op if no store is
 // configured.
@@ -944,7 +964,11 @@ func (s *SessionStore) StartPersistence(interval time.Duration, stop <-chan stru
 			case <-ticker.C:
 				if err := s.flushPersist(); err != nil {
 					logx.Errorf("session archive: periodic snapshot failed: %v", err)
+					s.storage.writeFailed(err)
+				} else {
+					s.storage.writeOK()
 				}
+				s.storage.check()
 			case <-stop:
 				return
 			}

@@ -54,6 +54,7 @@ What ego supports today, and what it does not.
 **Access**
 - GitHub OAuth restricted to an org, signed session cookies, bearer tokens from `ego auth mint-token`, or a raw
   GitHub token validated against org membership.
+- Archive trouble is announced (`storagewatch.go`): a failed snapshot write, and a volume with under 10% or 256 MiB free, go to the Discord sinks (a failure every hour while it lasts, a low volume every 6 hours, and a notice when writes recover); `GET /api/health` carries `data.archive` (`status` ok, low or failing, free percent, the error). Its top-level `status` stays `ok`, so a full volume never restarts the pod.
 - Delegate tokens (`ego auth mint-token --delegate --tenants …`, `delegate.go`): `/mcp` only; each `tools/call` names its
   tenant and is narrowed to it. A `<sender>/=` grant also lets a call for `<a>/<label>` read `<sender>/<label>` (and
   nothing else of that sender). Existing tokens are unchanged.

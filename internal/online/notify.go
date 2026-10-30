@@ -301,6 +301,22 @@ func (n *Notifier) Digest(ctx context.Context, text string) error {
 	return nil
 }
 
+// Notice sends text to every discord sink: for what the operator must see whatever the sink's other settings.
+func (n *Notifier) Notice(ctx context.Context, text string) error {
+	var errs []string
+	for _, s := range n.Sinks {
+		if s.Type == "discord" {
+			if err := n.discord(ctx, s, text); err != nil {
+				errs = append(errs, err.Error())
+			}
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
 // HasDigestSink reports whether any sink takes the digest.
 func (n *Notifier) HasDigestSink() bool {
 	for _, s := range n.Sinks {
