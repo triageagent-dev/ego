@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -104,6 +105,88 @@ func TestDelegateToken_NarrowsEveryCallToTheNamedTenant(t *testing.T) {
 	admin, _ := mintDelegate(t, RoleAdmin, "core/*")
 	if _, reply := rpc(t, h, admin, "/mcp", toolCall(5, "list_role_bindings", map[string]any{"tenant": "core/acme"})); !reply.Result.IsError {
 		t.Error("an admin-role delegate token listed role bindings: a tenant-limited admin manages nothing")
+	}
+}
+
+// A "<sender>/=" grant follows the call's label into that sender, for that label only. The tool's own tenant argument
+// would pin the call back to the one key, so it must not reach the tool.
+func TestDelegateToken_SameLabelGrantFollowsTheLabelIntoAnotherSender(t *testing.T) {
+	h, _ := delegateHandler(t)
+	tok, _ := mintDelegate(t, RoleViewer, "core/*", "rc/=")
+
+	_, reply := rpc(t, h, tok, "/mcp", toolCall(1, "get_quality", map[string]any{"tenant": "core/acme"}))
+	got := alertTenants(t, reply)
+	slices.Sort(got)
+	if !slices.Equal(got, []string{"core/acme", "rc/acme"}) {
+		t.Errorf("a call for core/acme read %v, want core/acme and rc/acme", got)
+	}
+
+	// Another label of the followed sender stays shut, and the follow-grant names no tenant of its own.
+	_, reply = rpc(t, h, tok, "/mcp", toolCall(2, "get_quality", map[string]any{"tenant": "core/other"}))
+	if got := alertTenants(t, reply); len(got) != 0 {
+		t.Errorf("a call for core/other read %v", got)
+	}
+	for _, tenant := range []string{"rc/acme", "rc/=", "core/="} {
+		_, reply = rpc(t, h, tok, "/mcp", toolCall(3, "get_quality", map[string]any{"tenant": tenant}))
+		if tenant != "core/=" && (reply.Error == nil || reply.Error.Code != jsonRPCInvalidParams) {
+			t.Errorf("tenant %s: %+v, want invalid params", tenant, reply)
+		}
+		if tenant == "core/=" {
+			if got := alertTenants(t, reply); len(got) != 0 {
+				t.Errorf("tenant %s read %v", tenant, got)
+			}
+		}
+	}
+
+	// Without the grant the same call reads its own key only.
+	plain, _ := mintDelegate(t, RoleViewer, "core/*")
+	_, reply = rpc(t, h, plain, "/mcp", toolCall(4, "get_quality", map[string]any{"tenant": "core/acme"}))
+	if got := alertTenants(t, reply); len(got) != 1 || got[0] != "core/acme" {
+		t.Errorf("without a follow-grant a call for core/acme read %v", got)
+	}
+}
+
+func TestDelegateToken_MintNeedsAGrantTheCallCanName(t *testing.T) {
+	if _, _, err := MintDelegateToken("core", delegateTestSecret, RoleViewer, []string{"rc/="}, time.Hour); err == nil {
+		t.Error("a delegate token holding only a follow-grant was minted")
+	}
+}
+
+func TestCallTenants(t *testing.T) {
+	grants := []string{"core/*", "spots/=", "rc/=", "core/="}
+	for _, c := range []struct {
+		key  string
+		want []string
+	}{
+		{"core/acme", []string{"core/acme", "spots/acme", "rc/acme"}},
+		{"spots/acme", []string{"spots/acme", "rc/acme", "core/acme"}},
+		{"acme", []string{"acme"}},
+		{"core/a=b", []string{"core/a=b"}},
+	} {
+		if got := callTenants(grants, c.key); !slices.Equal(got, c.want) {
+			t.Errorf("callTenants(%q) = %v, want %v", c.key, got, c.want)
+		}
+	}
+}
+
+func TestWithoutTenantArgument(t *testing.T) {
+	body := []byte(`{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"get_ego_tools","arguments":{"tenant":"core/acme","hours":24}}}`)
+	out, err := withoutTenantArgument(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		ID     int `json:"id"`
+		Params struct {
+			Name      string         `json:"name"`
+			Arguments map[string]any `json:"arguments"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, has := got.Params.Arguments["tenant"]; has || got.Params.Arguments["hours"] != float64(24) || got.ID != 7 || got.Params.Name != "get_ego_tools" {
+		t.Errorf("rewritten call = %s", out)
 	}
 }
 

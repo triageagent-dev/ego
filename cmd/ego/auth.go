@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/api"
@@ -29,7 +30,7 @@ func authMintTokenCmd(args []string) error {
 	name := fs.String("name", "", "label for the token (e.g. 'triage-core-otlp' or 'claude-code-mcp'), embedded as the token's subject and logged wherever it authenticates - not a GitHub username, since non-browser clients have no GitHub identity of their own (required)")
 	role := fs.String("role", "member", "role the token acts with: admin, member or viewer. It is not looked up from role bindings, so a label equal to a GitHub login does not inherit that user's role")
 	tenantsFlag := fs.String("tenants", "", "comma-separated tenants the token is limited to: <sender>/<tenant>, <sender>/* or *; it then sees only their data (empty: every tenant)")
-	delegate := fs.Bool("delegate", false, "mint a delegate token: it opens /mcp only, and every tools/call must name the tenant it acts for in the `tenant` argument, which must be one of --tenants (required, no bare *). For a client that serves many tenants and must not read across them")
+	delegate := fs.Bool("delegate", false, "mint a delegate token: it opens /mcp only, and every tools/call must name the tenant it acts for in the `tenant` argument, which must be one of --tenants (required, no bare *); a <sender>/= entry in --tenants also lets a call for <a>/<label> read <sender>/<label>, and nothing else of <sender>. For a client that serves many tenants and must not read across them")
 	ttlDays := fs.Int("ttl-days", 90, "token lifetime in days (default 90); machine clients have no login flow to refresh it, so mint a new one before it ends - revoke one with POST /api/admin/revocations (the id is printed on stderr), or rotate --secret/EGO_SESSION_SECRET to invalidate every token and cookie at once")
 	secret := fs.String("secret", env("SESSION_SECRET"), "signing secret; falls back to EGO_SESSION_SECRET so this can run against the same secret the deployed server uses without pasting it into a flag")
 	if err := fs.Parse(args); err != nil {
@@ -56,6 +57,13 @@ func authMintTokenCmd(args []string) error {
 	tenants, err := api.ParseTenantList(*tenantsFlag)
 	if err != nil {
 		return err
+	}
+	if !*delegate {
+		for _, g := range tenants {
+			if strings.HasSuffix(g, "/=") {
+				return fmt.Errorf("--tenants %q: a <sender>/= grant follows a call's tenant label into another sender, so it needs --delegate", g)
+			}
+		}
 	}
 	ttl := time.Duration(*ttlDays) * 24 * time.Hour
 	token, id := "", ""

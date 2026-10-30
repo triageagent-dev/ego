@@ -109,6 +109,9 @@ func MintDelegateToken(name, secret string, role Role, tenants []string, ttl tim
 	if slices.Contains(tenants, "*") {
 		return "", "", fmt.Errorf("a delegate token cannot be granted every tenant (*): name <sender>/* or tenant keys")
 	}
+	if !slices.ContainsFunc(tenants, func(g string) bool { return !strings.HasSuffix(g, sameLabelSuffix) }) {
+		return "", "", fmt.Errorf("a delegate token needs a grant the call can name (<sender>/* or a tenant key) besides <sender>/= ones")
+	}
 	now := time.Now()
 	t := authToken{Kind: tokenKindDelegate, ID: newRandomID("tok"), Username: name, Role: role, Tenants: tenants, IssuedAt: now.Unix(), Expiry: now.Add(ttl).Unix()}
 	return t.encode(secret), t.ID, nil
