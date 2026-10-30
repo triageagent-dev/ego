@@ -16,6 +16,7 @@ import { startConnectionMonitor } from './lib/connection';
 import { TABS, tabForView, viewForHash } from './components/shell/routes';
 import { SettingsView } from './components/settings/SettingsView';
 import { SessionExpiredBanner } from './components/SessionExpiredBanner';
+import { ArchiveBanner } from './components/ArchiveBanner';
 
 // The current tab lives in the URL hash (#runs), so a view can be linked and
 // the back button works; the keys 1-5 switch tabs and / jumps to the search box.
@@ -100,6 +101,7 @@ function AppContent() {
   return (
     <div style={{ display: 'flex', flexDirection: 'row', height: `${100 / ZOOM}vh`, zoom: ZOOM, overflow: 'hidden', ['--view-h' as string]: `${100 / ZOOM}vh` }}>
       <SessionExpiredBanner />
+      <ArchiveBanner />
       <Sidebar />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
         <ClassicHeader />
