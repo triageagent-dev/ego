@@ -4,6 +4,11 @@ go 1.26.0
 
 toolchain go1.27.3
 
+// CVE-2026-98432: a listener never asks the kernel for Multipath TCP.
+// Go 1.24+ enables MPTCP by default on Linux; the kernel bug it exposes
+// is fixed only in a patched kernel, and no client of ours needs MPTCP.
+godebug multipathtcp=0
+
 require (
 	cloud.google.com/go/auth v0.24.1
 	github.com/gorilla/websocket v1.5.3
