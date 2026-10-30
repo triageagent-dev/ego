@@ -204,7 +204,7 @@ The evidence a tool returns is read from the stored online results: the per-sent
 
 ## Access and roles
 
-Authentication is active only with a session secret. Sign-in is GitHub OAuth restricted to an organisation and gives a signed session cookie. API tokens come from `ego auth mint-token`, and a raw GitHub token is accepted when its owner is a member of the organisation. Cookies and API tokens are different kinds, each with an id and an issue time. A token carries the role it was minted with. A delegate token is for a client that serves many tenants: it is accepted only for the tool endpoint, and every tool call has to name the one tenant it acts for, which ego checks against the token's grants and narrows the call to. An admin can revoke one token or everything issued to a subject, and logging out revokes the cookie.
+Authentication is active only with a session secret. Sign-in is GitHub OAuth restricted to an organisation and gives a signed session cookie. API tokens come from `ego auth mint-token`, and a raw GitHub token is accepted when its owner is a member of the organisation. Cookies and API tokens are different kinds, each with an id and an issue time. A token carries the role it was minted with. A delegate token is for a client that serves many tenants: it is accepted only for the tool endpoint, and every tool call has to name the one tenant it acts for, which ego checks against the token's grants and narrows the call to. A grant of the form `<sender>/=` widens the call to the same label under that sender, for workspaces whose data comes from several senders. An admin can revoke one token or everything issued to a subject, and logging out revokes the cookie.
 
 | Role | Can |
 |---|---|

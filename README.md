@@ -332,6 +332,12 @@ every tool. A call without a tenant, with one outside the token's grants or with
 params (`-32602`) and logged at warn level with the token id and the tenant tried. A delegate token takes one request
 per POST (no batches), never acts as an admin (a tenant-limited admin manages nothing) and cannot be granted `*`.
 
+A workspace's data can arrive under more than one sender: a core files its sessions as `core/<label>` and the spots
+working for it as `spots/<label>`. A grant `<sender>/=` makes a call for `core/<label>` also read `spots/<label>`, that
+label only: `ego auth mint-token --delegate --role viewer --tenants 'core/*,spots/='`. The grant names no tenant of
+its own, so a call cannot ask for `spots/<other>`. ego then drops the call's `tenant` argument before the tool runs
+(the call's tenants are already set), so tools that filter by tenant read both keys.
+
 | Tool | Description |
 |---|---|
 | `get_quality` | Open alerts, hourly scores per metric, sessions scored, today's judge budget. |
