@@ -32,13 +32,18 @@ func authMintTokenCmd(args []string) error {
 	tenantsFlag := fs.String("tenants", "", "comma-separated tenants the token is limited to: <sender>/<tenant>, <sender>/* or *; it then sees only their data (empty: every tenant)")
 	delegate := fs.Bool("delegate", false, "mint a delegate token: it opens /mcp only, and every tools/call must name the tenant it acts for in the `tenant` argument, which must be one of --tenants (required, no bare *); a <sender>/= entry in --tenants also lets a call for <a>/<label> read <sender>/<label>, and nothing else of <sender>. For a client that serves many tenants and must not read across them")
 	ttlDays := fs.Int("ttl-days", 90, "token lifetime in days (default 90); machine clients have no login flow to refresh it, so mint a new one before it ends - revoke one with POST /api/admin/revocations (the id is printed on stderr), or rotate --secret/EGO_SESSION_SECRET to invalidate every token and cookie at once")
-	secret := fs.String("secret", env("SESSION_SECRET"), "signing secret; falls back to EGO_SESSION_SECRET so this can run against the same secret the deployed server uses without pasting it into a flag")
+	// The environment is read after parsing, not as the flag's default: a default is printed by --help, and this
+	// one is the server's signing secret.
+	secret := fs.String("secret", "", "signing secret; falls back to EGO_SESSION_SECRET so this can run against the same secret the deployed server uses without pasting it into a flag")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	if *name == "" {
 		return fmt.Errorf("--name is required")
+	}
+	if *secret == "" {
+		*secret = env("SESSION_SECRET")
 	}
 	if *secret == "" {
 		return fmt.Errorf("no signing secret: pass --secret or set EGO_SESSION_SECRET (the same value the running server has)")

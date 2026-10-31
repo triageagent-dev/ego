@@ -148,6 +148,59 @@ func TestConvertTrace_OpenInferenceMultiTurn(t *testing.T) {
 	}
 }
 
+// TestConvertTrace_OpenInferenceToolsStayWithTheRoundThatAnswered covers a voice session whose model called a
+// tool on its own after the greeting and before the person spoke, and whose round spans are written after the
+// round's tools (a tool span precedes the LLM span of its round). The lone call stays in the greeting turn, the
+// same window the turn's tokens are counted in, and the goodbye turn gets only the call its own round made.
+func TestConvertTrace_OpenInferenceToolsStayWithTheRoundThatAnswered(t *testing.T) {
+	root := &tracepkg.Span{
+		TraceID: "trace-3", SpanID: "root", OperationName: "voice.session",
+		StartTime: 0, Duration: 10_000_000, Tags: map[string]any{},
+	}
+	llm := func(id string, start int64, tags map[string]any) *tracepkg.Span {
+		tags["gen_ai.request.model"] = "gemini-live"
+		return &tracepkg.Span{TraceID: "trace-3", SpanID: id, ParentSpanID: "root", OperationName: "llm.gemini_realtime", StartTime: start, Tags: tags}
+	}
+	tool := func(id string, start int64, name string) *tracepkg.Span {
+		return &tracepkg.Span{TraceID: "trace-3", SpanID: id, ParentSpanID: "root", OperationName: "tool." + name, StartTime: start,
+			Tags: map[string]any{"tool.name": name, "input.value": `{"id":"` + id + `"}`, "output.value": `{"ok":true}`}}
+	}
+	spans := []*tracepkg.Span{
+		tool("t1", 100_000, "ask_spot"),
+		llm("r1", 110_000, map[string]any{}),
+		llm("r2", 200_000, map[string]any{"output.value": "hello"}),
+		tool("t2", 300_000, "ask_spot"), // the model's own call after the greeting: nobody spoke
+		llm("r3", 310_000, map[string]any{}),
+		tool("t3", 400_000, "save_session_note"), // made in the round that heard the goodbye, written before its span
+		llm("r4", 410_000, map[string]any{"input.value": "bye"}),
+		tool("t4", 500_000, "end_session"),
+		llm("r5", 510_000, map[string]any{"output.value": "goodbye"}),
+	}
+	root.Children = spans
+	tr := &tracepkg.Trace{TraceID: "trace-3", RootSpans: []*tracepkg.Span{root}, AllSpans: append([]*tracepkg.Span{root}, spans...)}
+
+	result := adk.ConvertTrace(tr)
+	if len(result.Invocations) != 2 {
+		t.Fatalf("expected 2 invocations, got %d: %+v", len(result.Invocations), result.Invocations)
+	}
+	names := func(inv adk.Invocation) []string {
+		var out []string
+		for _, tc := range inv.IntermediateData.ToolUses {
+			out = append(out, tc.Name)
+		}
+		return out
+	}
+	if got := names(result.Invocations[0]); len(got) != 2 || got[0] != "ask_spot" || got[1] != "ask_spot" {
+		t.Errorf("greeting turn tools = %v, want both ask_spot calls", got)
+	}
+	if got := names(result.Invocations[1]); len(got) != 2 || got[0] != "save_session_note" || got[1] != "end_session" {
+		t.Errorf("goodbye turn tools = %v, want save_session_note, end_session", got)
+	}
+	if got := result.Invocations[1].UserContent.Text(); got != "bye" {
+		t.Errorf("goodbye turn user = %q", got)
+	}
+}
+
 // buildOpenInferenceAgentTrace reproduces an OpenInference producer's shape
 // for an agent pass: an AGENT root span carrying the clean prompt and
 // answer, and an llm.chat.completions child that has only OpenInference

@@ -329,8 +329,13 @@ func extractSingleTurn(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span) (conve
 	}, nil
 }
 
-// extractOpenInferenceTurns pairs alternating single-sided OpenInference LLM spans into turns, attaching tool
-// spans by time window.
+// extractOpenInferenceTurns pairs alternating single-sided OpenInference LLM spans into turns. A turn runs from
+// its first span to the start of the next turn, so the model rounds after an answer and before the next user
+// input (a voice model that keeps calling tools on its own) stay with the turn that answered, the same window
+// the per-turn token metrics use. A tool call belongs to the model round that consumed its result: the first
+// LLM span at or after it. That holds for a span emitted when the model asked (the round after it carries the
+// answer) and for one emitted when the round ended (triage-core's voice module writes the round's span after
+// its tools returned).
 func extractOpenInferenceTurns(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span) []conversationTurn {
 	var turnSpans []*tracepkg.Span
 	for _, s := range llmSpans {
@@ -343,23 +348,12 @@ func extractOpenInferenceTurns(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span
 	}
 	sortByStart(turnSpans)
 
-	toolSpans := findGenAIToolSpansIn(invSpan)
-	sortByStart(toolSpans)
-
 	var turns []conversationTurn
 	var pendingUser *string
 	pendingStart := turnSpans[0].StartTime
-	windowStart := invSpan.StartTime
 
-	flush := func(assistantText string, endTime int64) {
+	flush := func(assistantText string) {
 		idx := len(turns) + 1
-		var windowTools []*tracepkg.Span
-		for _, t := range toolSpans {
-			if t.StartTime >= windowStart && t.StartTime <= endTime {
-				windowTools = append(windowTools, t)
-			}
-		}
-		toolCalls, toolResponses := extractGenAIToolCalls(windowTools, nil)
 		userText := ""
 		if pendingUser != nil {
 			userText = *pendingUser
@@ -372,12 +366,9 @@ func extractOpenInferenceTurns(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span
 			InvocationID:   fmt.Sprintf("genai-turn-%d-%s", idx, shortID),
 			UserText:       userText,
 			AssistantText:  assistantText,
-			ToolCalls:      toolCalls,
-			ToolResponses:  toolResponses,
 			StartTimeMicro: pendingStart,
 		})
 		pendingUser = nil
-		windowStart = endTime
 	}
 
 	for _, s := range turnSpans {
@@ -385,7 +376,7 @@ func extractOpenInferenceTurns(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span
 		outVal := s.TagString(OpenInferenceOutputValue)
 		if inVal != "" {
 			if pendingUser != nil {
-				flush("", s.StartTime)
+				flush("")
 			}
 			v := inVal
 			pendingUser = &v
@@ -394,12 +385,38 @@ func extractOpenInferenceTurns(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span
 			if pendingUser == nil {
 				pendingStart = s.StartTime
 			}
-			flush(outVal, s.EndTime())
+			flush(outVal)
 		}
 	}
 
 	if pendingUser != nil {
-		flush("", turnSpans[len(turnSpans)-1].EndTime())
+		flush("")
+	}
+
+	// Every LLM span is a round, including the ones that carried no text (a round that only called tools).
+	rounds := append([]*tracepkg.Span(nil), llmSpans...)
+	sortByStart(rounds)
+	toolSpans := findGenAIToolSpansIn(invSpan)
+	sortByStart(toolSpans)
+	toolsByTurn := make([][]*tracepkg.Span, len(turns))
+	for _, t := range toolSpans {
+		roundStart := rounds[len(rounds)-1].StartTime
+		for _, s := range rounds {
+			if s.StartTime >= t.StartTime {
+				roundStart = s.StartTime
+				break
+			}
+		}
+		i := 0
+		for j := range turns {
+			if turns[j].StartTimeMicro <= roundStart {
+				i = j
+			}
+		}
+		toolsByTurn[i] = append(toolsByTurn[i], t)
+	}
+	for i := range turns {
+		turns[i].ToolCalls, turns[i].ToolResponses = extractGenAIToolCalls(toolsByTurn[i], nil)
 	}
 
 	return turns
