@@ -1,3 +1,6 @@
+{{- if and ((.Values.decision).token).audience .Values.jevSecret }}
+{{- fail "decision.token.audience and jevSecret both fill the Authorization header of the decision calls: set jevSecret to \"\" to send the projected ServiceAccount token, or leave decision.token.audience empty to send the key" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -127,6 +130,10 @@ spec:
             - name: EGO_DECISION_MAX_STATE_BYTES
               value: {{ . | quote }}
             {{- end }}
+            {{- with ((.Values.decision).token).audience }}
+            - name: EGO_DECISION_TOKEN_FILE
+              value: /var/run/ego/decisions/token
+            {{- end }}
             {{- with .Values.jevSecret }}
             - name: JEV_API_KEY
               valueFrom:
@@ -183,6 +190,11 @@ spec:
             # The root filesystem is read-only; uploads spill to temp files here.
             - name: tmp
               mountPath: /tmp
+            {{- if ((.Values.decision).token).audience }}
+            - name: decisions-token
+              mountPath: /var/run/ego/decisions
+              readOnly: true
+            {{- end }}
             {{- if .Values.online.enabled }}
             - name: online-config
               mountPath: /etc/ego
@@ -200,6 +212,19 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 256Mi
+        {{- with (.Values.decision).token }}
+        {{- if .audience }}
+        # Projected ServiceAccount token for the decision-model gateway (EGO_DECISION_TOKEN_FILE); the kubelet rotates
+        # it and the client reads it on every call.
+        - name: decisions-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: {{ .audience | quote }}
+                  expirationSeconds: {{ .expirationSeconds | default 3600 }}
+                  path: token
+        {{- end }}
+        {{- end }}
         {{- if .Values.online.enabled }}
         - name: online-config
           configMap:

@@ -187,6 +187,13 @@ ego run trace.json -m jev_task_resolved
 `score` questions are not sent yet. A decision model that runs on a small context needs `EGO_DECISION_MAX_STATE_BYTES`;
 check its scores against labelled sessions before relying on them. Ollama serves these models from version 0.35.
 
+Behind a gateway that checks a JWT and holds the model's key itself, ego sends a token file instead of a key:
+`--jev-token-file` (`EGO_DECISION_TOKEN_FILE`) names a file whose content goes out as the bearer, read on every call,
+so a projected Kubernetes ServiceAccount token that the kubelet rotates needs no restart. A token file is refused
+together with a key, under the pod's own ServiceAccount token directory, and over plain http to anything but a loopback
+host or an in-cluster Service name (`.svc`, `.svc.cluster.local`). In the chart, `decision.token.audience` mounts the
+token and sets the variable.
+
 ## Ingesting traces
 
 OTLP/HTTP (`POST /v1/traces`, `:4318`) and OTLP/gRPC (`:4317`) feed the same session store. Spans are grouped
@@ -486,6 +493,8 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`:
 | `EGO_LOG_LEVEL` | `--log-level` | Log threshold: `debug`, `info` (default), `warn` or `error`. Lines are `time=… level=… msg=…` on stderr |
 | `EGO_AUDIT_LOG` | `--audit-log` | Log the GitHub user name of every sign-in and refused sign-in (off by default: no user names in the log) |
 | `EGO_ONLINE_CONFIG` | `--online-config` | Online evaluation config file |
+| `EGO_DECISION_URL`, `EGO_DECISION_MODEL`, `EGO_DECISION_MAX_STATE_BYTES` | (`ego run`: `--jev-model`) | The decision model behind the `jev_*` metrics; empty: the hosted default |
+| `EGO_DECISION_API_KEY` or `EGO_DECISION_TOKEN_FILE` | (`ego run`: `--jev-api-key`, `--jev-token-file`) | Its credential: a key, or a file read on every call and sent as the bearer (a projected ServiceAccount token for a gateway that checks a JWT); never both |
 | `EGO_SERVER_URL`, `EGO_SESSION_TOKEN` | `--server-url`, `--session-token` | For `ego mcp` |
 
 ## Development

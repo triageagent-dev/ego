@@ -255,7 +255,7 @@ func runEvaluateTraces(
 		if jevRequests, err = decision.Requests(requestedJevMetrics, custom, threshold); err != nil {
 			return nil, err
 		}
-		if jevClient, err = decision.NewClient("", ""); err != nil {
+		if jevClient, err = decision.NewClient("", "", ""); err != nil {
 			return nil, err
 		}
 	}

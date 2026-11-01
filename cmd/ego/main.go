@@ -148,6 +148,7 @@ Run flags:
   --rubric string                  rubric text for rubric_based_*_v1 metrics (repeatable); required by those metrics
   --jev-questions string           custom question file for the Jev eval; each question runs as a jev:<key> metric
   --jev-api-key string             API key for jev_* metrics (falls back to EGO_DECISION_API_KEY, JEV_API_KEY)
+  --jev-token-file string          file sent as the bearer instead of a key, read on every call (falls back to EGO_DECISION_TOKEN_FILE)
   --jev-model string               decision model for jev_* metrics (falls back to EGO_DECISION_MODEL, JEV_MODEL, default jev-1.13)
 
 Metrics needing a live judge model (final_response_match_v2, hallucinations_v1, rubric_based_final_response_quality_v1,
@@ -202,6 +203,7 @@ var runFlagsWithValue = map[string]bool{
 	"rubric":                true,
 	"jev-questions":         true,
 	"jev-api-key":           true,
+	"jev-token-file":        true,
 	"jev-model":             true,
 }
 
@@ -246,6 +248,7 @@ func runCmd(args []string) error {
 	fs.Var(&rubrics, "rubric", "rubric text for rubric_based_*_v1 metrics (repeatable); required by those metrics")
 	jevQuestions := fs.String("jev-questions", "", "custom question file for the Jev eval (runs as jev:<key> metrics)")
 	jevAPIKey := fs.String("jev-api-key", "", "API key for jev_* metrics; falls back to EGO_DECISION_API_KEY, then JEV_API_KEY")
+	jevTokenFile := fs.String("jev-token-file", "", "file whose content is sent as the bearer for jev_* metrics instead of a key, read on every call (a projected ServiceAccount token for a gateway that checks a JWT); falls back to EGO_DECISION_TOKEN_FILE")
 	jevModel := fs.String("jev-model", "", "decision model for jev_* metrics; falls back to EGO_DECISION_MODEL, then JEV_MODEL, default "+decision.DefaultModel)
 	if err := fs.Parse(flagArgs); err != nil {
 		return err
@@ -322,7 +325,7 @@ func runCmd(args []string) error {
 		if jevRequests, err = decision.Requests(requestedJevMetrics, custom, *threshold); err != nil {
 			return err
 		}
-		if jevClient, err = decision.NewClient(*jevAPIKey, *jevModel); err != nil {
+		if jevClient, err = decision.NewClient(*jevAPIKey, *jevTokenFile, *jevModel); err != nil {
 			return err
 		}
 	}

@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -217,7 +219,7 @@ func TestClientRequestAndRetry(t *testing.T) {
 	defer srv.Close()
 
 	t.Setenv("JEV_API_URL", srv.URL)
-	c, err := NewClient("secret", "jev-1.13")
+	c, err := NewClient("secret", "", "jev-1.13")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +244,7 @@ func TestClientNoRetryOnClientErrorAndKeyRequired(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv("JEV_API_URL", srv.URL)
-	c, _ := NewClient("secret", "")
+	c, _ := NewClient("secret", "", "")
 	c.backoff = 0
 	if _, err := c.Decide(context.Background(), nil, nil); err == nil || !strings.Contains(err.Error(), "HTTP 401") || attempts != 1 {
 		t.Errorf("err = %v after %d attempts, want one HTTP 401", err, attempts)
@@ -252,7 +254,7 @@ func TestClientNoRetryOnClientErrorAndKeyRequired(t *testing.T) {
 	t.Setenv("JEV_API_KEY", "")
 	t.Setenv("EGO_DECISION_URL", "")
 	t.Setenv("EGO_DECISION_API_KEY", "")
-	if _, err := NewClient("", ""); err == nil || !strings.Contains(err.Error(), "JEV_API_KEY") {
+	if _, err := NewClient("", "", ""); err == nil || !strings.Contains(err.Error(), "JEV_API_KEY") {
 		t.Errorf("NewClient without key: err = %v", err)
 	}
 	if Configured() {
@@ -306,7 +308,7 @@ func TestClientOwnEndpointNeedsNoKeyAndFitsState(t *testing.T) {
 	if !Configured() {
 		t.Fatal("Configured() = false with an endpoint set")
 	}
-	c, err := NewClient("", "")
+	c, err := NewClient("", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +334,7 @@ func TestClientOwnEndpointNeedsNoKeyAndFitsState(t *testing.T) {
 	}
 
 	t.Setenv("EGO_DECISION_MAX_STATE_BYTES", "lots")
-	if _, err := NewClient("", ""); err == nil {
+	if _, err := NewClient("", "", ""); err == nil {
 		t.Error("a bad EGO_DECISION_MAX_STATE_BYTES was accepted")
 	}
 }
@@ -398,5 +400,129 @@ func TestStateDefangsQuotedPromptMarkers(t *testing.T) {
 	}
 	if !strings.Contains(text, "ok") || !strings.Contains(text, "fine") {
 		t.Errorf("plain text was changed: %s", text)
+	}
+}
+
+// A token file takes the key's place in the Authorization header and is read on every call, so a rotated projected
+// ServiceAccount token is picked up with no restart; an empty file is an error, not an empty bearer.
+func TestClientTokenFileIsReadOnEveryCall(t *testing.T) {
+	var auths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auths = append(auths, r.Header.Get("Authorization"))
+		w.Write([]byte(`{"answers":{}}`))
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	tokenFile := filepath.Join(dir, "token")
+	if err := os.WriteFile(tokenFile, []byte("first\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("JEV_API_KEY", "")
+	t.Setenv("EGO_DECISION_API_KEY", "")
+	t.Setenv("JEV_API_URL", "")
+	t.Setenv("EGO_DECISION_URL", srv.URL) // http to a loopback host
+	t.Setenv("EGO_DECISION_TOKEN_FILE", tokenFile)
+	if !Configured() {
+		t.Fatal("Configured() = false with a token file set")
+	}
+	c, err := NewClient("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Decide(context.Background(), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tokenFile, []byte("second"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Decide(context.Background(), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"Bearer first", "Bearer second"}; strings.Join(auths, ",") != strings.Join(want, ",") {
+		t.Errorf("Authorization headers = %q, want %q", auths, want)
+	}
+	if err := os.WriteFile(tokenFile, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c.backoff = 0
+	if _, err := c.Decide(context.Background(), nil, nil); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Errorf("Decide with an empty token file: err = %v, want a refusal", err)
+	}
+	if len(auths) != 2 {
+		t.Errorf("%d requests went out, want 2: an unreadable token is never sent as an empty bearer", len(auths))
+	}
+
+	// The flag wins over the environment, like the key does.
+	other := filepath.Join(dir, "other")
+	if err := os.WriteFile(other, []byte("third"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err = NewClient("", other, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Decide(context.Background(), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if auths[len(auths)-1] != "Bearer third" {
+		t.Errorf("last Authorization = %q, want the flag's file", auths[len(auths)-1])
+	}
+}
+
+// The guards a token file passes before the first call: an absolute path, not the pod's own ServiceAccount token
+// (by name, and after symlinks at read time), not together with a key, and an endpoint the token cannot reach in
+// the clear.
+func TestClientTokenFileGuards(t *testing.T) {
+	t.Setenv("JEV_API_KEY", "")
+	t.Setenv("EGO_DECISION_API_KEY", "")
+	t.Setenv("JEV_API_URL", "")
+	t.Setenv("EGO_DECISION_TOKEN_FILE", "")
+	dir := t.TempDir()
+	tokenFile := filepath.Join(dir, "token")
+	if err := os.WriteFile(tokenFile, []byte("t"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, url, file, key, want string }{
+		{"relative path", "https://gw.example", "token", "", "absolute"},
+		{"pod credential", "https://gw.example", podCredentialDir + "/token", "", "pod's own"},
+		{"pod credential by dot segments", "https://gw.example", podCredentialDir + "/../serviceaccount/token", "", "pod's own"},
+		{"key and token", "https://gw.example", tokenFile, "k", "both fill"},
+		{"http to a public host", "http://gw.example/api", tokenFile, "", "plain http"},
+		{"ftp", "ftp://gw.example/api", tokenFile, "", "scheme"},
+		{"no host", "https://", tokenFile, "", "absolute URL"},
+	} {
+		t.Setenv("EGO_DECISION_URL", tc.url)
+		_, err := NewClient(tc.key, tc.file, "")
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want one mentioning %q", tc.name, err, tc.want)
+		}
+	}
+	for _, u := range []string{
+		"https://gw.example/api",
+		"http://agentgateway.gateway-system.svc.cluster.local/api",
+		"http://agentgateway.gateway-system.svc/api",
+		"http://localhost:8080/api",
+		"http://127.0.0.1:8080/api",
+		"http://[::1]:8080/api",
+	} {
+		t.Setenv("EGO_DECISION_URL", u)
+		if _, err := NewClient("", tokenFile, ""); err != nil {
+			t.Errorf("%s: unexpected refusal: %v", u, err)
+		}
+	}
+	// The default hosted endpoint takes a token file too: whether it accepts the token is the endpoint's call.
+	t.Setenv("EGO_DECISION_URL", "")
+	if _, err := NewClient("", tokenFile, ""); err != nil {
+		t.Errorf("default endpoint with a token file: %v", err)
+	}
+
+	// A link under an allowed name that resolves into the pod's credentials is refused at read time.
+	t.Setenv("EGO_DECISION_URL", "https://gw.example/api")
+	c := &Client{url: "https://gw.example/api", tokenFile: filepath.Join(dir, "link")}
+	if err := os.Symlink(podCredentialDir+"/token", c.tokenFile); err != nil {
+		t.Skip("cannot create a symlink here")
+	}
+	if _, err := c.bearer(); err == nil {
+		t.Error("bearer() followed a link into the pod's own credentials")
 	}
 }

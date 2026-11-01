@@ -17,7 +17,7 @@ func newDecisionClientGetter() func() (*decision.Client, error) {
 	var built bool
 	return func() (*decision.Client, error) {
 		if !built {
-			client, err = decision.NewClient("", "")
+			client, err = decision.NewClient("", "", "")
 			built = true
 		}
 		return client, err

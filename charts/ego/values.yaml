@@ -92,6 +92,16 @@ decision:
   # -- Shorten a state larger than this many bytes before it is sent (the longest texts first); 0 sends it whole.
   # Set it for a model with a small context.
   maxStateBytes: 0
+  # -- Send ego's own projected ServiceAccount token as the bearer instead of a key, for a gateway in front of the
+  # decision model that checks a JWT (agentgateway jwtAuthentication) and holds the model's key itself. Set audience
+  # to the value the gateway expects; empty mounts nothing. The token is mounted read-only at
+  # /var/run/ego/decisions/token (EGO_DECISION_TOKEN_FILE), the kubelet rotates it and ego reads it on every call, so
+  # no restart is needed. It is refused together with jevSecret (both fill the Authorization header), and ego refuses
+  # to send it over plain http to anything but a loopback host or an in-cluster Service (.svc, .svc.cluster.local):
+  # name the gateway's Service in url, or use https.
+  token:
+    audience: ""
+    expirationSeconds: 3600
 
 extraEnv: []
 

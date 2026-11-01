@@ -11,10 +11,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -58,12 +62,20 @@ type Decider interface {
 	Decide(ctx context.Context, state map[string]any, questions map[string]Question) (map[string]Answer, error)
 }
 
+// podCredentialDir is where Kubernetes mounts the pod's own ServiceAccount token. A token file under it, by name or
+// after symlinks, is refused: a projected token with the gateway's audience is the credential meant for the decision
+// endpoint, never the token that speaks for the pod to the Kubernetes API.
+const podCredentialDir = "/var/run/secrets/kubernetes.io/serviceaccount"
+
 // Client calls the Decisions API.
 type Client struct {
 	httpClient *http.Client
 	url        string
 	apiKey     string
-	model      string
+	// tokenFile, when set, holds the bearer sent instead of apiKey. It is read on every call: a projected
+	// ServiceAccount token is rotated by the kubelet, and a restart to pick the new one up is not wanted.
+	tokenFile string
+	model     string
 	// maxState, when above 0, is the size in bytes a state is shortened to before it is sent.
 	maxState int
 	// backoff is the delay before retry n (doubling); a field so tests
@@ -85,16 +97,24 @@ func setting(names ...string) string {
 // Configured reports whether a client can be built from the environment: a key for the default endpoint, or an
 // endpoint of your own (which needs no key unless it asks for one).
 func Configured() bool {
-	return setting("EGO_DECISION_API_KEY", "JEV_API_KEY") != "" || setting("EGO_DECISION_URL", "JEV_API_URL") != ""
+	return setting("EGO_DECISION_API_KEY", "JEV_API_KEY") != "" || setting("EGO_DECISION_TOKEN_FILE") != "" ||
+		setting("EGO_DECISION_URL", "JEV_API_URL") != ""
 }
 
-// NewClient creates a client. apiKey falls back to EGO_DECISION_API_KEY then JEV_API_KEY, model to
-// EGO_DECISION_MODEL, JEV_MODEL, then DefaultModel; EGO_DECISION_URL (JEV_API_URL) overrides the endpoint, and a
-// state larger than EGO_DECISION_MAX_STATE_BYTES is shortened before it is sent (for a model with a small context).
-// The default endpoint needs a key; another one gets the key only if there is one.
-func NewClient(apiKey, model string) (*Client, error) {
+// NewClient creates a client. apiKey falls back to EGO_DECISION_API_KEY then JEV_API_KEY; tokenFile, a file whose
+// content is sent as the bearer instead of a key (a projected ServiceAccount token for a gateway that checks a JWT),
+// falls back to EGO_DECISION_TOKEN_FILE and is read on every call; model falls back to EGO_DECISION_MODEL, JEV_MODEL,
+// then DefaultModel; EGO_DECISION_URL (JEV_API_URL) overrides the endpoint, and a state larger than
+// EGO_DECISION_MAX_STATE_BYTES is shortened before it is sent (for a model with a small context). The default endpoint
+// needs a key; another one gets the key only if there is one. A key and a token file together are refused, both fill
+// the Authorization header. A token file must be an absolute path outside the pod's own ServiceAccount token
+// directory, and its token travels only over https, or over http to a loopback host or an in-cluster Service name.
+func NewClient(apiKey, tokenFile, model string) (*Client, error) {
 	if apiKey == "" {
 		apiKey = setting("EGO_DECISION_API_KEY", "JEV_API_KEY")
+	}
+	if tokenFile == "" {
+		tokenFile = setting("EGO_DECISION_TOKEN_FILE")
 	}
 	if model == "" {
 		model = setting("EGO_DECISION_MODEL", "JEV_MODEL")
@@ -106,8 +126,19 @@ func NewClient(apiKey, model string) (*Client, error) {
 	if url == "" {
 		url = DefaultURL
 	}
-	if apiKey == "" && url == DefaultURL {
+	if apiKey == "" && tokenFile == "" && url == DefaultURL {
 		return nil, fmt.Errorf("jev_* metrics need an API key for the default endpoint: set EGO_DECISION_API_KEY (or JEV_API_KEY, or pass --jev-api-key), or point EGO_DECISION_URL at your own decision model")
+	}
+	if tokenFile != "" {
+		if apiKey != "" {
+			return nil, errors.New("EGO_DECISION_TOKEN_FILE cannot be set together with an API key: both fill the Authorization header")
+		}
+		if err := checkTokenFile(tokenFile); err != nil {
+			return nil, err
+		}
+		if err := checkTokenURL(url); err != nil {
+			return nil, err
+		}
 	}
 	maxState := 0
 	if v := setting("EGO_DECISION_MAX_STATE_BYTES"); v != "" {
@@ -121,10 +152,88 @@ func NewClient(apiKey, model string) (*Client, error) {
 		httpClient: &http.Client{Timeout: 60 * time.Second},
 		url:        url,
 		apiKey:     apiKey,
+		tokenFile:  tokenFile,
 		model:      model,
 		maxState:   maxState,
 		backoff:    time.Second,
 	}, nil
+}
+
+// checkTokenFile accepts a token file path by its name: absolute, and not the pod's own ServiceAccount token.
+// The path after symlinks is checked again on every read, a projected volume is a tree of links.
+func checkTokenFile(path string) error {
+	if !filepath.IsAbs(path) {
+		return errors.New("EGO_DECISION_TOKEN_FILE must be an absolute path")
+	}
+	if under(filepath.Clean(path), podCredentialDir) {
+		return errors.New("EGO_DECISION_TOKEN_FILE: the pod's own ServiceAccount token may not be sent to the decision model")
+	}
+	return nil
+}
+
+// checkTokenURL accepts the endpoint a token is sent to when the token cannot leave the cluster or the machine in
+// the clear: https to any host, or http to a loopback host or an in-cluster Service name (.svc, .svc.cluster.local).
+func checkTokenURL(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Hostname() == "" {
+		return errors.New("EGO_DECISION_URL must be an absolute URL when a token file is set")
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if plainHTTPHost(u.Hostname()) {
+			return nil
+		}
+		return errors.New("EGO_DECISION_URL: a token file travels over plain http only to a loopback host or an in-cluster Service (.svc, .svc.cluster.local); use https")
+	}
+	return errors.New("EGO_DECISION_URL: the scheme must be https (or http to a loopback host or an in-cluster Service) when a token file is set")
+}
+
+// plainHTTPHost reports whether a bearer may travel over http to host.
+func plainHTTPHost(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if host == "localhost" || strings.HasSuffix(host, ".svc") || strings.HasSuffix(host, ".svc.cluster.local") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// under reports whether path is root or below it, by the names alone.
+func under(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+// bearer returns the credential for one call: the key, or the token file's content read now. The real path of the
+// file is checked against the pod's own credentials on every read, so a link planted later cannot redirect it.
+func (c *Client) bearer() (string, error) {
+	if c.tokenFile == "" {
+		return c.apiKey, nil
+	}
+	real, err := filepath.EvalSymlinks(c.tokenFile)
+	if err != nil {
+		return "", fmt.Errorf("reading the decision token file: %w", err)
+	}
+	if under(real, podCredentialDir) {
+		return "", errors.New("reading the decision token file: it resolves to the pod's own ServiceAccount token")
+	}
+	if realCred, err := filepath.EvalSymlinks(podCredentialDir); err == nil && under(real, realCred) {
+		return "", errors.New("reading the decision token file: it resolves to the pod's own ServiceAccount token")
+	}
+	raw, err := os.ReadFile(real)
+	if err != nil {
+		return "", fmt.Errorf("reading the decision token file: %w", err)
+	}
+	tok := strings.TrimSpace(string(raw))
+	if tok == "" {
+		return "", errors.New("reading the decision token file: it is empty")
+	}
+	return tok, nil
 }
 
 // wireModel is the model name as the endpoint is sent it: the default endpoint wants a namespace in front of a
@@ -186,8 +295,12 @@ func (c *Client) decideOnce(ctx context.Context, body []byte) (answers map[strin
 	if err != nil {
 		return nil, false, err
 	}
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	bearer, err := c.bearer()
+	if err != nil {
+		return nil, false, err
+	}
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Title", "ego")
