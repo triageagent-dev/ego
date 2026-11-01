@@ -38,6 +38,14 @@ export const LabelButtons: React.FC<LabelButtonsProps> = ({ sessionId, metric, l
     }
   };
 
+  // A note typed after the thumb was clicked has no click left to ride on: Enter saves it as a new version of
+  // the latest label, same verdict and score, which replaces the one that counts (the server keeps the newest).
+  // With no label yet the note waits for the thumb, as before.
+  const saveNote = () => {
+    if (!latest || !note.trim() || busy) return;
+    void label(latest.verdict, latest.score);
+  };
+
   return (
     <span css={groupStyle} onClick={e => e.stopPropagation()}>
       <span css={thumbsStyle}>
@@ -60,8 +68,10 @@ export const LabelButtons: React.FC<LabelButtonsProps> = ({ sessionId, metric, l
           </span>
         )}
       </span>
-      <input css={noteStyle} placeholder="note (optional)" maxLength={1000} value={note}
-        onChange={e => setNote(e.target.value)} onKeyDown={e => e.stopPropagation()} />
+      <input css={noteStyle} placeholder={latest ? 'note, Enter saves' : 'note (optional)'} maxLength={1000} value={note}
+        title={latest ? 'Enter saves the note on your verdict' : 'Sent with the thumb you click'}
+        onChange={e => setNote(e.target.value)}
+        onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') saveNote(); }} />
       {/* Always rendered: the row must fill all five grid cells, or the next row starts in the wrong column. */}
       <span css={dimStyle}>
         {latest
