@@ -33,6 +33,10 @@ type Backend interface {
 	// agents is refused: the ledger cannot be attributed to an agent.
 	Usage(ctx context.Context, q UsageQuery) (*Usage, error)
 
+	// Tenants answers list_tenants: the tenants the caller may see, with their display names, by key. An
+	// agent-scoped role is refused, as on the tenant switcher.
+	Tenants(ctx context.Context) ([]TenantInfo, error)
+
 	// Role bindings require an admin.
 	RoleBindings(ctx context.Context) ([]RoleBinding, error)
 	SetRoleBinding(ctx context.Context, in RoleBindingInput) (RoleBinding, error)

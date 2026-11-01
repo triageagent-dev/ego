@@ -297,6 +297,16 @@ type RunResults struct {
 	Results    []RunResultRow `json:"results"`
 }
 
+// TenantInfo is one tenant as list_tenants shows it. Key (<sender>/<label>, or a bare label from the shared ingest
+// token) is the identity that grants and the tenant filters use; Name is only how people see it.
+type TenantInfo struct {
+	Key      string `json:"key"`
+	Sender   string `json:"sender,omitempty"`
+	Label    string `json:"label"`
+	Name     string `json:"name,omitempty"`
+	Sessions int    `json:"sessions"`
+}
+
 // RoleBinding is a role grant as the role tools show it.
 type RoleBinding struct {
 	ID          string   `json:"id"`

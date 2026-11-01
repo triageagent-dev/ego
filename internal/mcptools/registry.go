@@ -149,6 +149,16 @@ func Tools(b Backend, o Options) []server.ServerTool {
 				mcp.Description("Only the sessions (segments) of this thread, as list_threads names it.")),
 		), Handler: listSessionsHandler(b)},
 
+		server.ServerTool{Tool: mcp.NewTool("list_tenants",
+			readsEgo,
+			mcp.WithDescription("The tenants you may see, by key: a tenant's key (<sender>/<label>) is the identity that "+
+				"grants and the tenant filters use, its name is only how people see it in the switcher, and sessions is "+
+				"how many sessions it has. Use it to find the key to pass as `tenant` to the other tools and as `tenants` "+
+				"to set_role_binding when you only know a tenant's name. Requires the ego server to be running."),
+			mcp.WithString("query",
+				mcp.Description("Case-insensitive text to find in the tenant key or name. Omit for all you may see.")),
+		), Handler: listTenantsHandler(b)},
+
 		server.ServerTool{Tool: mcp.NewTool("list_threads",
 			readsEgo,
 			mcp.WithDescription("List the threads of the agents you may see, the one seen last first: a thread is the id the "+
@@ -431,7 +441,7 @@ func Tools(b Backend, o Options) []server.ServerTool {
 					mcp.Description("Optional agent-name allowlist scoping this binding to Runs for only those agents. Omit/empty for unrestricted."),
 					mcp.Items(map[string]any{"type": "string"})),
 				mcp.WithArray("tenants",
-					mcp.Description("Optional tenant allowlist: the subject sees only data of those tenants (senders with their own ingest token). Omit/empty for every tenant."),
+					mcp.Description("Optional tenant allowlist: the subject sees only data of these tenants. Each entry is a tenant key from list_tenants (<sender>/<label>), \"<sender>/*\" for every tenant of one sender, or \"*\" for all. Omit/empty for every tenant."),
 					mcp.Items(map[string]any{"type": "string"})),
 				mcp.WithString("id",
 					mcp.Description("ID of an existing role binding to update in place (from list_role_bindings). Omit to create a new binding.")),
@@ -856,6 +866,28 @@ func runFindingsHandler(b Backend) server.ToolHandlerFunc {
 		out, err := b.RunFindings(ctx)
 		if err != nil {
 			return toolError(err)
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func listTenantsHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		out, err := b.Tenants(ctx)
+		if err != nil {
+			return toolError(err)
+		}
+		if q := strings.ToLower(strings.TrimSpace(req.GetString("query", ""))); q != "" {
+			kept := []TenantInfo{}
+			for _, t := range out {
+				if strings.Contains(strings.ToLower(t.Key), q) || strings.Contains(strings.ToLower(t.Name), q) {
+					kept = append(kept, t)
+				}
+			}
+			out = kept
+		}
+		if out == nil {
+			out = []TenantInfo{}
 		}
 		return mcp.NewToolResultStructuredOnly(out), nil
 	}

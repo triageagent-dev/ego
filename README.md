@@ -363,6 +363,7 @@ its own, so a call cannot ask for `spots/<other>`. ego then drops the call's `te
 | `get_ego_errors` | Your ego by error: what failed, grouped by tool and text, how often, when, and the session of the latest, for a window or one session. |
 | `get_usage` | Token spend in a window, by kind, tenant, model or service, and the largest sessions. |
 | `list_sessions`, `summarize_session` | Sessions with filters (agent, tenant, since, text, complete); one session's turns and tool calls. |
+| `list_tenants` | The tenants you may see: key, sender, label, display name and session count, with a `query` over key and name. The key is what `tenant` filters and `set_role_binding` take. |
 | `get_session_spans` | One session's spans with their attributes; `errors_only` returns the failed ones with their message and their parent's attributes, to find why a session shows an error. |
 | `list_metrics`, `list_runs`, `get_run_results` | Metrics; evaluation runs and their per-case results. |
 | `run_findings` | Run the findings sweep now. Admin. |
@@ -468,7 +469,13 @@ curl -X POST "$EGO/api/admin/roles" -H "Authorization: Bearer $ADMIN" -d '{"subj
 ```
 
 The same `tenants` list is available on the `set_role_binding` MCP tool and, for API tokens, as
-`ego auth mint-token --tenants core/acme`. Agent and tenant limits combine: both must allow.
+`ego auth mint-token --tenants core/acme`. Agent and tenant limits combine: both must allow. An agent that knows a
+tenant only by its display name finds the key with `list_tenants` (`query` matches key and name), then grants it:
+
+```text
+list_tenants {"query": "Checkout"}                       -> [{"key": "core/0123-abcd", "name": "Checkout", "sessions": 41, ...}]
+set_role_binding {"subject_type": "user", "subject": "octocat", "role": "viewer", "tenants": ["core/0123-abcd"]}
+```
 
 - Once any sender has a token, ingest requires a token (the shared one works too).
 - A tenant-limited role sees only its tenants' data. It cannot open run history, eval sets or the judge-budget status,

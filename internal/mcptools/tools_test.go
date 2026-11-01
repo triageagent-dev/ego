@@ -25,6 +25,14 @@ func (b *toolBackend) Metrics(context.Context) ([]MetricInfo, error) {
 	return []MetricInfo{{Name: "hallucinations_v1", Category: "grounding", RequiresLLM: true, Working: true}}, nil
 }
 
+func (b *toolBackend) Tenants(context.Context) ([]TenantInfo, error) {
+	return []TenantInfo{
+		{Key: "core/0123-abcd", Sender: "core", Label: "0123-abcd", Name: "Checkout", Sessions: 2},
+		{Key: "core/acme", Sender: "core", Label: "acme", Sessions: 1},
+		{Key: "legacy", Label: "legacy", Sessions: 3},
+	}, nil
+}
+
 func (b *toolBackend) Runs(_ context.Context, limit int, statuses []string) ([]RunListItem, error) {
 	b.limit, b.statuses = limit, statuses
 	return []RunListItem{{RunID: "run-1", Status: "succeeded", CreatedAt: "2026-10-27T10:00:00Z"}}, nil
@@ -94,6 +102,7 @@ func TestToolsDeclareTheirBehaviour(t *testing.T) {
 		"list_metrics":        reads,
 		"evaluate_traces":     {true, false, true, true},
 		"list_sessions":       reads,
+		"list_tenants":        reads,
 		"list_threads":        reads,
 		"summarize_session":   reads,
 		"get_session_spans":   reads,
@@ -262,5 +271,28 @@ func TestToolsListCarriesAllFourHints(t *testing.T) {
 				t.Errorf("%s: %s is not a boolean on the wire: %v", tool.Name, key, tool.Annotations[key])
 			}
 		}
+	}
+}
+
+// list_tenants hands back what the backend allows and narrows it by query over the key and the name, so a caller
+// who only knows a tenant's display name finds the key that grants and filters need.
+func TestListTenantsFindsAKeyByName(t *testing.T) {
+	tool := allTools(&toolBackend{})["list_tenants"]
+	all := string(mustJSON(t, call(t, tool, nil).StructuredContent))
+	for _, want := range []string{`"key":"core/0123-abcd"`, `"name":"Checkout"`, `"key":"core/acme"`, `"key":"legacy"`, `"sessions":3`} {
+		if !strings.Contains(all, want) {
+			t.Errorf("list_tenants without query lacks %s: %s", want, all)
+		}
+	}
+	byName := string(mustJSON(t, call(t, tool, map[string]any{"query": "checkout"}).StructuredContent))
+	if !strings.Contains(byName, `"key":"core/0123-abcd"`) || strings.Contains(byName, `"core/acme"`) || strings.Contains(byName, `"legacy"`) {
+		t.Errorf("query checkout = %s, want only core/0123-abcd", byName)
+	}
+	bySender := string(mustJSON(t, call(t, tool, map[string]any{"query": "CORE/"}).StructuredContent))
+	if strings.Contains(bySender, `"legacy"`) || !strings.Contains(bySender, `"core/acme"`) {
+		t.Errorf("query CORE/ = %s, want the two core tenants", bySender)
+	}
+	if none := string(mustJSON(t, call(t, tool, map[string]any{"query": "nowhere"}).StructuredContent)); none != "[]" {
+		t.Errorf("query nowhere = %s, want an empty list", none)
 	}
 }

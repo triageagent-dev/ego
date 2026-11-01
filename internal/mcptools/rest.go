@@ -319,6 +319,15 @@ func (r roleBindingRaw) toTool() RoleBinding {
 	}
 }
 
+// Tenants reads GET /api/tenants, whose rows have the shape of TenantInfo.
+func (b *REST) Tenants(ctx context.Context) ([]TenantInfo, error) {
+	var out []TenantInfo
+	if err := b.get(ctx, "/api/tenants", &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (b *REST) RoleBindings(ctx context.Context) ([]RoleBinding, error) {
 	var raw []roleBindingRaw
 	if err := b.get(ctx, "/api/admin/roles", &raw); err != nil {

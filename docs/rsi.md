@@ -60,7 +60,7 @@ Tools (all transports; tenant-scoped unless noted):
 | `register_correction` | `finding_id?`, `kind`, `what` (free text, ≤ 2000 chars), `version?` (the `service.version` the change ships as), `by?`: records a correction, marks the finding `corrected`, returns the correction with its verification window. |
 | `list_corrections` | `kind?`, `state?`: corrections with their verification. |
 | `label_session` | `session_id`, `metric`, `verdict` (agree, disagree), `score?`, `note?`: stores a person's or agent-operator's verdict on a score. |
-| existing | `list_metrics`, `list_sessions`, `summarize_session`, `list_runs`, `get_run_results`; admin-only `list_role_bindings`, `set_role_binding`, `delete_role_binding`. |
+| existing | `list_metrics`, `list_tenants`, `list_sessions`, `summarize_session`, `list_runs`, `get_run_results`; admin-only `list_role_bindings`, `set_role_binding`, `delete_role_binding`. |
 
 A **prompt** `rsi_loop` (MCP prompts capability) returns the skill text of section 6, so any MCP client can
 load the loop without the repository.

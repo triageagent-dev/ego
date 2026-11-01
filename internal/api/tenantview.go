@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"sort"
 	"strings"
@@ -61,32 +62,42 @@ func newTenantOption(key string, sessions int) tenantOption {
 	return o
 }
 
-// tenantsHandler implements GET /api/tenants: the tenants the caller may switch between. They come from the
-// sessions in the archive (in memory without one), narrowed to the caller's grants, so a limited user is only ever
-// offered their own. A tenant that left only usage rows behind is not listed, and neither are senders with no
-// data yet.
+var errTenantsScoped = errors.New("this view is not available to an agent-scoped role")
+
+// tenantOptions lists the tenants info may switch between, by key. They come from the sessions in the archive (in
+// memory without one), narrowed to the caller's grants, so a limited user is only ever offered their own. A tenant
+// that left only usage rows behind is not listed, and neither are senders with no data yet. An agent-scoped role
+// has no tenants to switch between and is refused. GET /api/tenants and the list_tenants tool both answer with it.
+func tenantOptions(store *SessionStore, names *TenantNames, info RoleInfo) ([]tenantOption, error) {
+	if info.Scoped() {
+		return nil, errTenantsScoped
+	}
+	counts := store.TenantCounts()
+	out := make([]tenantOption, 0, len(counts))
+	for k, n := range counts {
+		if !info.AllowsAnyTenant([]string{k}) {
+			continue
+		}
+		o := newTenantOption(k, n)
+		o.Name = names.Name(k)
+		out = append(out, o)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	return out, nil
+}
+
+// tenantsHandler implements GET /api/tenants: the tenants the caller may switch between (tenantOptions).
 func tenantsHandler(store *SessionStore, names *TenantNames) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		info := roleInfoOrOpen(r.Context())
-		if info.Scoped() {
-			writeEvaluateError(w, http.StatusForbidden, "this view is not available to an agent-scoped role")
+		out, err := tenantOptions(store, names, roleInfoOrOpen(r.Context()))
+		if err != nil {
+			writeEvaluateError(w, http.StatusForbidden, err.Error())
 			return
 		}
-		counts := store.TenantCounts()
-		out := make([]tenantOption, 0, len(counts))
-		for k, n := range counts {
-			if !info.AllowsAnyTenant([]string{k}) {
-				continue
-			}
-			o := newTenantOption(k, n)
-			o.Name = names.Name(k)
-			out = append(out, o)
-		}
-		sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 		writeJSON(w, http.StatusOK, map[string]any{"data": out, "error": nil})
 	}
 }

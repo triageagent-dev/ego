@@ -20,6 +20,8 @@ type mcpBackend struct {
 	archive  *SQLiteStore
 	online   *OnlineEngine
 	roles    *RoleStore
+	// names gives tenants their display names for list_tenants; nil (a test, or no archive) names none.
+	names *TenantNames
 }
 
 // newMCPBackend returns the in-process mcptools.Backend. archive, online and roles may be nil, as they are when
@@ -199,6 +201,19 @@ func (b *mcpBackend) adminRoles(ctx context.Context) (*RoleStore, error) {
 		return nil, errors.New("role management requires --session-secret (and GitHub OAuth) to be enabled")
 	}
 	return b.roles, nil
+}
+
+// Tenants answers list_tenants with the rows of GET /api/tenants, under the caller's role.
+func (b *mcpBackend) Tenants(ctx context.Context) ([]mcptools.TenantInfo, error) {
+	opts, err := tenantOptions(b.sessions, b.names, roleInfoOrOpen(ctx))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]mcptools.TenantInfo, len(opts))
+	for i, o := range opts {
+		out[i] = mcptools.TenantInfo{Key: o.Key, Sender: o.Sender, Label: o.Label, Name: o.Name, Sessions: o.Sessions}
+	}
+	return out, nil
 }
 
 func toolRoleBinding(r RoleBinding) mcptools.RoleBinding {
