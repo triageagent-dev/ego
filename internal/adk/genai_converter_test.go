@@ -353,3 +353,44 @@ func TestConvertTrace_VerifierCallIsNotTheAnswer(t *testing.T) {
 		t.Errorf("FinalResponse without agent names = %q, want the last call's output", got)
 	}
 }
+
+// A voice round that heard the person and answered within the same model round carries both input.value and
+// output.value on one span. It is a turn of its own between the single-sided ones, never dropped.
+func TestConvertTrace_OpenInferenceTwoSidedRoundIsATurn(t *testing.T) {
+	root := &tracepkg.Span{
+		TraceID: "trace-4", SpanID: "root", OperationName: "voice.session",
+		StartTime: 0, Duration: 10_000_000, Tags: map[string]any{},
+	}
+	llm := func(id string, start int64, tags map[string]any) *tracepkg.Span {
+		tags["gen_ai.request.model"] = "gemini-live"
+		return &tracepkg.Span{TraceID: "trace-4", SpanID: id, ParentSpanID: "root", OperationName: "llm.gemini_realtime", StartTime: start, Tags: tags}
+	}
+	tool := func(id string, start int64, name string) *tracepkg.Span {
+		return &tracepkg.Span{TraceID: "trace-4", SpanID: id, ParentSpanID: "root", OperationName: "tool." + name, StartTime: start,
+			Tags: map[string]any{"tool.name": name, "input.value": `{}`, "output.value": `{"ok":true}`}}
+	}
+	spans := []*tracepkg.Span{
+		llm("r1", 100_000, map[string]any{"output.value": "hello, shall we continue?"}),
+		llm("r2", 200_000, map[string]any{"input.value": "what is the status?", "output.value": "the service is still missing"}),
+		llm("r3", 300_000, map[string]any{"input.value": "thanks, bye"}),
+		tool("t1", 310_000, "save_session_note"),
+		llm("r4", 320_000, map[string]any{}),
+		tool("t2", 330_000, "end_session"),
+		llm("r5", 340_000, map[string]any{"output.value": "goodbye"}),
+	}
+	root.Children = spans
+	tr := &tracepkg.Trace{TraceID: "trace-4", RootSpans: []*tracepkg.Span{root}, AllSpans: append([]*tracepkg.Span{root}, spans...)}
+
+	result := adk.ConvertTrace(tr)
+	if len(result.Invocations) != 3 {
+		t.Fatalf("expected 3 invocations, got %d: %+v", len(result.Invocations), result.Invocations)
+	}
+	mid := result.Invocations[1]
+	if mid.UserContent.Parts[0].Text != "what is the status?" || mid.FinalResponse.Parts[0].Text != "the service is still missing" {
+		t.Errorf("middle turn = %q -> %q, want the two-sided round", mid.UserContent.Parts[0].Text, mid.FinalResponse.Parts[0].Text)
+	}
+	last := result.Invocations[2]
+	if last.UserContent.Parts[0].Text != "thanks, bye" || last.FinalResponse.Parts[0].Text != "goodbye" || len(last.IntermediateData.ToolUses) != 2 {
+		t.Errorf("last turn = %q -> %q with %d tools, want the goodbye with both tools", last.UserContent.Parts[0].Text, last.FinalResponse.Parts[0].Text, len(last.IntermediateData.ToolUses))
+	}
+}

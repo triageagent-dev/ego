@@ -18,14 +18,21 @@ func isLLMSpan(span *tracepkg.Span) bool {
 
 // isOpenInferenceTurnSpan reports whether span carries one side of an
 // OpenInference-style utterance (input.value XOR output.value - a
-// voice/realtime session emits one span per utterance, never both, and a
-// session-level span carries neither). A span with both is a complete
-// request/response call, handled by extractSingleTurn; treating it as a
-// turn side would pair its input with nothing and drop its output.
+// voice/realtime session emits one span per utterance when the words and the
+// answer fall in different model rounds, and a session-level span carries
+// neither). One such span marks the session as a multi-turn conversation. A
+// span with both sides is a complete request/response call: on its own it is
+// handled by extractSingleTurn; inside a conversation it is one whole turn
+// (see extractOpenInferenceTurns).
 func isOpenInferenceTurnSpan(span *tracepkg.Span) bool {
 	hasIn := span.TagString(OpenInferenceInputValue) != ""
 	hasOut := span.TagString(OpenInferenceOutputValue) != ""
 	return hasIn != hasOut
+}
+
+// hasOpenInferenceText reports whether span carries either side of an utterance.
+func hasOpenInferenceText(span *tracepkg.Span) bool {
+	return span.TagString(OpenInferenceInputValue) != "" || span.TagString(OpenInferenceOutputValue) != ""
 }
 
 // isToolSpan reports whether span is a GenAI-semconv or OpenInference tool span.
@@ -350,9 +357,12 @@ func boolTag(span *tracepkg.Span, key string) bool {
 // answer) and for one emitted when the round ended (triage-core's voice module writes the round's span after
 // its tools returned).
 func extractOpenInferenceTurns(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span) []conversationTurn {
+	// A round that heard the person and answered in the same model round carries both sides on one span
+	// (triage-core's voice module since its session-cap fix); it is a whole turn, so it is kept here even though
+	// it is not a single-sided "turn side".
 	var turnSpans []*tracepkg.Span
 	for _, s := range llmSpans {
-		if isOpenInferenceTurnSpan(s) {
+		if hasOpenInferenceText(s) {
 			turnSpans = append(turnSpans, s)
 		}
 	}
@@ -394,6 +404,10 @@ func extractOpenInferenceTurns(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span
 			v := inVal
 			pendingUser = &v
 			pendingStart = s.StartTime
+			if outVal != "" {
+				// The same round answered: the turn is complete.
+				flush(outVal)
+			}
 		} else if outVal != "" {
 			if pendingUser == nil {
 				pendingStart = s.StartTime
