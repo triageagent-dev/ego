@@ -805,7 +805,6 @@ func (e *OnlineEngine) statusFor(info RoleInfo) onlineStatusDTO {
 		Sampling: e.conf().Sampling,
 		Detector: e.conf().Detector,
 		Budget:   e.budget.Status(e.now()),
-		Queue:    len(e.queue),
 		Counts:   map[string]int64{},
 		Profiles: []string{},
 		Sinks:    []string{},
@@ -816,25 +815,39 @@ func (e *OnlineEngine) statusFor(info RoleInfo) onlineStatusDTO {
 	for _, s := range e.conf().Sinks {
 		st.Sinks = append(st.Sinks, s.Type)
 	}
+	limited := info.TenantScoped()
 	e.mu.Lock()
-	for k, v := range e.counts {
-		st.Counts[k] = v
+	if limited {
+		// The queue and the decision counts are the whole server's and say how busy the other tenants keep it,
+		// so a role limited to some tenants gets neither; it counts only its own tenants' open alerts.
+		for k := range e.alerts {
+			if info.AllowsAnyTenant([]string{k.Tenant}) {
+				st.OpenAlerts++
+			}
+		}
+	} else {
+		st.Queue = len(e.queue)
+		for k, v := range e.counts {
+			st.Counts[k] = v
+		}
+		st.OpenAlerts = len(e.alerts)
 	}
-	st.OpenAlerts = len(e.alerts)
 	e.mu.Unlock()
-	if e.store != nil && info.TenantScoped() {
-		// The budget is the whole server's; a view of some tenants shows what those spent today.
-		now := e.now()
-		day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	if limited {
+		// The budget is the whole server's; a view of some tenants shows what those spent today, against the caps.
 		st.Budget.Reserved = online.Cost{}
 		st.Budget.Spent = online.Cost{}
-		if spent, err := e.store.OnlineSpentByTenantSince(day.UnixMilli()); err != nil {
-			logx.Warnf("online: reading today's spend per tenant: %v", err)
-		} else {
-			for tenant, c := range spent {
-				if info.AllowsAnyTenant([]string{tenant}) {
-					st.Budget.Spent.JudgeTokens += c.JudgeTokens
-					st.Budget.Spent.JevCalls += c.JevCalls
+		if e.store != nil {
+			now := e.now()
+			day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+			if spent, err := e.store.OnlineSpentByTenantSince(day.UnixMilli()); err != nil {
+				logx.Warnf("online: reading today's spend per tenant: %v", err)
+			} else {
+				for tenant, c := range spent {
+					if info.AllowsAnyTenant([]string{tenant}) {
+						st.Budget.Spent.JudgeTokens += c.JudgeTokens
+						st.Budget.Spent.JevCalls += c.JevCalls
+					}
 				}
 			}
 		}
@@ -850,6 +863,10 @@ func (e *OnlineEngine) statusFor(info RoleInfo) onlineStatusDTO {
 		}
 	}
 	st.Findings = e.findingsStatus()
+	if limited {
+		// The findings counters are one sweep over every tenant; a limited role learns only whether findings are on.
+		st.Findings = findingsStatusDTO{Enabled: st.Findings.Enabled}
+	}
 	st.Labels = e.labelsStatus(info)
 	return st
 }
@@ -886,7 +903,9 @@ func filterByTenant[T any](items []T, info RoleInfo, tenantOf func(T) string) []
 // onlineStatusHandler implements GET /api/online/status.
 func onlineStatusHandler(e *OnlineEngine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if denyScoped(w, r) {
+		// A tenant-limited role is served, narrowed to its tenants (statusFor); only an agent-scoped role has no
+		// tenants to narrow to and is refused.
+		if denyAgentScoped(w, r) {
 			return
 		}
 		if e == nil {

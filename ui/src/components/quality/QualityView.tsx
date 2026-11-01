@@ -82,7 +82,8 @@ export const QualityView: React.FC = () => {
 
   const load = useCallback(async (current: () => boolean) => {
     try {
-      // The judge budget is not per tenant, so a tenant-limited user is refused it; the rest of the view still loads.
+      // A tenant-limited user gets the status narrowed to their tenants (their spend, their alerts); an agent-scoped
+      // role, or a server from before that, is refused it and the rest of the view still loads.
       // Findings and corrections are an extra: a server without them, or a role that cannot read them, still
       // gets the rest of the view.
       const [st, se, al, fi, co] = await Promise.all([

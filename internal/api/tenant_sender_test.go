@@ -215,9 +215,8 @@ func TestTenantsEndpointOffersOnlyWhatTheRoleCovers(t *testing.T) {
 func TestTenantScopedRoleCannotUseUntenantedViews(t *testing.T) {
 	as := withRoleInfoForTest(scopedToTenants("core/acme"))
 	for name, h := range map[string]http.HandlerFunc{
-		"eval sets":    listEvalSetsHandler(nil),
-		"eval set":     getEvalSetHandler(nil),
-		"online state": onlineStatusHandler(nil),
+		"eval sets": listEvalSetsHandler(nil),
+		"eval set":  getEvalSetHandler(nil),
 	} {
 		rec := httptest.NewRecorder()
 		h(rec, as(httptest.NewRequest(http.MethodGet, "/", nil)))

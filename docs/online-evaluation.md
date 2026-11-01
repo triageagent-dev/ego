@@ -142,7 +142,8 @@ flapping.
 ## 5. API and UI
 
 - `GET /api/online/status`: config summary, queue, budget used today, and
-  decisions by reason.
+  decisions by reason. A role limited to some tenants gets it narrowed: its
+  tenants' spend and open alerts, no queue and no decision counts.
 - `GET /api/online/series?hours=N`: hourly (tenant, kind, metric) mean and n.
 - `GET /api/online/alerts?state=open|all`.
 - `GET /api/online/quality?kind=&hours=N` (default 24), `GET /api/online/alerts/{id}/explain` and

@@ -475,3 +475,50 @@ func TestOnlineEngine_ScoresASegmentAtCloseWithTheEarlierPart(t *testing.T) {
 		t.Errorf("%d scores stored, want 2 (one per segment)", len(rows))
 	}
 }
+
+// A tenant-limited role reads the online status narrowed to its tenants: its own open alerts and today's spend,
+// the caps and the configuration, but not the queue, the decision counts or the findings counters, which say how
+// busy the other tenants keep the server. An unrestricted role keeps the whole picture.
+func TestOnlineStatus_TenantScopedRoleSeesItsOwnNarrowedStatus(t *testing.T) {
+	f := newMCPFixture(t)
+	e := f.engine
+	e.mu.Lock()
+	for _, tenant := range []string{"core/acme", "rc/acme"} {
+		k := online.SeriesKey{Tenant: tenant, Kind: "rca", Metric: "hallucinations_v1"}
+		e.alerts[k] = &online.Alert{ID: "a-" + tenant, Key: k, Status: "open"}
+	}
+	e.counts["scored"] = 7
+	e.mu.Unlock()
+
+	status := func(info RoleInfo) (int, onlineStatusDTO) {
+		rec := httptest.NewRecorder()
+		onlineStatusHandler(e)(rec, withRoleInfoForTest(info)(httptest.NewRequest(http.MethodGet, "/api/online/status", nil)))
+		var out struct{ Data onlineStatusDTO }
+		if rec.Code == http.StatusOK {
+			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return rec.Code, out.Data
+	}
+
+	code, limited := status(scopedToTenants("core/acme"))
+	if code != http.StatusOK {
+		t.Fatalf("tenant-scoped status = %d, want 200", code)
+	}
+	if limited.OpenAlerts != 1 || len(limited.Counts) != 0 || limited.Queue != 0 || limited.Findings.Written != 0 {
+		t.Errorf("tenant-scoped status = alerts %d counts %v queue %d findings %+v, want 1 alert and nothing of the server's", limited.OpenAlerts, limited.Counts, limited.Queue, limited.Findings)
+	}
+	if len(limited.Profiles) == 0 || limited.Budget.Caps.JudgeTokensPerDay == 0 {
+		t.Errorf("tenant-scoped status lost the configuration: profiles %v caps %+v", limited.Profiles, limited.Budget.Caps)
+	}
+
+	code, all := status(RoleInfo{Role: RoleAdmin, IsAdmin: true})
+	if code != http.StatusOK || all.OpenAlerts != 2 || all.Counts["scored"] != 7 {
+		t.Errorf("admin status = %d alerts %d counts %v, want 200 with 2 alerts and the counts", code, all.OpenAlerts, all.Counts)
+	}
+
+	if code, _ := status(scopedTo("ops-agent")); code != http.StatusForbidden {
+		t.Errorf("agent-scoped status = %d, want 403", code)
+	}
+}

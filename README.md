@@ -478,8 +478,9 @@ set_role_binding {"subject_type": "user", "subject": "octocat", "role": "viewer"
 ```
 
 - Once any sender has a token, ingest requires a token (the shared one works too).
-- A tenant-limited role sees only its tenants' data. It cannot open run history, eval sets or the judge-budget status,
-  and cannot start evaluations, because those carry no tenant.
+- A tenant-limited role sees only its tenants' data. It cannot open eval sets or rubric sets and cannot start
+  evaluations, because those carry no tenant; the Quality status it reads shows its own tenants' spend and alerts
+  against the caps, not the server's queue or decision counts.
 
 ## Configuration
 
