@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"github.com/triageagent-dev/ego/internal/adk"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -53,6 +54,94 @@ func onlineSessionBody(traceID string, startMs int64, kind, input, output string
 			},
 		}}},
 	}}}
+}
+
+// onlineTurnBody is onlineSessionBody for one turn of a named session: the resource declares ego.session_name, so
+// several traces land in one session, and a pending turn carries ego.turn.pending on its root span.
+func onlineTurnBody(session, traceID string, startMs int64, kind, input, output string, pending bool) map[string]any {
+	body := onlineSessionBody(traceID, startMs, kind, input, output)
+	rs := body["resourceSpans"].([]any)[0].(map[string]any)
+	res := rs["resource"].(map[string]any)
+	res["attributes"] = append(res["attributes"].([]any), map[string]any{"key": "ego.session_name", "value": map[string]any{"stringValue": session}})
+	if pending {
+		spans := rs["scopeSpans"].([]any)[0].(map[string]any)["spans"].([]any)
+		root := spans[0].(map[string]any)
+		root["attributes"] = append(root["attributes"].([]any), map[string]any{"key": "ego.turn.pending", "value": map[string]any{"boolValue": true}})
+	}
+	return body
+}
+
+// A plain session reopens when its person speaks again. The first score covered one turn; the second turn was never
+// judged, so the session is scored again, and a repeat with nothing new is still skipped.
+func TestOnlineEngine_ScoresAGrownSessionAgain(t *testing.T) {
+	e, sessions, archive, fake := newTestEngine(t, testOnlineConfig)
+	now := time.Date(2026, 10, 4, 12, 30, 0, 0, time.UTC)
+	e.now = func() time.Time { return now }
+	ctx := context.Background()
+
+	sessions.Ingest(onlineTurnBody("chat-1", "dddddddddddd0001", now.UnixMilli(), "rca", "why is checkout down?", "The payment service is out of memory.", false))
+	e.process(ctx, "chat-1")
+	first := fake.calls
+	if first == 0 {
+		t.Fatal("the first turn was not judged")
+	}
+	if n, ok, _ := archive.OnlineEvalInvocations("chat-1"); !ok || n != 1 {
+		t.Fatalf("score covers %d invocations (scored %v), want 1", n, ok)
+	}
+
+	// An hour on, so the kind's sampling rate has a token for the session again.
+	now = now.Add(time.Hour)
+	sessions.Ingest(onlineTurnBody("chat-1", "dddddddddddd0002", now.UnixMilli(), "rca", "and the quote image?", "quote-service is the image name.", false))
+	e.process(ctx, "chat-1")
+	if fake.calls == first {
+		tr, _ := sessions.Trace("chat-1")
+		n := 0
+		if tr != nil {
+			n = len(tr.AllSpans)
+		}
+		t.Fatalf("the grown session was not judged again (counts %v, %d spans, %d invocations)", e.status().Counts, n, len(adk.ConvertTrace(tr).Invocations))
+	}
+	if n, _, _ := archive.OnlineEvalInvocations("chat-1"); n != 2 {
+		t.Fatalf("score covers %d invocations, want 2", n)
+	}
+	for _, p := range fake.prompts[first:] {
+		if strings.Contains(p, "and the quote image?") {
+			goto judgedSecond
+		}
+	}
+	t.Fatal("no prompt of the second score carries the second turn")
+judgedSecond:
+	again := fake.calls
+	e.process(ctx, "chat-1")
+	if fake.calls != again || e.status().Counts[online.SkipAlreadySeen] != 1 {
+		t.Errorf("a repeat with nothing new was judged (calls %d → %d, counts %v)", again, fake.calls, e.status().Counts)
+	}
+}
+
+// A pending turn has no answer yet: the rubric that rates the answer is skipped, not failed, and the judge is not
+// called for it.
+func TestOnlineEngine_SkipsTheAnswerRatingOfAPendingTurn(t *testing.T) {
+	e, sessions, archive, fake := newTestEngine(t, testOnlineConfig)
+	now := time.Date(2026, 10, 4, 12, 30, 0, 0, time.UTC)
+	e.now = func() time.Time { return now }
+	ctx := context.Background()
+
+	sessions.Ingest(onlineTurnBody("chat-2", "eeeeeeeeeeee0001", now.UnixMilli(), "rca", "ok all done", "I'm checking the cluster and I'll come back to you.", true))
+	e.process(ctx, "chat-2")
+	if fake.calls != 0 {
+		t.Fatalf("the judge was called %d times for a pending turn", fake.calls)
+	}
+	runs, _ := archive.ListRuns([]string{"running"}, 10, "")
+	if len(runs) != 1 {
+		t.Fatalf("running runs = %+v", runs)
+	}
+	rows, err := archive.GetRunResults(runs[0].RunID)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("results = %+v, %v", rows, err)
+	}
+	if rows[0].Status != "skipped" || rows[0].Score != nil || rows[0].ErrorText == nil || !strings.Contains(*rows[0].ErrorText, "pending") {
+		t.Errorf("result = %+v, want a skipped row that says the turn is pending", rows[0])
+	}
 }
 
 // usageJudge answers every rubric with yes and reports 250 tokens a call.

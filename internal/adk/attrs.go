@@ -27,6 +27,10 @@ const (
 	OpenInferenceToolLatencyMs   = "tool.latency_ms"
 	OpenInferenceToolResultBytes = "tool.result_bytes"
 	OpenInferenceSpanKind        = "openinference.span.kind"
+	// EgoTurnPending on an invocation's root span says its final response is an acknowledgement, not the answer:
+	// the sender answers in a later turn (an agent that handed the work to a helper and said "I'll come back").
+	// The metrics that rate the answer skip such a turn; the ones that check its words still run.
+	EgoTurnPending               = "ego.turn.pending"
 	OpenInferenceModelName       = "llm.model_name"
 	OpenInferenceTokenPrompt     = "llm.token_count.prompt"
 	OpenInferenceTokenCompletion = "llm.token_count.completion"

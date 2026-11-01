@@ -66,6 +66,9 @@ type Invocation struct {
 	FinalResponse     *Content          `json:"final_response,omitempty"`
 	IntermediateData  *IntermediateData `json:"intermediate_data,omitempty"`
 	CreationTimestamp float64           `json:"creation_timestamp,omitempty"`
+	// Pending is set from the root span's ego.turn.pending: the final response is an acknowledgement and the
+	// answer comes in a later turn.
+	Pending bool `json:"pending,omitempty"`
 }
 
 // UserText concatenates every text part of UserContent with a space.

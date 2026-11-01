@@ -35,11 +35,20 @@ const (
 	maxToolOutputsTotal = 24000
 )
 
-// buildHallucinationContext is what the response may be checked against: the user's message, the tools the agent
-// used and what they returned. A sentence that rests on a tool result is supported by it; without the results every
-// fact an agent looked up reads as invented, so the judge failed correct answers as often as wrong ones. The
-// tool_code and tool_outputs blocks are the ones the validator prompt's fifth rule speaks of.
-func buildHallucinationContext(inv adk.Invocation) string {
+// maxEarlierTurns and maxEarlierTurnChars bound the earlier turns quoted in the context: the newest turns, each
+// side of each cut, so a long conversation does not crowd out the turn being checked.
+const (
+	maxEarlierTurns     = 6
+	maxEarlierTurnChars = 600
+)
+
+// buildHallucinationContext is what the response may be checked against: the earlier turns of the conversation,
+// the user's message, the tools the agent used and what they returned. A sentence that rests on a tool result is
+// supported by it; without the results every fact an agent looked up reads as invented, so the judge failed correct
+// answers as often as wrong ones. The earlier turns are there because an answer in a conversation rests on what was
+// said before ("the quote deployment" named three turns ago); without them every such reference read as invented.
+// The tool_code and tool_outputs blocks are the ones the validator prompt's fifth rule speaks of.
+func buildHallucinationContext(inv adk.Invocation, earlier []adk.Invocation) string {
 	var uses []adk.FunctionCall
 	var responses []adk.FunctionResponse
 	if inv.IntermediateData != nil {
@@ -47,6 +56,16 @@ func buildHallucinationContext(inv adk.Invocation) string {
 	}
 	var b strings.Builder
 	b.WriteString("Developer instructions:\n\n\n")
+	if len(earlier) > maxEarlierTurns {
+		earlier = earlier[len(earlier)-maxEarlierTurns:]
+	}
+	if len(earlier) > 0 {
+		b.WriteString("Earlier turns:\n")
+		for _, e := range earlier {
+			fmt.Fprintf(&b, "User: %s\nAgent: %s\n", plainText(clipChars(e.UserContent.Text(), maxEarlierTurnChars)), plainText(clipChars(e.FinalResponse.Text(), maxEarlierTurnChars)))
+		}
+		b.WriteString("\n")
+	}
 	b.WriteString("User prompt:\n")
 	b.WriteString(plainText(inv.UserContent.Text()))
 	b.WriteString("\n\nTool definitions:\n")
@@ -84,7 +103,7 @@ func buildHallucinationContext(inv adk.Invocation) string {
 
 // contextHeading matches the lines of the context that the validator prompt relies on to tell the user's words, the
 // tool definitions and the tool results apart.
-var contextHeading = regexp.MustCompile(`(?m)^(Developer instructions:|User prompt:|Tool definitions:)`)
+var contextHeading = regexp.MustCompile(`(?m)^(Developer instructions:|Earlier turns:|User prompt:|Tool definitions:)`)
 
 // plainText keeps text that came from outside from forging the structure of the context: a closing fence would end
 // a tool_code or tool_outputs block and let what follows pass for the prompt's own text, and a heading at the start
@@ -275,7 +294,7 @@ func HallucinationsV1(ctx context.Context, model Model, actual []adk.Invocation,
 			}
 			continue
 		}
-		score, results, err := evaluateHallucinationResponse(ctx, model, text, buildHallucinationContext(inv))
+		score, results, err := evaluateHallucinationResponse(ctx, model, text, buildHallucinationContext(inv, actual[:i]))
 		if err != nil {
 			return eval.Result{}, fmt.Errorf("invocation %d: %w", i, err)
 		}
@@ -318,4 +337,13 @@ func HallucinationsV1(ctx context.Context, model Model, actual []adk.Invocation,
 		PerInvocationScores: perInvocation,
 		Details:             map[string]any{"per_invocation": perInvocationDetail},
 	}, nil
+}
+
+// clipChars cuts s to at most n characters, marking the cut.
+func clipChars(s string, n int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) <= n {
+		return string(r)
+	}
+	return string(r[:n]) + "…"
 }

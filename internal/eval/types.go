@@ -12,6 +12,9 @@ const (
 	StatusPassed       Status = "PASSED"
 	StatusFailed       Status = "FAILED"
 	StatusNotEvaluated Status = "NOT_EVALUATED"
+	// StatusSkipped is a metric that did not apply: it rates the answer, and the turn's answer is still to come
+	// (Invocation.Pending). It counts as neither a pass nor a failure.
+	StatusSkipped Status = "SKIPPED"
 )
 
 func statusFor(score, threshold float64) Status {

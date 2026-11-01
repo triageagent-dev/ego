@@ -59,6 +59,8 @@ export function getStatusColor(status: EvalStatus): string {
       return 'var(--text-muted)';
     case 'ERROR':
       return 'var(--status-warning)';
+    case 'SKIPPED':
+      return 'var(--text-tertiary)';
     default:
       return 'var(--text-secondary)';
   }
@@ -77,6 +79,8 @@ export function getStatusGlow(status: EvalStatus): string {
       return 'none';
     case 'ERROR':
       return 'var(--glow-warning)';
+    case 'SKIPPED':
+      return 'none';
     default:
       return 'none';
   }

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/triageagent-dev/ego/internal/eval"
+
 	"github.com/triageagent-dev/ego/internal/logx"
 )
 
@@ -88,6 +90,9 @@ func runStatusFromMetric(m metricResultDTO) string {
 	}
 	if m.EvalStatus == "PASSED" {
 		return "passed"
+	}
+	if m.EvalStatus == string(eval.StatusSkipped) {
+		return "skipped"
 	}
 	return "failed"
 }

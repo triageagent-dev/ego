@@ -201,6 +201,21 @@ func TestConvertTrace_OpenInferenceToolsStayWithTheRoundThatAnswered(t *testing.
 	}
 }
 
+// A root span marked ego.turn.pending makes its invocation pending, as a bool or as the string "true".
+func TestConvertTrace_PendingTurn(t *testing.T) {
+	for _, v := range []any{true, "true"} {
+		tr := buildOpenInferenceAgentTrace()
+		tr.RootSpans[0].Tags[adk.EgoTurnPending] = v
+		result := adk.ConvertTrace(tr)
+		if len(result.Invocations) != 1 || !result.Invocations[0].Pending {
+			t.Errorf("ego.turn.pending=%v: invocations = %+v, want one pending", v, result.Invocations)
+		}
+	}
+	if inv := adk.ConvertTrace(buildOpenInferenceAgentTrace()).Invocations; len(inv) != 1 || inv[0].Pending {
+		t.Errorf("an unmarked turn reads as pending: %+v", inv)
+	}
+}
+
 // buildOpenInferenceAgentTrace reproduces an OpenInference producer's shape
 // for an agent pass: an AGENT root span carrying the clean prompt and
 // answer, and an llm.chat.completions child that has only OpenInference

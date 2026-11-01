@@ -99,7 +99,7 @@ export interface ConvertTracesResponse {
 }
 
 // Evaluation results
-export type EvalStatus = 'PASSED' | 'FAILED' | 'NOT_EVALUATED' | 'ERROR';
+export type EvalStatus = 'PASSED' | 'FAILED' | 'NOT_EVALUATED' | 'ERROR' | 'SKIPPED';
 
 export interface ToolCallComparison {
   name: string;

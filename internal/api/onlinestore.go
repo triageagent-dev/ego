@@ -106,7 +106,8 @@ func ensureOnlineSchema(db *sql.DB) error {
 			return fmt.Errorf("creating online evaluation schema: %w", err)
 		}
 	}
-	return nil
+	// How many invocations the score covered, so a session that grows after its score is scored again.
+	return addColumn(db, "online_evals", "invocations", "INTEGER NOT NULL DEFAULT 0")
 }
 
 type onlineEvalRow struct {
@@ -122,6 +123,8 @@ type onlineEvalRow struct {
 	JudgeTokens int64
 	JevCalls    int64
 	RunID       string
+	// Invocations the score covered.
+	Invocations int
 }
 
 type onlineScoreRow struct {
@@ -138,10 +141,14 @@ func (s *SQLiteStore) InsertOnlineEval(e onlineEvalRow, version, model string, s
 	}
 	defer tx.Rollback()
 	if _, err := tx.Exec(`INSERT OR REPLACE INTO online_evals
-		(session_id, trace_id, at_ms, tenant, kind, service, profile, lane, reasons, judge_tokens, jev_calls, run_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(session_id, trace_id, at_ms, tenant, kind, service, profile, lane, reasons, judge_tokens, jev_calls, run_id, invocations)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.SessionID, e.TraceID, e.AtMs, e.Tenant, e.Kind, e.Service, e.Profile, e.Lane, e.Reasons,
-		e.JudgeTokens, e.JevCalls, e.RunID); err != nil {
+		e.JudgeTokens, e.JevCalls, e.RunID, e.Invocations); err != nil {
+		return err
+	}
+	// A session scored again replaces its scores: a metric its profile no longer has would otherwise linger.
+	if _, err := tx.Exec(`DELETE FROM online_scores WHERE session_id = ?`, e.SessionID); err != nil {
 		return err
 	}
 	for _, sc := range scores {
@@ -159,15 +166,21 @@ func (s *SQLiteStore) InsertOnlineEval(e onlineEvalRow, version, model string, s
 	return s.announce(topicQuality, tx.Commit())
 }
 
-// OnlineEvalExists reports whether a session was already scored (a session
-// that reopens and completes again is scored once).
+// OnlineEvalExists reports whether a session was already scored.
 func (s *SQLiteStore) OnlineEvalExists(sessionID string) (bool, error) {
-	var one int
-	err := s.db.QueryRow(`SELECT 1 FROM online_evals WHERE session_id = ?`, sessionID).Scan(&one)
+	_, ok, err := s.OnlineEvalInvocations(sessionID)
+	return ok, err
+}
+
+// OnlineEvalInvocations is how many invocations a session's score covered, and whether it was scored at all. A
+// session that reopens and completes again with the same invocations is scored once; one that grew (a chat whose
+// person spoke again after the first score) is scored again, as its new turns were never judged.
+func (s *SQLiteStore) OnlineEvalInvocations(sessionID string) (n int, scored bool, err error) {
+	err = s.db.QueryRow(`SELECT invocations FROM online_evals WHERE session_id = ?`, sessionID).Scan(&n)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
+		return 0, false, nil
 	}
-	return err == nil, err
+	return n, err == nil, err
 }
 
 // OnlineSpentSince sums judge cost since sinceMs (today's spend at startup).

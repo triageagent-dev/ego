@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/adk"
@@ -76,6 +77,13 @@ func toMetricResultDTO(r eval.Result, kind, judgeModel string) metricResultDTO {
 	for i, s := range r.PerInvocationScores {
 		s := s
 		dto.PerInvocationScores[i] = &s
+	}
+	if r.Status == eval.StatusSkipped {
+		// The reason travels in Error, as the UI shows a metric's text there; the status says it is no failure.
+		reason := r.Error
+		dto.Error = &reason
+		dto.EvalStatus = string(eval.StatusSkipped)
+		return dto
 	}
 	if r.Error != "" {
 		errCopy := r.Error
@@ -586,7 +594,24 @@ func evaluateInvocations(
 	onMetric func(traceResultDTO),
 ) traceResultDTO {
 	expected := eval.FindExpectedInvocations(invocations, evalSet)
-	decisionResults, decisionModel := runDecisionEvaluators(ctx, evaluators, invocations, expected, getDecisionClient)
+	// A pending turn (Invocation.Pending) has no answer yet, so the metrics that rate the answer leave it out;
+	// with nothing left they are skipped, not failed. The other metrics see every turn.
+	settled := settledInvocations(invocations)
+	skipped := func(name string) eval.Result {
+		return eval.Result{MetricName: name, Status: eval.StatusSkipped, Error: pendingTurnSkip}
+	}
+	var decisionResults map[int][]eval.Result
+	var decisionModel string
+	if len(settled) > 0 || len(invocations) == 0 {
+		decisionResults, decisionModel = runDecisionEvaluators(ctx, evaluators, settled, eval.FindExpectedInvocations(settled, evalSet), getDecisionClient)
+	} else {
+		decisionResults = map[int][]eval.Result{}
+		for i, ev := range evaluators {
+			if (ev.Type == "" || ev.Type == "builtin") && decision.IsMetric(ev.Name) {
+				decisionResults[i] = []eval.Result{skipped(ev.Name)}
+			}
+		}
+	}
 
 	for i, evaluator := range evaluators {
 		if ctx.Err() != nil {
@@ -618,6 +643,8 @@ func evaluateInvocations(
 
 		var result eval.Result
 		switch {
+		case ratesTheAnswer(evaluator.Name) && len(settled) == 0 && len(invocations) > 0:
+			result = skipped(evaluator.Name)
 		case judgeMetrics[evaluator.Name]:
 			modelName := evaluator.JudgeModel
 			if modelName == "" {
@@ -632,7 +659,11 @@ func evaluateInvocations(
 				if evaluator.NumSamples > 0 {
 					numSamples = evaluator.NumSamples
 				}
-				result = runJudgeMetric(ctx, evaluator.Name, model, invocations, expected, evaluator.Rubrics, numSamples, threshold)
+				actual, exp := invocations, expected
+				if ratesTheAnswer(evaluator.Name) {
+					actual, exp = settled, eval.FindExpectedInvocations(settled, evalSet)
+				}
+				result = runJudgeMetric(ctx, evaluator.Name, model, actual, exp, evaluator.Rubrics, numSamples, threshold)
 			}
 		case vertexEvalMetrics[evaluator.Name]:
 			judgeModelUsed = vertexEvalServiceLabel
@@ -650,7 +681,7 @@ func evaluateInvocations(
 				result = eval.RunMetric(evaluator.Name, invocations, expected, matchType, threshold)
 			}
 		}
-		if result.Error != "" {
+		if result.Error != "" && result.Status != eval.StatusSkipped {
 			logx.Warnf("evaluation: %s failed on trace %s: %s", evaluator.Name, traceResult.TraceID, result.Error)
 		}
 		traceResult.MetricResults = append(traceResult.MetricResults, toMetricResultDTO(result, kind, judgeModelUsed))
@@ -658,6 +689,26 @@ func evaluateInvocations(
 	}
 
 	return traceResult
+}
+
+// pendingTurnSkip is the reason a skipped metric carries.
+const pendingTurnSkip = "not rated: the turn is pending, its answer comes in a later turn"
+
+// settledInvocations is the invocations whose answer has arrived.
+func settledInvocations(invocations []adk.Invocation) []adk.Invocation {
+	out := make([]adk.Invocation, 0, len(invocations))
+	for _, inv := range invocations {
+		if !inv.Pending {
+			out = append(out, inv)
+		}
+	}
+	return out
+}
+
+// ratesTheAnswer reports whether a metric judges the final response as the answer to the request: the rubric judges
+// and the decision metrics do; a check of the words themselves (hallucinations) or of the trajectory does not.
+func ratesTheAnswer(name string) bool {
+	return strings.HasPrefix(name, "rubric_based_") || decision.IsMetric(name)
 }
 
 // notifyMetric calls onMetric (if non-nil) with a snapshot of tr whose

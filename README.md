@@ -231,6 +231,10 @@ Prompts and tool output the sender redacted are never stored as content. The ten
 (or `--usage-tenant-attr`) on the span or the resource, so set it with `OTEL_RESOURCE_ATTRIBUTES`; the agent is
 `service.name` (`claude-code` unless `OTEL_SERVICE_NAME` says otherwise).
 
+A sender whose agent answers a turn later (it handed the work to a helper and said it will come back) marks that
+turn with `ego.turn.pending: true` on its root span: the metrics that rate the answer skip it as `skipped`, and the
+turn that brings the answer is rated on its own.
+
 ### LangChain and LangGraph
 
 LangChain's documented way to get OpenTelemetry out of LangChain and LangGraph is LangSmith's own export: install

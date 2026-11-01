@@ -27,7 +27,7 @@ Traces arrive as OTLP over HTTP (`POST /v1/traces`) or gRPC, both accepting gzip
 
 ### Sessions
 
-Spans group into sessions by `ego.session_name`, then `gen_ai.conversation.id`, then a synthetic name, always under the sender and the tenant label. A session completes after 30 s of quiet (3 s after a root span) and is queued for online scoring then. A late span reopens it, and a session already scored is not scored twice. A session holds at most 10000 spans.
+Spans group into sessions by `ego.session_name`, then `gen_ai.conversation.id`, then a synthetic name, always under the sender and the tenant label. A session completes after 30 s of quiet (3 s after a root span) and is queued for online scoring then. A late span reopens it; a session already scored is scored again only when it then holds more turns than the score covered, so a chat whose person speaks again after the first score gets its new turns judged. A session holds at most 10000 spans.
 
 ### Always-on agents: threads and segments
 

@@ -141,6 +141,7 @@ type conversationTurn struct {
 	ToolCalls      []turnToolCall
 	ToolResponses  []turnToolResponse
 	StartTimeMicro int64
+	Pending        bool
 }
 
 type turnToolCall struct {
@@ -326,7 +327,19 @@ func extractSingleTurn(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span) (conve
 		ToolCalls:      toolCalls,
 		ToolResponses:  toolResponses,
 		StartTimeMicro: invSpan.StartTime,
+		Pending:        boolTag(invSpan, EgoTurnPending),
 	}, nil
+}
+
+// boolTag reads a boolean attribute written as a bool or as the string "true".
+func boolTag(span *tracepkg.Span, key string) bool {
+	switch v := span.Tags[key].(type) {
+	case bool:
+		return v
+	case string:
+		return v == "true"
+	}
+	return false
 }
 
 // extractOpenInferenceTurns pairs alternating single-sided OpenInference LLM spans into turns. A turn runs from
@@ -776,5 +789,6 @@ func turnToInvocation(turn conversationTurn) Invocation {
 			ToolResponses: responses,
 		},
 		CreationTimestamp: float64(turn.StartTimeMicro) / 1_000_000.0,
+		Pending:           turn.Pending,
 	}
 }

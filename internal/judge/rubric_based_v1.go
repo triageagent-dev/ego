@@ -3,6 +3,7 @@ package judge
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/triageagent-dev/ego/internal/adk"
 	"github.com/triageagent-dev/ego/internal/eval"
@@ -220,8 +221,29 @@ func formatRubricBasedFinalResponseQualityV1Prompt(actual adk.Invocation, rubric
 	rubricsText := formatRubricsText(rubrics)
 	return fmt.Sprintf(
 		rubricBasedFinalResponseQualityV1Prompt,
-		"", "Agent has no tools.", userInput, responseSteps, finalResponse, rubricsText,
+		"", availableToolsText(actual), userInput, responseSteps, finalResponse, rubricsText,
 	)
+}
+
+// availableToolsText fills the prompt's <available_tools>. A trace does not carry the tools an agent was offered,
+// only the ones it called, and told "Agent has no tools." the judge read every successful call as a call to a tool
+// the agent did not have, a procedural flaw that voids its evidence. The called tools are listed as available
+// instead; an agent that called nothing has, as far as the trace shows, no tools.
+func availableToolsText(inv adk.Invocation) string {
+	if inv.IntermediateData == nil || len(inv.IntermediateData.ToolUses) == 0 {
+		return "Agent has no tools."
+	}
+	var b strings.Builder
+	b.WriteString("The trace records the tools the agent called, not the full list it was offered. Every tool below was available to the agent; a call to it is procedurally sound unless its parameters are wrong for the prompt.\n")
+	seen := map[string]bool{}
+	for _, u := range inv.IntermediateData.ToolUses {
+		if u.Name == "" || seen[u.Name] {
+			continue
+		}
+		seen[u.Name] = true
+		b.WriteString("- " + defang(u.Name) + "\n")
+	}
+	return b.String()
 }
 
 // RubricBasedFinalResponseQualityV1 scores each actual invocation's final response against caller-supplied
@@ -242,7 +264,7 @@ func formatRubricBasedToolUseQualityV1Prompt(actual adk.Invocation, rubrics []Ru
 	rubricsText := formatRubricsText(rubrics)
 	return fmt.Sprintf(
 		rubricBasedToolUseQualityV1Prompt,
-		"Agent has no tools.", userInput, toolUsage, rubricsText,
+		availableToolsText(actual), userInput, toolUsage, rubricsText,
 	)
 }
 

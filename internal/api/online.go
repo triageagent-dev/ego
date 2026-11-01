@@ -209,20 +209,24 @@ func (e *OnlineEngine) Start(stop <-chan struct{}) {
 	}()
 }
 
-// process samples and maybe scores one segment that has been closed for good (SessionStore.closeSegmentLocked is
-// the only caller of the hook that queues it). The segment is scored once, after its final trace: the queue sees it
-// once per close, a closed segment never reopens, and OnlineEvalExists below keeps a repeat from scoring it again.
-// Spans of its own traces that arrive after the score do not change it.
+// process samples and maybe scores one session that completed (SessionStore.closeSegmentLocked is the only caller
+// of the hook that queues it). A segment is scored once, after its final trace: a closed segment never reopens,
+// and spans of its own traces that arrive after the score do not change it. A plain session reopens on a late
+// span and completes again; it is scored again only when it grew, as a chat does when the person speaks again
+// after the first score: its new turns were never judged, and OnlineEvalInvocations is what tells the two apart.
 func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
-	if done, err := e.store.OnlineEvalExists(sessionID); err != nil {
-		logx.Errorf("online: %v", err)
-		return
-	} else if done {
-		e.count(online.SkipAlreadySeen)
-		return
-	}
 	tr, ok := e.sessions.Trace(sessionID)
 	if !ok {
+		return
+	}
+	invocations := adk.ConvertTrace(tr).Invocations
+	scoredN, scored, err := e.store.OnlineEvalInvocations(sessionID)
+	if err != nil {
+		logx.Errorf("online: %v", err)
+		return
+	}
+	if scored && len(invocations) <= scoredN {
+		e.count(online.SkipAlreadySeen)
 		return
 	}
 	f := online.FeaturesOf(sessionID, tr.AllSpans, e.tenantAttr)
@@ -244,6 +248,11 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 	// Profiles match on the label the sender wrote; scores, alerts and series are keyed with the sender too, so two
 	// senders that both send a tenant called "acme" stay apart.
 	f.Tenant = tenantKey(e.sessions.SenderOf(sessionID), f.Tenant)
+	if scored {
+		// A grown session is a new conversation state, not a repeat of the one the sampler saw: its fingerprint
+		// carries the turn count, so the dedup window does not swallow the second score. The rate still applies.
+		f.Fingerprint += "#" + strconv.Itoa(len(invocations))
+	}
 	now := e.now()
 	d := e.sampler.DecideAt(f, p.PerHour, now)
 	if !d.Sample {
@@ -256,12 +265,13 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		return
 	}
 
-	invocations := adk.ConvertTrace(tr).Invocations
 	if len(invocations) == 0 {
 		e.budget.Settle(p, reserved, nil, now)
 		e.count(online.SkipNoInvocs)
 		return
 	}
+	// The count the score covers is of the whole session, before the profile's cap takes the newest.
+	covered := len(invocations)
 	if len(invocations) > p.MaxInvocations {
 		invocations = invocations[len(invocations)-p.MaxInvocations:]
 	}
@@ -329,6 +339,7 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		JudgeTokens: actual.JudgeTokens,
 		JevCalls:    actual.JevCalls,
 		RunID:       runID,
+		Invocations: covered,
 	}, f.Version, f.Model, scores); err != nil {
 		logx.Errorf("online: storing scores for %s: %v", sessionID, err)
 	}
