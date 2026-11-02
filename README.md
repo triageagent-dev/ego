@@ -201,6 +201,34 @@ into sessions by `ego.session_name`, then `gen_ai.conversation.id`, then a synth
 conventions, OpenInference and ADK (`gcp.vertex.agent.*`) attributes are all understood. Set `ego.eval_set_id`
 on the resource to tie a session to an eval set.
 
+### Instrumenting your own agent
+
+ego adds no SDK and asks for no schema of its own. Any framework whose OpenTelemetry export carries the GenAI
+semantic conventions, OpenInference or ADK attributes works. What ego needs on the spans:
+
+| To get | Put on the span |
+|---|---|
+| an LLM call | `gen_ai.request.model`, or `openinference.span.kind=LLM`, or `llm.model_name` |
+| a tool call | `gen_ai.tool.name` (OpenInference: `tool.name`), with `gen_ai.tool.call.arguments` and `gen_ai.tool.call.result` |
+| a turn that can be scored | the person's words and the answer: `gen_ai.input.messages` and `gen_ai.output.messages` (OpenInference: `input.value` and `output.value`) |
+| a token count in the usage ledger | `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` on the LLM span (OpenInference `llm.token_count.prompt` and `llm.token_count.completion` are read too); an LLM span without tokens has no ledger row |
+| an agent invocation | `gen_ai.operation.name=invoke_agent`; without it a span whose name contains agent, chain, executor or workflow is taken for one |
+
+What can be left out, and what ego does then:
+
+- **Agent (call kind):** `gen_ai.agent.name`, else the name of the trace's root span. Online scoring profiles match
+  on it, so name it.
+- **Session:** `ego.session_name`, then `gen_ai.conversation.id`, then a synthetic name. An agent that sets none of
+  them still shows up, but traces of one conversation may not group.
+- **Tenant:** the attribute `ego.tenant` on the span or the resource (`--usage-tenant-attr` changes the name), else
+  `default`. `ego.tenant.name` gives it a display name.
+- **Message content:** with no messages on the spans ego still lists them and counts tokens and errors, but there
+  is nothing to score.
+
+Not read: `/v1/logs`, so a framework that keeps message content in log records shows spans and tokens without the
+conversation. The OpenInference and Traceloop LangChain instrumentors wrap messages as JSON in `input.value`, which
+ego does not unwrap; use the LangSmith export below for LangChain and LangGraph.
+
 ### Always-on agents: threads and segments
 
 The id above is the sender's own, and for an agent that wakes every few minutes for weeks it names the agent, not
