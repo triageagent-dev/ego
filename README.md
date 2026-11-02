@@ -14,6 +14,23 @@ the agent changed and checks that the scores recovered. It never re-runs the age
 
 One static Go binary: REST API, web UI, OTLP receivers and an MCP server. No SDK to add, no extra runtime.
 
+**Contents**
+
+- [RSI: the loop](#rsi-the-loop)
+- [What it does](#what-it-does)
+- [Quick start](#quick-start): [on your machine](#run-it-on-your-machine), [in Kubernetes](#run-it-in-kubernetes)
+- [The UI](#the-ui)
+- [Metrics](#metrics)
+- [Ingesting traces](#ingesting-traces): [instrumenting your own agent](#instrumenting-your-own-agent), [always-on agents](#always-on-agents-threads-and-segments), [Claude Code](#claude-code), [LangChain and LangGraph](#langchain-and-langgraph)
+- [Persistence](#persistence)
+- [Online evaluation](#online-evaluation)
+- [MCP server](#mcp-server)
+- [Authentication and roles](#authentication-and-roles)
+- [Tenants and teams](#tenants-and-teams)
+- [Configuration](#configuration)
+- [Development](#development): [deploying from source](#deploying-from-source), [releasing](#releasing)
+- [License](#license)
+
 ## RSI: the loop
 
 ```
