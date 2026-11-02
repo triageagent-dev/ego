@@ -64,7 +64,7 @@ An empty session secret is refused at start (the pod crash-loops) instead of sil
 ## Tenants and teams
 
 Admins create senders (ingest tokens) and grant teams access to tenants through the API (see the main README, "Tenants
-and teams"); the chart needs `auth.defaultRole: none` to make people no grant covers see nothing. Once a sender has a
+and teams"); the chart sets `auth.defaultRole: none`, so people no grant covers see nothing and every member needs a role binding (`adminGithubUsers` names the first admin). An install that relied on the old `member` default sets `auth.defaultRole: member` or adds bindings before it upgrades. Once a sender has a
 token, the OTLP receivers require one. The shared `otlpAuth` token keeps working as a sender with no name.
 
 ## Judges

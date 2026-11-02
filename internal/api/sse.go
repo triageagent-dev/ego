@@ -110,9 +110,23 @@ func (h *sseHub) add(c *hubClient) chan any {
 
 func (h *sseHub) unregister(ch chan any) {
 	h.mu.Lock()
+	_, ok := h.clients[ch]
 	delete(h.clients, ch)
 	h.mu.Unlock()
-	close(ch)
+	if ok {
+		close(ch)
+	}
+}
+
+// kickAll ends every stream. A stream keeps the role it was opened with, so after a role binding changes or a
+// credential is revoked the clients reconnect and are resolved again (and a revoked one is refused).
+func (h *sseHub) kickAll() {
+	h.mu.Lock()
+	for ch := range h.clients {
+		delete(h.clients, ch)
+		close(ch)
+	}
+	h.mu.Unlock()
 }
 
 // broadcast sends event to every unscoped client. A client whose buffer is full is skipped rather than

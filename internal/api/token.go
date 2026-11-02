@@ -131,6 +131,24 @@ type revocations struct {
 	ids      map[string]int64 // token id -> its expiry; after that the entry is useless.
 	subjects map[string]int64 // subject -> tokens issued at or before this unix second are revoked.
 	archive  *SQLiteStore
+	// onChange runs after a revocation, so streams opened with the revoked credential can end.
+	onChange func()
+}
+
+// SetOnChange registers fn to run after every revocation.
+func (r *revocations) SetOnChange(fn func()) {
+	r.mu.Lock()
+	r.onChange = fn
+	r.mu.Unlock()
+}
+
+func (r *revocations) changed() {
+	r.mu.Lock()
+	fn := r.onChange
+	r.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
 }
 
 func newRevocations(archive *SQLiteStore) (*revocations, error) {
@@ -172,12 +190,14 @@ func (r *revocations) revoked(t authToken) bool {
 // RevokeToken stops one token from being accepted until it would have expired anyway.
 func (r *revocations) RevokeToken(id string, expiry int64) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.ids[id] = expiry
+	var err error
 	if r.archive != nil {
-		return r.archive.saveRevocation(revokeID, id, expiry)
+		err = r.archive.saveRevocation(revokeID, id, expiry)
 	}
-	return nil
+	r.mu.Unlock()
+	r.changed()
+	return err
 }
 
 // RevokeSubject stops every token issued to subject up to now from being accepted. Tokens minted afterwards
@@ -185,12 +205,14 @@ func (r *revocations) RevokeToken(id string, expiry int64) error {
 func (r *revocations) RevokeSubject(subject string, now time.Time) error {
 	key := strings.ToLower(subject)
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.subjects[key] = now.Unix()
+	var err error
 	if r.archive != nil {
-		return r.archive.saveRevocation(revokeSubject, key, now.Unix())
+		err = r.archive.saveRevocation(revokeSubject, key, now.Unix())
 	}
-	return nil
+	r.mu.Unlock()
+	r.changed()
+	return err
 }
 
 type revocationDTO struct {

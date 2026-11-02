@@ -27,7 +27,24 @@ func ensureRolesSchema(db *sql.DB) error {
 	if _, err := db.Exec(`ALTER TABLE role_bindings ADD COLUMN tenants_json TEXT`); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 		return fmt.Errorf("adding role_bindings.tenants_json: %w", err)
 	}
+	// A login bootstrapped as admin is recorded, so an admin who is later demoted or removed stays so across restarts.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS role_bootstrapped (login TEXT PRIMARY KEY)`); err != nil {
+		return fmt.Errorf("creating role_bootstrapped table: %w", err)
+	}
 	return nil
+}
+
+// BootstrapMarked reports whether login was handled as a bootstrap admin before.
+func (s *SQLiteStore) BootstrapMarked(login string) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM role_bootstrapped WHERE login = ?`, strings.ToLower(login)).Scan(&n)
+	return n > 0, err
+}
+
+// MarkBootstrapped records that login was handled as a bootstrap admin.
+func (s *SQLiteStore) MarkBootstrapped(login string) error {
+	_, err := s.db.Exec(`INSERT OR IGNORE INTO role_bootstrapped (login) VALUES (?)`, strings.ToLower(login))
+	return err
 }
 
 // UpsertRoleBinding inserts or replaces one binding row by ID.

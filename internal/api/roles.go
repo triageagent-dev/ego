@@ -80,7 +80,7 @@ type RoleBinding struct {
 	Subject     string   `json:"subject"`     // GitHub login, or "org/team-slug"
 	Role        Role     `json:"role"`
 	Agents      []string `json:"agents,omitempty"`
-	// Tenants, when non-empty, limits what the subject can see to data of those tenants (a sender'"'"'s tenant, see
+	// Tenants, when non-empty, limits what the subject can see to data of those tenants (a sender's tenant, see
 	// tenants.go); empty means every tenant. Combined with Agents, both must allow.
 	Tenants   []string `json:"tenants,omitempty"`
 	CreatedAt string   `json:"createdAt"`
@@ -119,6 +119,24 @@ type RoleStore struct {
 	archive     *SQLiteStore
 	defaultRole Role
 	teamCache   map[string]teamCacheEntry
+	// onChange runs after a binding is stored or removed, so streams opened under the old role can end.
+	onChange func()
+}
+
+// SetOnChange registers fn to run after every change to a binding.
+func (s *RoleStore) SetOnChange(fn func()) {
+	s.mu.Lock()
+	s.onChange = fn
+	s.mu.Unlock()
+}
+
+func (s *RoleStore) changed() {
+	s.mu.Lock()
+	fn := s.onChange
+	s.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
 }
 
 // NewRoleStore loads any persisted bindings from archive (nil if no
@@ -126,10 +144,11 @@ type RoleStore struct {
 // process's lifetime), then idempotently grants RoleAdmin to every login
 // in bootstrapAdmins that doesn't already have an admin binding - the only
 // way to get a first admin into an otherwise-empty RoleStore, since
-// nothing else can grant RoleAdmin without already having it. Re-running
-// with the same bootstrapAdmins list is always safe: it never touches an
-// existing binding (admin-demoted-by-another-admin stays demoted, not
-// silently re-granted on the next restart).
+// nothing else can grant RoleAdmin without already having it. A login is
+// granted once: it is recorded as bootstrapped, and a login that already
+// has any binding is recorded without a grant, so an admin demoted or
+// removed by another admin stays so across restarts, whatever the list
+// still says.
 func NewRoleStore(archive *SQLiteStore, defaultRole Role, bootstrapAdmins []string) (*RoleStore, error) {
 	s := &RoleStore{
 		bindings:    map[string]RoleBinding{},
@@ -151,19 +170,46 @@ func NewRoleStore(archive *SQLiteStore, defaultRole Role, bootstrapAdmins []stri
 		if login == "" {
 			continue
 		}
-		if s.hasAdminBindingForUser(login) {
+		if marked, err := s.bootstrapMarked(login); err != nil {
+			return nil, err
+		} else if marked {
+			continue
+		}
+		if s.hasBindingForUser(login) {
+			if err := s.markBootstrapped(login); err != nil {
+				return nil, err
+			}
 			continue
 		}
 		if _, err := s.Upsert(RoleBinding{SubjectType: "user", Subject: login, Role: RoleAdmin}); err != nil {
 			return nil, fmt.Errorf("bootstrapping admin %q: %w", login, err)
 		}
+		if err := s.markBootstrapped(login); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
 }
 
-func (s *RoleStore) hasAdminBindingForUser(login string) bool {
+// bootstrapMarked and markBootstrapped keep the record in the archive; without one the list is applied at every start
+// of the process, as before.
+func (s *RoleStore) bootstrapMarked(login string) (bool, error) {
+	if s.archive == nil {
+		return false, nil
+	}
+	return s.archive.BootstrapMarked(login)
+}
+
+func (s *RoleStore) markBootstrapped(login string) error {
+	if s.archive == nil {
+		return nil
+	}
+	return s.archive.MarkBootstrapped(login)
+}
+
+func (s *RoleStore) hasBindingForUser(login string) bool {
 	for _, b := range s.bindings {
-		if b.SubjectType == "user" && b.Role == RoleAdmin && strings.EqualFold(b.Subject, login) {
+		if b.SubjectType == "user" && strings.EqualFold(b.Subject, login) {
 			return true
 		}
 	}
@@ -185,6 +231,14 @@ func (s *RoleStore) List() []RoleBinding {
 // Upsert validates and creates (b.ID == "") or replaces (b.ID already
 // present) one binding, persisting it to archive if configured.
 func (s *RoleStore) Upsert(b RoleBinding) (RoleBinding, error) {
+	b, err := s.upsert(b)
+	if err == nil {
+		s.changed()
+	}
+	return b, err
+}
+
+func (s *RoleStore) upsert(b RoleBinding) (RoleBinding, error) {
 	if b.SubjectType != "user" && b.SubjectType != "team" {
 		return RoleBinding{}, fmt.Errorf("subjectType must be \"user\" or \"team\", got %q", b.SubjectType)
 	}
@@ -256,6 +310,14 @@ func validateBindingScope(b RoleBinding) error {
 
 // Delete removes one binding by ID, reporting ok=false if it didn't exist.
 func (s *RoleStore) Delete(id string) (ok bool, err error) {
+	ok, err = s.delete(id)
+	if ok && err == nil {
+		s.changed()
+	}
+	return ok, err
+}
+
+func (s *RoleStore) delete(id string) (ok bool, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok = s.bindings[id]; !ok {
@@ -317,7 +379,7 @@ type RoleInfo struct {
 // except RoleViewer can.
 func (info RoleInfo) CanWrite() bool {
 	// Runs and eval sets carry no tenant, so a tenant-scoped role cannot create them without leaking into other
-	// tenants'"'"' views.
+	// tenants' views.
 	return (info.Role == RoleAdmin || info.Role == RoleMember) && !info.TenantScoped()
 }
 

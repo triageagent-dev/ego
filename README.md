@@ -485,8 +485,8 @@ ego separates what people see by **tenant**, and gives access by **GitHub team**
   **services** under its row in the switcher, by the `service.name` their sender declares. Picking one narrows the
   session list to the sessions that service reported (`service` on `list_sessions`, `services` on `list_tenants`). It is a
   filter on what the role already sees, not a grant: the name is whatever the sender says, and access stays with the tenant.
-- A signed-in user that **no grant covers sees nothing** (`--default-role none`; the default is still `member`, which
-  sees every tenant). Teams are read at sign-in. The shared `--otlp-token` is a sender with no name: its tenants keep
+- A signed-in user that **no grant covers sees nothing** (`--default-role none`, the chart default; the binary
+  defaults to `member`, which sees every tenant). Teams are read at sign-in. The shared `--otlp-token` is a sender with no name: its tenants keep
   their bare label as the key.
 - A sender that labels tenants with ids can have each one **named**, and the switcher, session badges and usage table
   show the name. The key stays the identity for grants and filters. The sender says the name itself: the span or

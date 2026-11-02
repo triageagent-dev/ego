@@ -159,3 +159,115 @@ func TestStorageWatchNoticeDoesNotHoldTheLock(t *testing.T) {
 	}
 	w.writeFailed(errors.New("disk full"))
 }
+
+// A bootstrap admin who is demoted or removed stays so after a restart, although the list still names them.
+func TestBootstrapAdminStaysDemotedAcrossRestarts(t *testing.T) {
+	path := t.TempDir() + "/roles.db"
+	open := func() (*RoleStore, *SQLiteStore) {
+		t.Helper()
+		archive, err := NewSQLiteStore(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		roles, err := NewRoleStore(archive, RoleNone, []string{"alice", "bob"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return roles, archive
+	}
+	roles, archive := open()
+	if n := len(roles.List()); n != 2 {
+		t.Fatalf("bootstrap grants = %d, want 2", n)
+	}
+	for _, b := range roles.List() {
+		switch b.Subject {
+		case "alice": // removed outright
+			if ok, err := roles.Delete(b.ID); !ok || err != nil {
+				t.Fatalf("delete: %v %v", ok, err)
+			}
+		case "bob": // demoted
+			b.Role = RoleViewer
+			if _, err := roles.Upsert(b); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	archive.Close()
+
+	roles, archive = open()
+	defer archive.Close()
+	for _, b := range roles.List() {
+		if b.Role == RoleAdmin {
+			t.Errorf("%s is admin again after a restart", b.Subject)
+		}
+	}
+	if n := len(roles.List()); n != 1 {
+		t.Errorf("bindings after restart = %d, want only bob as a viewer", n)
+	}
+}
+
+// An existing deployment has admin bindings but no record: they are recorded, not granted twice.
+func TestBootstrapRecordsExistingBindings(t *testing.T) {
+	archive, err := NewSQLiteStore(t.TempDir() + "/roles.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	roles, err := NewRoleStore(archive, RoleNone, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := roles.Upsert(RoleBinding{SubjectType: "user", Subject: "carol", Role: RoleViewer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	roles, err = NewRoleStore(archive, RoleNone, []string{"carol"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := roles.List()
+	if len(got) != 1 || got[0].ID != b.ID || got[0].Role != RoleViewer {
+		t.Errorf("bindings = %+v, want carol's viewer binding untouched", got)
+	}
+}
+
+// A role change or a revocation ends the open streams, which then reconnect under the new role.
+func TestStreamsEndWhenARoleChanges(t *testing.T) {
+	hub := newSSEHub()
+	roles, err := NewRoleStore(nil, RoleNone, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roles.SetOnChange(hub.kickAll)
+	revoked, err := newRevocations(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revoked.SetOnChange(hub.kickAll)
+
+	ended := func(ch chan any) bool {
+		select {
+		case _, ok := <-ch:
+			return !ok
+		case <-time.After(time.Second):
+			return false
+		}
+	}
+	ch := hub.register()
+	if _, err := roles.Upsert(RoleBinding{SubjectType: "user", Subject: "dave", Role: RoleViewer}); err != nil {
+		t.Fatal(err)
+	}
+	if !ended(ch) {
+		t.Fatal("a stream survived a role binding change")
+	}
+	hub.unregister(ch) // the handler's deferred unregister after a kick must not panic
+
+	ch = hub.register()
+	if err := revoked.RevokeSubject("dave", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if !ended(ch) {
+		t.Fatal("a stream survived a revocation")
+	}
+	hub.broadcast(map[string]string{"type": "x"}) // no send on a closed channel
+}

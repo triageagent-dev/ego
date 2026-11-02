@@ -56,6 +56,11 @@ jobs:
         with:
           name: ui-dist
           path: ui/dist
+      - name: Format and vet
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          go vet ./...
       - name: Test
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: go test ./...

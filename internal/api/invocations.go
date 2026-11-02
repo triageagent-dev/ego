@@ -166,7 +166,7 @@ type toolSpanMetrics struct {
 }
 
 // extractToolMetrics returns per-tool-call latency/result size, in call order, for spans already scoped to one
-// invocation by bucketSpansByInvocation. Only triage-core's voice module (internal/voice/session.go) emits
+// invocation by bucketSpansByInvocation. Only a voice module that writes one span per round emits
 // tool.latency_ms/tool.result_bytes today; other sources simply won't have these tags.
 func extractToolMetrics(spans []*tracepkg.Span) []toolSpanMetrics {
 	var toolSpans []*tracepkg.Span

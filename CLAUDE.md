@@ -84,7 +84,7 @@ streaming** path for the UI.
   scoring 0. New judge metrics: add to `judgeMetrics` + `runJudgeMetric` in `main.go`.
 - LLM calls go through the `judge.Model` interface (`internal/judge/client.go`) so parsing/aggregation is
   testable with a scripted fake and no API key.
-- No CGO (`modernc.org/sqlite` is chosen for that; image is `cgr.dev/chainguard/static`). One static binary, no
+- No CGO (`modernc.org/sqlite` is chosen for that; the Dockerfile image is distroless, the ko image `cgr.dev/chainguard/static`). One static binary, no
   other runtime.
 - Deploy is Helm + ko: `make image` (clean tree; builds `ui/dist`, ko-pushes `<BASE_VERSION>.<count>-<sha>`),
   `make deploy-diff`, `make deploy`. Chart in `charts/ego`; real values in `deploy/values.yaml`

@@ -123,6 +123,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		if revoked, err = newRevocations(archive); err != nil {
 			return err
 		}
+		revoked.SetOnChange(hub.kickAll)
 	}
 
 	var roleStore *RoleStore
@@ -135,6 +136,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		if err != nil {
 			return fmt.Errorf("opening role store: %w", err)
 		}
+		roleStore.SetOnChange(hub.kickAll)
 	}
 
 	mux := http.NewServeMux()

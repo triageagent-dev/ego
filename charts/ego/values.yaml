@@ -61,9 +61,9 @@ auth:
   githubClientId: ""
   # -- Role of a signed-in user no role binding covers: admin, member, viewer or none (no access). With none, give
   # every team a binding (tenants: ["*"] for staff, "<sender>/*" or "<sender>/<tenant>" for customers).
-  # Take care: member lets every signed-in member of the organisation read and write EVERY tenant. In a deployment
-  # that holds customers' tenants set none and bind each team to the tenants it may see.
-  defaultRole: member
+  # none is the default: access is granted per member (or team) by a role binding, and --admin-github-users names the
+  # first admin. member would let every signed-in member of the organisation read and write EVERY tenant.
+  defaultRole: none
   # -- Log the GitHub user name of every sign-in and refused sign-in (--audit-log). Off: the log carries no user names.
   auditLog: false
   githubOrg: ""

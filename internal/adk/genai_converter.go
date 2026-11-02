@@ -354,11 +354,11 @@ func boolTag(span *tracepkg.Span, key string) bool {
 // input (a voice model that keeps calling tools on its own) stay with the turn that answered, the same window
 // the per-turn token metrics use. A tool call belongs to the model round that consumed its result: the first
 // LLM span at or after it. That holds for a span emitted when the model asked (the round after it carries the
-// answer) and for one emitted when the round ended (triage-core's voice module writes the round's span after
+// answer) and for one emitted when the round ended (a voice module writes the round's span after
 // its tools returned).
 func extractOpenInferenceTurns(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span) []conversationTurn {
 	// A round that heard the person and answered in the same model round carries both sides on one span
-	// (triage-core's voice module since its session-cap fix); it is a whole turn, so it is kept here even though
+	// (a voice module after a session-cap fix); it is a whole turn, so it is kept here even though
 	// it is not a single-sided "turn side".
 	var turnSpans []*tracepkg.Span
 	for _, s := range llmSpans {
