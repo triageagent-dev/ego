@@ -87,8 +87,8 @@ The default judge model is `gemini-3-flash-preview`, and each evaluator can name
 | Concurrent evaluations | 4 |
 | Per request | 50 trace files, 20 evaluators, 8 judge samples, 50 rubrics per evaluator |
 | Daily judge tokens | One cap for all callers (`--eval-daily-tokens`, default 5,000,000 per UTC day; 429 when used up). One user can take a quarter of it; admins are exempt |
-| Per member | At most 2 evaluations running and 10 started a minute (`userConcurrent`, `userPerMinute` in `--eval-limits`); admins are exempt |
-| Per model | Optional (`models` in `--eval-limits`): a `weight` multiplies a model's tokens against the daily budget and a member's share, so a dearer model uses them up faster; `dailyTokens` caps one model whoever asks (429 naming the model). Admins are held to a model's cap |
+| Per member | At most 2 evaluations running and 10 started a minute by default; an admin changes both on the settings page (evaluation limits) and is exempt |
+| Per model | Optional, set on the settings page: a `weight` multiplies a model's tokens against the daily budget and a member's share, so a dearer model uses them up faster; a daily token cap limits one model whoever asks (429 naming the model). Admins are held to a model's cap |
 | Vertex and Jev | Report no token counts, so only the concurrency and request caps limit them |
 | Vertex call | Each call is bounded to 3 minutes; Google's status and message are shown when it fails |
 
@@ -246,7 +246,6 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`. The s
 | EGO_OTLP_TOKEN | `--otlp-token` | Shared bearer token for the receivers; sender tokens work too, and with neither a push is refused |
 | EGO_USAGE_TENANT_ATTR | `--usage-tenant-attr` | Span attribute the tenant label is read from |
 | EGO_EVAL_DAILY_TOKENS | `--eval-daily-tokens` | Judge tokens interactive evaluation may use per UTC day |
-| EGO_EVAL_LIMITS | `--eval-limits` | JSON: per-member `userConcurrent`/`userPerMinute` and per-model `{weight, dailyTokens}` for interactive evaluation |
 | EGO_SEGMENT_* | `--segment-idle`, `--segment-max-spans`, `--segment-max-age` | When a thread's segment closes |
 | EGO_ONLINE_CONFIG | `--online-config` | Online evaluation profiles, budget, detector and sinks |
 | EGO_LOG_LEVEL, EGO_AUDIT_LOG | `--log-level`, `--audit-log` | Log threshold; log the user name of every sign-in, off by default |

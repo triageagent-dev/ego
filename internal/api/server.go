@@ -56,7 +56,6 @@ const persistInterval = 10 * time.Second
 // process receives SIGINT/SIGTERM, in which case it flushes a final snapshot before returning.
 func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits, onlineConfigPath, otlpToken string) error {
 	interactiveEval.setDailyCap(limits.EvalDailyTokens)
-	interactiveEval.setLimits(limits.EvalLimits)
 	if limits.UsageTenantAttr == "" {
 		limits.UsageTenantAttr = DefaultTenantAttr
 	}
@@ -71,6 +70,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 			return fmt.Errorf("opening session archive: %w", err)
 		}
 		archive.SetOnChange(hub.notifyChanged)
+		LoadEvalLimits(archive, interactiveEval)
 		store = NewSessionStoreWithArchive(hub, archive, limits)
 		if err := store.LoadPersisted(); err != nil {
 			return err
@@ -196,6 +196,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	if onlineEngine != nil {
 		mergeGuarded = onlineEngine.MergeTenants
 	}
+	mux.HandleFunc("/api/admin/eval-limits", evalLimitsHandler(archive))
 	mux.HandleFunc("/api/admin/merge-tenants", adminMergeTenantsHandler(store, tenantNames, senderStore, mergeGuarded))
 	mux.HandleFunc("/api/admin/senders", adminSendersHandler(senderStore))
 	mux.HandleFunc("/api/admin/senders/{id}", adminSenderByIDHandler(senderStore))

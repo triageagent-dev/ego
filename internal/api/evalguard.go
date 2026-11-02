@@ -63,10 +63,11 @@ type evalGuard struct {
 	// inflight counts a caller's running evaluations and started holds when the last ones began.
 	inflight map[string]int
 	started  map[string][]time.Time
-	// limits are the per-member and per-model settings (--eval-limits); byModel is the tokens each model used today,
-	// as the model reported them.
-	limits  EvalLimits
-	byModel map[string]int64
+	// limits are the per-member and per-model settings an admin saved on the settings page (limitsStored); byModel is
+	// the tokens each model used today, as the model reported them.
+	limits       EvalLimits
+	limitsStored bool
+	byModel      map[string]int64
 }
 
 // userShareDivisor: a caller who is not an admin may use a quarter of the day's budget.
@@ -79,10 +80,13 @@ func newEvalGuard(dailyCap int64) *evalGuard {
 // interactiveEval is shared by the handlers, which are built without a common owner.
 var interactiveEval = newEvalGuard(DefaultEvalDailyToks)
 
-// setLimits applies the --eval-limits settings.
-func (g *evalGuard) setLimits(l EvalLimits) {
+// setLimits applies the per-member and per-model limits.
+func (g *evalGuard) setLimits(l EvalLimits) { g.setLimitsStored(l, false) }
+
+// setLimitsStored is setLimits that also remembers whether an admin saved them.
+func (g *evalGuard) setLimitsStored(l EvalLimits, stored bool) {
 	g.mu.Lock()
-	g.limits = l
+	g.limits, g.limitsStored = l, stored
 	g.mu.Unlock()
 }
 

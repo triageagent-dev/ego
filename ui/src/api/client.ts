@@ -13,6 +13,8 @@ import type {
   RubricKind,
   RubricSet,
   OnlineJob,
+  EvalLimits,
+  EvalLimitsState,
   OnlineJobs,
   UsageSeries,
   ActivitySubject,
@@ -575,6 +577,29 @@ export async function getSessionSpans(sessionId: string): Promise<SessionSpan[]>
   if (!response.ok) throw new Error(`Failed to load spans: ${httpStatusLabel(response)}`);
   const data = await unwrap<{ sessionId: string; spans: SessionSpan[] }>(response);
   return data.spans;
+}
+
+export async function getEvalLimits(): Promise<EvalLimitsState> {
+  const response = await fetch(config.api.endpoints.evalLimits);
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to load the evaluation limits'));
+  return unwrap<EvalLimitsState>(response);
+}
+
+export async function saveEvalLimits(limits: EvalLimits): Promise<EvalLimitsState> {
+  const response = await fetch(config.api.endpoints.evalLimits, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(limits),
+  });
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to save the evaluation limits'));
+  return unwrap<EvalLimitsState>(response);
+}
+
+/** Drops the saved limits; the built-in ones apply again. */
+export async function resetEvalLimits(): Promise<EvalLimitsState> {
+  const response = await fetch(config.api.endpoints.evalLimits, { method: 'DELETE' });
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to reset the evaluation limits'));
+  return unwrap<EvalLimitsState>(response);
 }
 
 export async function getOnlineJobs(): Promise<OnlineJobs> {

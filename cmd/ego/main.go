@@ -457,8 +457,6 @@ func serveCmd(args []string) error {
 		"span attribute the token usage view reads the tenant from (e.g. tenant.id); empty records no tenant; falls back to EGO_USAGE_TENANT_ATTR")
 	evalDailyTokens := fs.Int64("eval-daily-tokens", envInt64OrDefault("EVAL_DAILY_TOKENS", api.DefaultEvalDailyToks),
 		"judge tokens the interactive evaluation endpoints may use per UTC day, shared by all callers; 0 means unlimited; falls back to EGO_EVAL_DAILY_TOKENS")
-	evalLimitsJSON := fs.String("eval-limits", env("EVAL_LIMITS"),
-		"JSON with limits on the interactive evaluation endpoints: userConcurrent and userPerMinute per signed-in member (default 2 and 10; an admin is exempt) and models, a map of judge model name (or \"*\") to {weight, dailyTokens}: weight multiplies the tokens a model uses before they count against the daily budget, dailyTokens caps that model alone; falls back to EGO_EVAL_LIMITS")
 	noAuth := fs.Bool("no-auth", envBool("NO_AUTH"),
 		"serve on non-loopback addresses without a login. Without --session-secret, serve refuses to listen on anything but loopback unless this is set, because everyone who can reach it would be an admin; falls back to EGO_NO_AUTH=true")
 	otlpToken := fs.String("otlp-token", env("OTLP_TOKEN"),
@@ -473,10 +471,6 @@ func serveCmd(args []string) error {
 		return err
 	}
 	if err := logx.Setup(*logLevel); err != nil {
-		return err
-	}
-	evalLimits, err := api.ParseEvalLimits(*evalLimitsJSON)
-	if err != nil {
 		return err
 	}
 	if err := checkSessionSecret(*sessionSecret); err != nil {
@@ -502,7 +496,7 @@ func serveCmd(args []string) error {
 		}
 	}
 	return api.Serve(*addr, *otlpAddr, *otlpGRPCAddr, *healthAddr, *sessionDB, *sessionSecret, githubOAuth, adminUsers, *defaultRole,
-		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, ArchiveAlertPercent: *archiveAlertPercent, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens, EvalLimits: evalLimits,
+		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, ArchiveAlertPercent: *archiveAlertPercent, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens,
 			SegmentIdle: *segmentIdle, SegmentMaxSpans: *segmentMaxSpans, SegmentMaxAge: *segmentMaxAge}, *onlineConfig, *otlpToken)
 }
 

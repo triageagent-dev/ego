@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -168,24 +170,99 @@ func freshEvalGuard(t *testing.T) {
 	t.Cleanup(func() { interactiveEval = old })
 }
 
-func TestParseEvalLimits(t *testing.T) {
-	l, err := ParseEvalLimits(`{"userConcurrent":3,"userPerMinute":5,"models":{"big-model":{"weight":4,"dailyTokens":1000},"*":{"weight":0.5}}}`)
+func TestEvalLimitsValidate(t *testing.T) {
+	ok := EvalLimits{UserConcurrent: 3, UserPerMinute: 5, Models: map[string]ModelLimit{"big-model": {Weight: 4, DailyTokens: 1000}, "*": {Weight: 0.5}}}
+	if err := ok.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if ok.userConcurrent() != 3 || ok.userPerMinute() != 5 || ok.model("big-model").Weight != 4 || ok.model("other").Weight != 0.5 {
+		t.Errorf("limits %+v", ok)
+	}
+	if d := (EvalLimits{}); d.Validate() != nil || d.userConcurrent() != maxUserConcurrentEvals || d.userPerMinute() != userEvalsPerMinute {
+		t.Error("the zero value is not the built-in limits")
+	}
+	for name, bad := range map[string]EvalLimits{
+		"negative member limit": {UserPerMinute: -1},
+		"model name with space": {Models: map[string]ModelLimit{"a b": {}}},
+		"negative weight":       {Models: map[string]ModelLimit{"m": {Weight: -1}}},
+		"negative cap":          {Models: map[string]ModelLimit{"m": {DailyTokens: -5}}},
+	} {
+		if bad.Validate() == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+}
+
+func evalLimitsRequest(t *testing.T, h http.HandlerFunc, method, body string, info RoleInfo) (int, evalLimitsDTO) {
+	t.Helper()
+	req := withRoleInfoForTest(info)(httptest.NewRequest(method, "/api/admin/eval-limits", strings.NewReader(body)))
+	rec := httptest.NewRecorder()
+	h(rec, req)
+	var out struct {
+		Data evalLimitsDTO `json:"data"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out.Data
+}
+
+// An admin saves the limits on the settings page: they apply at once, survive a restart, and can be dropped.
+func TestEvalLimitsAnAdminSavesAndResets(t *testing.T) {
+	freshEvalGuard(t)
+	archive, err := NewSQLiteStore(t.TempDir() + "/e.db")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.userConcurrent() != 3 || l.userPerMinute() != 5 || l.model("big-model").Weight != 4 || l.model("other").Weight != 0.5 {
-		t.Errorf("parsed %+v", l)
+	defer archive.Close()
+	h := evalLimitsHandler(archive)
+	admin := RoleInfo{Role: RoleAdmin, IsAdmin: true}
+
+	if code, got := evalLimitsRequest(t, h, http.MethodGet, "", admin); code != http.StatusOK || got.Source != "default" || got.Defaults.UserConcurrent != maxUserConcurrentEvals || !got.Persisted || got.DefaultModel == "" {
+		t.Fatalf("GET before anything is saved = %d %+v", code, got)
 	}
-	if d := (EvalLimits{}); d.userConcurrent() != maxUserConcurrentEvals || d.userPerMinute() != userEvalsPerMinute {
-		t.Error("the defaults are not the built-in limits")
+	body := `{"userConcurrent":1,"models":{"big":{"weight":4,"dailyTokens":500}}}`
+	if code, got := evalLimitsRequest(t, h, http.MethodPut, body, admin); code != http.StatusOK || got.Source != "stored" || got.UserConcurrent != 1 || got.Models["big"].Weight != 4 {
+		t.Fatalf("PUT = %d %+v", code, got)
 	}
-	if l, err := ParseEvalLimits(""); err != nil || l.Models != nil {
-		t.Errorf("an empty string = %+v %v, want the defaults", l, err)
+	if interactiveEval.userConcurrentLimit() != 1 {
+		t.Error("the saved limits are not in force")
 	}
-	for _, bad := range []string{`{"usersConcurrent":2}`, `{"userPerMinute":-1}`, `{"models":{"a b":{}}}`, `{"models":{"m":{"weight":-1}}}`, `{"models":{"m":{"dailyTokens":-5}}}`, `not json`} {
-		if _, err := ParseEvalLimits(bad); err == nil {
-			t.Errorf("accepted %s", bad)
+
+	// A restart: a fresh guard reads the limits back from the archive.
+	interactiveEval = newEvalGuard(DefaultEvalDailyToks)
+	LoadEvalLimits(archive, interactiveEval)
+	if interactiveEval.userConcurrentLimit() != 1 || interactiveEval.limits.model("big").DailyTokens != 500 {
+		t.Errorf("limits after a restart = %+v", interactiveEval.limits)
+	}
+
+	if code, got := evalLimitsRequest(t, h, http.MethodDelete, "", admin); code != http.StatusOK || got.Source != "default" || got.UserConcurrent != 0 {
+		t.Fatalf("DELETE = %d %+v", code, got)
+	}
+	interactiveEval = newEvalGuard(DefaultEvalDailyToks)
+	LoadEvalLimits(archive, interactiveEval)
+	if interactiveEval.userConcurrentLimit() != maxUserConcurrentEvals {
+		t.Error("a reset did not survive a restart")
+	}
+}
+
+func TestEvalLimitsAreAdminOnlyAndValidated(t *testing.T) {
+	freshEvalGuard(t)
+	h := evalLimitsHandler(nil)
+	admin := RoleInfo{Role: RoleAdmin, IsAdmin: true}
+	for _, role := range []RoleInfo{{Role: RoleMember}, {Role: RoleViewer}} {
+		for _, m := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+			if code, _ := evalLimitsRequest(t, h, m, `{}`, role); code != http.StatusForbidden {
+				t.Errorf("%s as %s = %d, want 403", m, role.Role, code)
+			}
 		}
+	}
+	for _, bad := range []string{`{"userConcurent":2}`, `{"userPerMinute":-1}`, `{"models":{"a b":{}}}`, `not json`} {
+		if code, _ := evalLimitsRequest(t, h, http.MethodPut, bad, admin); code != http.StatusBadRequest {
+			t.Errorf("%s = %d, want 400", bad, code)
+		}
+	}
+	// With no archive the limits still apply, and the answer says they are lost at a restart.
+	if code, got := evalLimitsRequest(t, h, http.MethodPut, `{"userPerMinute":3}`, admin); code != http.StatusOK || got.Persisted || interactiveEval.userRateLimit() != 3 {
+		t.Errorf("PUT without an archive = %d %+v", code, got)
 	}
 }
 

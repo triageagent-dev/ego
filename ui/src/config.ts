@@ -30,6 +30,7 @@ export const config = {
       usageLimits: `${API_BASE_URL}/api/usage/limits`,
       online: `${API_BASE_URL}/api/online`,
       onlineJobs: `${API_BASE_URL}/api/online/jobs`,
+      evalLimits: `${API_BASE_URL}/api/admin/eval-limits`,
       onlineFindings: `${API_BASE_URL}/api/online/findings`,
       onlineCorrections: `${API_BASE_URL}/api/online/corrections`,
       onlineLabels: `${API_BASE_URL}/api/online/labels`,

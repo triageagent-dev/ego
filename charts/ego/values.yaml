@@ -48,18 +48,6 @@ usageTenantAttr: ""
 # -- GitHub logins that are always admin (--admin-github-users).
 adminGithubUsers: []
 
-# -- Limits on the interactive evaluation endpoints, beyond the daily judge-token cap (EGO_EVAL_DAILY_TOKENS).
-# userConcurrent and userPerMinute are per signed-in member (default 2 and 10; an admin is exempt). models maps a judge
-# model name, or "*" for any other, to {weight, dailyTokens}: weight multiplies the tokens the model uses before they
-# count against the daily budget and a member's share (a dearer model uses it up faster), dailyTokens caps that model
-# alone. Example:
-#   evalLimits:
-#     userConcurrent: 2
-#     userPerMinute: 10
-#     models:
-#       "*": {weight: 1}
-#       gemini-2.5-pro: {weight: 4, dailyTokens: 1000000}
-evalLimits: {}
 
 # -- Log threshold: debug, info, warn or error (--log-level).
 logLevel: info

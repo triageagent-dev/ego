@@ -1027,6 +1027,25 @@ export interface OnlineJob {
   evaluators: { name: string; rubrics?: string[]; numSamples?: number; judgeModel?: string }[];
 }
 
+/** The limits on interactive evaluation an admin sets on the settings page. */
+export interface EvalLimits {
+  /** Evaluations one signed-in member may have running; 0 or absent is the default. */
+  userConcurrent?: number;
+  /** Evaluations one signed-in member may start per minute; 0 or absent is the default. */
+  userPerMinute?: number;
+  /** Per judge model name, or "*" for any other. */
+  models?: Record<string, { weight?: number; dailyTokens?: number }>;
+}
+
+export interface EvalLimitsState extends EvalLimits {
+  defaults: { userConcurrent: number; userPerMinute: number };
+  /** The judge model a metric uses when it names none. */
+  defaultModel: string;
+  source: 'stored' | 'default';
+  /** False when the server keeps no archive: the limits are lost at a restart. */
+  persisted: boolean;
+}
+
 export interface OnlineJobs {
   perKindPerHour: number;
   profiles: OnlineJob[];

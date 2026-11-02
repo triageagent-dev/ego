@@ -73,9 +73,6 @@ spec:
             {{- with .Values.usageTenantAttr }}
             - --usage-tenant-attr={{ . }}
             {{- end }}
-            {{- with .Values.evalLimits }}
-            - {{ printf "--eval-limits=%s" (toJson .) | quote }}
-            {{- end }}
             {{- with .Values.adminGithubUsers }}
             - --admin-github-users={{ join "," . }}
             {{- end }}

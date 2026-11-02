@@ -7,6 +7,7 @@ import type { LimitItem } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
 import { VersionLink } from '../shell/VersionLink';
 import { errorStyle, pageStyle, subtitleStyle, titleStyle } from '../ui/page';
+import { EvalLimitsPanel } from './EvalLimitsPanel';
 import { EvalSettingsForm } from './EvalSettingsForm';
 import { ScoringJobsPanel } from './ScoringJobsPanel';
 
@@ -95,7 +96,7 @@ export const SettingsView: React.FC = () => {
         <div>
           <section css={sectionStyle}>
             <h2 css={sectionTitleStyle}>caps and limits</h2>
-            <p css={hintStyle}>Read only: set when the server starts or in its online configuration. Daily budgets reset at 00:00 UTC.</p>
+            <p css={hintStyle}>Read only: set when the server starts or in its online configuration; an admin sets the evaluation limits below. Daily budgets reset at 00:00 UTC.</p>
             {error && <div css={errorStyle}>{error}</div>}
             {limits === null && !error && <div css={noteStyle}>Loading…</div>}
             {[...groups.entries()].map(([group, items]) => (
@@ -116,6 +117,14 @@ export const SettingsView: React.FC = () => {
             </p>
             <ScoringJobsPanel canEdit={!me?.authenticated || me.role === 'admin'} />
           </section>
+
+          {(!me?.authenticated || me.role === 'admin') && (
+            <section css={sectionStyle}>
+              <h2 css={sectionTitleStyle}>evaluation limits</h2>
+              <p css={hintStyle}>How much one member may run on the evaluate page, and what each judge model may use of the day's budget. Applies from the next evaluation.</p>
+              <EvalLimitsPanel />
+            </section>
+          )}
 
           <section css={sectionStyle}>
             <h2 css={sectionTitleStyle}>evaluation</h2>

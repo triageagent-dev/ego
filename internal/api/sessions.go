@@ -619,8 +619,6 @@ type SessionLimits struct {
 	UsageTenantAttr string
 	// EvalDailyTokens caps the judge tokens interactive evaluations may use per UTC day; 0 means unlimited.
 	EvalDailyTokens int64
-	// EvalLimits are the per-member and per-model limits on interactive evaluation (--eval-limits).
-	EvalLimits EvalLimits
 	// SegmentIdle, SegmentMaxSpans and SegmentMaxAge are the rules that close a segment of a thread (segments.go);
 	// zero takes the default.
 	SegmentIdle     time.Duration
