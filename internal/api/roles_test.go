@@ -317,6 +317,7 @@ func TestAdminRolesHandler_NilStoreUnavailable(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestEvaluateHandler_ViewerCannotWrite(t *testing.T) {
+	freshEvalGuard(t)
 	tr := buildTrajectoryTrace()
 	content, err := otlp.EncodeTraceJSONL(tr)
 	if err != nil {
@@ -334,6 +335,7 @@ func TestEvaluateHandler_ViewerCannotWrite(t *testing.T) {
 }
 
 func TestEvaluateHandler_MemberCanWrite(t *testing.T) {
+	freshEvalGuard(t)
 	tr := buildTrajectoryTrace()
 	content, err := otlp.EncodeTraceJSONL(tr)
 	if err != nil {

@@ -86,6 +86,9 @@ func TestStartNamesKindlessRowsFromTheirSessionsOnly(t *testing.T) {
 	}
 
 	store := NewSessionStoreWithArchive(nil, archive, SessionLimits{})
+	// Close waits for the session-index backfill LoadPersisted starts; closing only the archive would let it run on
+	// into the removal of the temporary directory.
+	defer store.Close()
 	if err := store.LoadPersisted(); err != nil {
 		t.Fatal(err)
 	}

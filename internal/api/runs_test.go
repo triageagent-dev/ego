@@ -17,6 +17,7 @@ import (
 // exact camelCase shape ui/src/lib/types.ts's Run/RunResultRow expect -
 // this is the feature that was reported as "Runs is empty".
 func TestEvaluateHandler_PersistsRunHistory(t *testing.T) {
+	freshEvalGuard(t)
 	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "runs.db"))
 	if err != nil {
 		t.Fatalf("NewSQLiteStore: %v", err)

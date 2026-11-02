@@ -92,6 +92,7 @@ func multipartEvaluateRequest(t *testing.T, traceContent []byte, evalSetContent 
 }
 
 func TestEvaluateHandler_NoEvalSet(t *testing.T) {
+	freshEvalGuard(t)
 	tr := buildTrajectoryTrace()
 	content, err := otlp.EncodeTraceJSONL(tr)
 	if err != nil {
@@ -138,6 +139,7 @@ func TestEvaluateHandler_NoEvalSet(t *testing.T) {
 }
 
 func TestEvaluateHandler_WithEvalSet_Passes(t *testing.T) {
+	freshEvalGuard(t)
 	tr := buildTrajectoryTrace()
 	content, err := otlp.EncodeTraceJSONL(tr)
 	if err != nil {
@@ -200,6 +202,7 @@ func TestEvaluateHandler_WithEvalSet_Passes(t *testing.T) {
 }
 
 func TestEvaluateHandler_NoTraceFiles(t *testing.T) {
+	freshEvalGuard(t)
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	_ = w.WriteField("config", `{"evaluators":[]}`)
@@ -217,6 +220,7 @@ func TestEvaluateHandler_NoTraceFiles(t *testing.T) {
 }
 
 func TestEvaluateStreamHandler_WithEvalSet_Passes(t *testing.T) {
+	freshEvalGuard(t)
 	tr := buildTrajectoryTrace()
 	content, err := otlp.EncodeTraceJSONL(tr)
 	if err != nil {
@@ -301,6 +305,7 @@ func TestEvaluateStreamHandler_WithEvalSet_Passes(t *testing.T) {
 }
 
 func TestEvaluateStreamHandler_NoTraceFiles(t *testing.T) {
+	freshEvalGuard(t)
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	_ = w.WriteField("config", `{"evaluators":[]}`)

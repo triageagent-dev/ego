@@ -37,6 +37,9 @@ func TestSessionPersistence_RoundTrip(t *testing.T) {
 	}
 	defer archive2.Close()
 	store2 := NewSessionStoreWithArchive(nil, archive2, SessionLimits{})
+	// Close waits for the session-index backfill LoadPersisted starts; closing only the archive would let it run on
+	// into the removal of the temporary directory.
+	defer store2.Close()
 	if err := store2.LoadPersisted(); err != nil {
 		t.Fatalf("LoadPersisted: %v", err)
 	}
@@ -96,6 +99,9 @@ func TestSessionPersistence_RestoredIncompleteSessionEventuallyCompletes(t *test
 	}
 	defer archive2.Close()
 	store2 := NewSessionStoreWithArchive(nil, archive2, SessionLimits{})
+	// Close waits for the session-index backfill LoadPersisted starts; closing only the archive would let it run on
+	// into the removal of the temporary directory.
+	defer store2.Close()
 	store2.idleTimeout = 10 * time.Millisecond
 	if err := store2.LoadPersisted(); err != nil {
 		t.Fatalf("LoadPersisted: %v", err)

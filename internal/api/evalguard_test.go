@@ -90,3 +90,80 @@ func TestEvalGuardSharesTheDailyBudgetPerCaller(t *testing.T) {
 		rel()
 	}
 }
+
+// One member holds at most maxUserConcurrentEvals slots, so the others keep theirs; an admin is not held to it.
+func TestEvalGuardLimitsRunningEvaluationsPerCaller(t *testing.T) {
+	g := newEvalGuard(0)
+	now := time.Now()
+	var held []func()
+	for i := 0; i < maxUserConcurrentEvals; i++ {
+		rel, status, msg := g.admit(now, "alice", false)
+		if rel == nil {
+			t.Fatalf("evaluation %d refused: %d %q", i, status, msg)
+		}
+		held = append(held, rel)
+	}
+	if rel, status, msg := g.admit(now, "alice", false); rel != nil || status != http.StatusTooManyRequests || !strings.Contains(msg, "running") {
+		t.Fatalf("alice past her running limit = %v %d %q", rel != nil, status, msg)
+	}
+	if rel, _, _ := g.admit(now, "bob", false); rel == nil {
+		t.Error("bob was refused although a slot is free")
+	} else {
+		rel()
+	}
+	if rel, _, _ := g.admit(now, "alice", true); rel == nil {
+		t.Error("an admin was held to the per-caller limit")
+	} else {
+		rel()
+	}
+	held[0]()
+	if rel, _, _ := g.admit(now, "alice", false); rel == nil {
+		t.Error("alice was refused after one of hers finished")
+	} else {
+		rel()
+	}
+	held[1]()
+}
+
+// A member may start only so many evaluations a minute, however fast each one finishes.
+func TestEvalGuardLimitsTheStartRatePerCaller(t *testing.T) {
+	g := newEvalGuard(0)
+	now := time.Now()
+	for i := 0; i < userEvalsPerMinute; i++ {
+		rel, status, msg := g.admit(now.Add(time.Duration(i)*time.Second), "alice", false)
+		if rel == nil {
+			t.Fatalf("start %d refused: %d %q", i, status, msg)
+		}
+		rel()
+	}
+	if rel, status, msg := g.admit(now.Add(30*time.Second), "alice", false); rel != nil || status != http.StatusTooManyRequests || !strings.Contains(msg, "last minute") {
+		t.Fatalf("an eleventh start in the minute = %v %d %q", rel != nil, status, msg)
+	}
+	if rel, _, _ := g.admit(now.Add(30*time.Second), "bob", false); rel == nil {
+		t.Error("bob was held to alice's rate")
+	} else {
+		rel()
+	}
+	if rel, _, _ := g.admit(now.Add(90*time.Second), "alice", false); rel == nil {
+		t.Error("alice was still refused a minute later")
+	} else {
+		rel()
+	}
+	if rel, _, _ := g.admit(now.Add(10*time.Minute), "carol", false); rel == nil {
+		t.Error("carol was refused")
+	} else {
+		rel()
+	}
+	if len(g.started) > 1 || len(g.inflight) != 0 {
+		t.Errorf("the guard keeps state for idle callers: %d started, %d inflight", len(g.started), len(g.inflight))
+	}
+}
+
+// freshEvalGuard gives a test its own interactive-evaluation guard. The handlers share a global one and the tests share
+// one fake client address, so without it the per-caller limits would count across tests.
+func freshEvalGuard(t *testing.T) {
+	t.Helper()
+	old := interactiveEval
+	interactiveEval = newEvalGuard(DefaultEvalDailyToks)
+	t.Cleanup(func() { interactiveEval = old })
+}

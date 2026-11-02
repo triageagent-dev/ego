@@ -18,6 +18,11 @@ const (
 	maxTraceFiles        = 50
 	maxConcurrentEvals   = 4
 	DefaultEvalDailyToks = 5_000_000
+	// One signed-in member may have this many evaluations running and start this many a minute, so one caller
+	// cannot hold every slot or loop on a judge that reports no token counts (Vertex, Jev), which the token share
+	// does not see. An admin is not held to them.
+	maxUserConcurrentEvals = 2
+	userEvalsPerMinute     = 10
 )
 
 var judgeModelName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
@@ -55,13 +60,16 @@ type evalGuard struct {
 	// byUser is what each caller has used today, so one signed-in member cannot spend the whole day's budget.
 	byUser map[string]int64
 	slots  chan struct{}
+	// inflight counts a caller's running evaluations and started holds when the last ones began.
+	inflight map[string]int
+	started  map[string][]time.Time
 }
 
 // userShareDivisor: a caller who is not an admin may use a quarter of the day's budget.
 const userShareDivisor = 4
 
 func newEvalGuard(dailyCap int64) *evalGuard {
-	return &evalGuard{dailyCap: dailyCap, slots: make(chan struct{}, maxConcurrentEvals)}
+	return &evalGuard{dailyCap: dailyCap, slots: make(chan struct{}, maxConcurrentEvals), inflight: map[string]int{}, started: map[string][]time.Time{}}
 }
 
 // interactiveEval is shared by the handlers, which are built without a common owner.
@@ -98,24 +106,67 @@ func (g *evalGuard) addFor(user string, tokens int64) {
 }
 
 // admit reserves a slot for one evaluation. The returned release must be called when it finishes. When the day's
-// cap is used up or all slots are busy it returns a status and message instead.
+// cap is used up, the caller is over their share or their limits, or all slots are busy it returns a status and
+// message instead. The checks and the reservation happen under one lock, so two requests at once cannot both pass a
+// limit that only one of them fits under.
 func (g *evalGuard) admit(now time.Time, user string, admin bool) (release func(), status int, msg string) {
+	counted := !admin && user != ""
 	g.mu.Lock()
 	g.rollLocked(now)
-	exhausted := g.dailyCap > 0 && g.spent >= g.dailyCap
-	// An admin is not held to a share; any other known caller is.
-	overShare := !admin && user != "" && g.dailyCap > 0 && g.byUser[user] >= g.dailyCap/userShareDivisor
-	g.mu.Unlock()
-	if exhausted {
-		return nil, http.StatusTooManyRequests, "the daily judge token budget for interactive evaluation is used up; it resets at 00:00 UTC"
+	// Callers who have not started anything for a minute leave no state behind.
+	for u, times := range g.started {
+		if len(times) == 0 || now.Sub(times[len(times)-1]) >= time.Minute {
+			delete(g.started, u)
+		}
 	}
-	if overShare {
+	switch {
+	case g.dailyCap > 0 && g.spent >= g.dailyCap:
+		g.mu.Unlock()
+		return nil, http.StatusTooManyRequests, "the daily judge token budget for interactive evaluation is used up; it resets at 00:00 UTC"
+	// An admin is not held to a share; any other known caller is.
+	case counted && g.dailyCap > 0 && g.byUser[user] >= g.dailyCap/userShareDivisor:
+		g.mu.Unlock()
 		return nil, http.StatusTooManyRequests, "you have used your share of today's judge token budget for interactive evaluation; it resets at 00:00 UTC"
+	}
+	if counted {
+		recent := g.started[user][:0]
+		for _, t := range g.started[user] {
+			if now.Sub(t) < time.Minute {
+				recent = append(recent, t)
+			}
+		}
+		g.started[user] = recent
+		switch {
+		case g.inflight[user] >= maxUserConcurrentEvals:
+			g.mu.Unlock()
+			return nil, http.StatusTooManyRequests, fmt.Sprintf("you already have %d evaluations running; wait for one to finish", maxUserConcurrentEvals)
+		case len(recent) >= userEvalsPerMinute:
+			g.mu.Unlock()
+			return nil, http.StatusTooManyRequests, fmt.Sprintf("you started %d evaluations in the last minute; try again shortly", userEvalsPerMinute)
+		}
 	}
 	select {
 	case g.slots <- struct{}{}:
-		return func() { <-g.slots }, 0, ""
 	default:
+		g.mu.Unlock()
 		return nil, http.StatusTooManyRequests, "too many evaluations are running; try again shortly"
 	}
+	if counted {
+		g.inflight[user]++
+		g.started[user] = append(g.started[user], now)
+	}
+	g.mu.Unlock()
+	return func() {
+		g.mu.Lock()
+		if counted {
+			if g.inflight[user]--; g.inflight[user] <= 0 {
+				delete(g.inflight, user)
+			}
+			if len(g.started[user]) == 0 {
+				delete(g.started, user)
+			}
+		}
+		g.mu.Unlock()
+		<-g.slots
+	}, 0, ""
 }
