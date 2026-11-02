@@ -55,6 +55,9 @@ spec:
             - --default-role={{ . }}
             {{- end }}
             {{- if not .Values.auth.enabled }}
+            {{- if and .Values.httpRoute.enabled (not .Values.auth.allowOpenRoute) }}
+            {{- fail "auth.enabled=false makes every caller an admin; with httpRoute.enabled=true that publishes the admin API. Set auth.allowOpenRoute=true if the route is meant to be open." }}
+            {{- end }}
             - --no-auth
             {{- end }}
             {{- with .Values.logLevel }}

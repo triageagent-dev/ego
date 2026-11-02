@@ -71,6 +71,15 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
 	return json.NewDecoder(r.Body).Decode(v)
 }
 
+// decodeJSONStrict is decodeJSON for admin bodies that grant access: an unknown key (a misspelt "tenant" for
+// "tenants") is an error instead of a silently dropped limit.
+func decodeJSONStrict(w http.ResponseWriter, r *http.Request, v any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	return dec.Decode(v)
+}
+
 // limitUpload bounds a multipart upload before it is parsed. w may be nil.
 func limitUpload(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBody)

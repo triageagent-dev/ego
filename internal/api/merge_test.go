@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -59,15 +60,26 @@ func TestMergeTenantsRekeysSessionsAndRows(t *testing.T) {
 		t.Fatalf("a dry run changed the tenants: %v", keys)
 	}
 
+	// A real merge refuses while a session is open, and moves nothing: the rows move by tenant, so the open
+	// session would be split from its own ledger rows and scores.
+	if _, err := store.MergeTenants("ws1", "core/ws1", false); !errors.Is(err, errMergeSkips) {
+		t.Fatalf("merge with an open session: err = %v, want errMergeSkips", err)
+	}
+	var left int
+	archive.db.QueryRow(`SELECT COUNT(*) FROM llm_calls WHERE tenant = 'ws1'`).Scan(&left)
+	if keys := tenantKeysOf(store); left != 1 || slices.Contains(keys, "core/ws1") {
+		t.Fatalf("a refused merge moved something: ledger rows left under ws1 = %d, tenants = %v", left, keys)
+	}
+	store.completeSession("open-1")
 	res, err := store.MergeTenants("ws1", "core/ws1", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Sessions != 2 || res.Skipped != 1 {
-		t.Fatalf("merge = %+v, want 2 sessions moved and 1 skipped", res)
+	if res.Sessions != 3 || res.Skipped != 0 {
+		t.Fatalf("merge = %+v, want 3 sessions moved and none skipped", res)
 	}
 
-	// Memory: the completed session moved, the open one and the other tenant did not.
+	// Memory: both completed sessions moved, the other tenant did not.
 	got := map[string][]string{}
 	for _, id := range []string{"mem-1", "open-1"} {
 		sess := store.sessions[id]
@@ -76,8 +88,8 @@ func TestMergeTenantsRekeysSessionsAndRows(t *testing.T) {
 		}
 		got[id] = sessionTenants(sess)
 	}
-	if !slices.Equal(got["mem-1"], []string{"core/ws1"}) || !slices.Equal(got["open-1"], []string{"ws1"}) {
-		t.Errorf("in memory: mem-1 = %v, open-1 = %v, want core/ws1 and ws1", got["mem-1"], got["open-1"])
+	if !slices.Equal(got["mem-1"], []string{"core/ws1"}) || !slices.Equal(got["open-1"], []string{"core/ws1"}) {
+		t.Errorf("in memory: mem-1 = %v, open-1 = %v, want core/ws1 for both", got["mem-1"], got["open-1"])
 	}
 
 	// The archive: the index row and the stored blob both say core/ws1, so the session comes back under it.
@@ -128,14 +140,13 @@ func TestMergeTenantsRekeysSessionsAndRows(t *testing.T) {
 		t.Errorf("another tenant's run was touched: %s", spec)
 	}
 
-	// Run again after the open session completes: it is moved too, and nothing is moved twice.
-	store.completeSession("open-1")
+	// Run again: nothing is moved twice.
 	again, err := store.MergeTenants("ws1", "core/ws1", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.Sessions != 1 || again.Skipped != 0 || again.Calls != 0 {
-		t.Errorf("second merge = %+v, want only the session that completed", again)
+	if again.Sessions != 0 || again.Skipped != 0 || again.Calls != 0 {
+		t.Errorf("second merge = %+v, want nothing left to move", again)
 	}
 }
 
@@ -153,7 +164,7 @@ func TestMergeTenantsEndpointIsAdminOnlyAndTakesKeys(t *testing.T) {
 	store := NewSessionStore(nil)
 	names, _ := NewTenantNames(nil)
 	_ = names.Set("ws1", "Workspace")
-	h := adminMergeTenantsHandler(store, names, nil)
+	h := adminMergeTenantsHandler(store, names, nil, nil)
 	post := func(role RoleInfo, body string) int {
 		req := withRoleInfoForTest(role)(httptest.NewRequest(http.MethodPost, "/api/admin/merge-tenants", strings.NewReader(body)))
 		rec := httptest.NewRecorder()

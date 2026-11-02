@@ -34,7 +34,6 @@ type storageWatch struct {
 	mu        sync.Mutex
 	failing   bool
 	failSince time.Time
-	failErr   string
 	failSent  time.Time
 	lowSent   time.Time
 	freeFrac  float64 // -1 until measured
@@ -54,30 +53,36 @@ func (w *storageWatch) send(text string) {
 }
 
 // writeFailed records a failed archive write and says so on entering the state and every storageFailRepeat after.
+//
+// The notice is sent after the lock is released: it is an HTTP post, and /api/health takes the same lock, so a slow
+// sink must not stall the readiness probe.
 func (w *storageWatch) writeFailed(err error) {
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	now := w.now()
-	w.failErr = err.Error()
 	if !w.failing {
 		w.failing, w.failSince = true, now
 	}
 	if now.Sub(w.failSent) < storageFailRepeat {
+		w.mu.Unlock()
 		return
 	}
 	w.failSent = now
-	w.send(fmt.Sprintf("ego cannot write its session archive (since %s): %v. Sessions are held in memory only and are lost on a restart.",
-		w.failSince.UTC().Format(time.RFC3339), err))
+	text := fmt.Sprintf("ego cannot write its session archive (since %s): %v. Sessions are held in memory only and are lost on a restart.",
+		w.failSince.UTC().Format(time.RFC3339), err)
+	w.mu.Unlock()
+	w.send(text)
 }
 
 func (w *storageWatch) writeOK() {
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	if !w.failing {
+		w.mu.Unlock()
 		return
 	}
-	w.send(fmt.Sprintf("ego writes its session archive again (it failed since %s).", w.failSince.UTC().Format(time.RFC3339)))
-	w.failing, w.failErr, w.failSent = false, "", time.Time{}
+	text := fmt.Sprintf("ego writes its session archive again (it failed since %s).", w.failSince.UTC().Format(time.RFC3339))
+	w.failing, w.failSent = false, time.Time{}
+	w.mu.Unlock()
+	w.send(text)
 }
 
 // check measures the volume holding the archive and warns when it is running out.
@@ -88,23 +93,27 @@ func (w *storageWatch) check() {
 	}
 	frac := float64(free) / float64(total)
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	w.freeFrac = frac
 	if frac >= w.lowFraction && free >= storageLowBytes {
 		w.lowSent = time.Time{}
+		w.mu.Unlock()
 		return
 	}
 	now := w.now()
 	if now.Sub(w.lowSent) < storageLowRepeat {
+		w.mu.Unlock()
 		return
 	}
 	w.lowSent = now
+	w.mu.Unlock()
 	msg := fmt.Sprintf("ego's session volume is running out: %d MiB free of %d MiB (%.0f%%).", free>>20, total>>20, frac*100)
 	logx.Warnf("%s", msg)
 	w.send(msg)
 }
 
 // health is what /api/health says about the archive: "ok", "low" (volume running out) or "failing" (writes fail).
+// The endpoint needs no login, so the failed write's error text (a path and a database message) is kept for the
+// log and the notice, not the answer.
 func (w *storageWatch) health() map[string]any {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -121,7 +130,6 @@ func (w *storageWatch) health() map[string]any {
 	}
 	if w.failing {
 		out["failingSince"] = w.failSince.UTC().Format(time.RFC3339)
-		out["error"] = w.failErr
 	}
 	return out
 }

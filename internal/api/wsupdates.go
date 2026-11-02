@@ -21,6 +21,8 @@ var wsPingInterval = 15 * time.Second
 const (
 	wsWriteTimeout = 10 * time.Second
 	wsPongTimeout  = 60 * time.Second
+	// wsReadLimit caps one incoming frame; ping, pong and close frames are far smaller.
+	wsReadLimit = 1024
 )
 
 // heartbeatEvent is sent every wsPingInterval, whatever else the feed carries.
@@ -52,6 +54,9 @@ func wsUpdatesHandler(hub *sseHub) http.HandlerFunc {
 		closed := make(chan struct{})
 		go func() {
 			defer close(closed)
+			// The client sends only control frames; without a limit one huge data frame is buffered whole,
+			// and any signed-in role may open this feed.
+			conn.SetReadLimit(wsReadLimit)
 			_ = conn.SetReadDeadline(time.Now().Add(wsPongTimeout))
 			conn.SetPongHandler(func(string) error {
 				return conn.SetReadDeadline(time.Now().Add(wsPongTimeout))

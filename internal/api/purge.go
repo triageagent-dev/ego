@@ -136,6 +136,11 @@ func (s *SQLiteStore) purgeTenantRows(set map[string]bool, doomed map[string]boo
 		return res, err
 	}
 	defer tx.Rollback()
+	if !dryRun {
+		if err := takeWriteLock(tx); err != nil {
+			return res, err
+		}
+	}
 	// The runs are found before the online rows go: an online run is tied to its tenant by them as well as by its spec.
 	runs, err := doomedRunIDs(tx, set)
 	if err != nil {

@@ -55,6 +55,9 @@ auth:
   # -- GitHub login gate. false drops the auth env, so the server runs open
   # (no session cookie, every caller is admin).
   enabled: true
+  # -- Allow auth.enabled=false together with httpRoute.enabled=true. Off, the chart refuses to render that
+  # combination, because it publishes the unauthenticated admin API on the gateway's host.
+  allowOpenRoute: false
   githubClientId: ""
   # -- Role of a signed-in user no role binding covers: admin, member, viewer or none (no access). With none, give
   # every team a binding (tenants: ["*"] for staff, "<sender>/*" or "<sender>/<tenant>" for customers).

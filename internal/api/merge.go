@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -111,6 +112,10 @@ func (s *SessionStore) MergeTenants(from, to string, dryRun bool) (MergeResult, 
 			return res, err
 		}
 		res.Skipped += skipped
+		// The ledger and online rows move by tenant, so a session left behind would be split from its own rows.
+		if !dryRun && res.Skipped > 0 {
+			return res, errMergeSkips
+		}
 		for _, id := range ids {
 			snap, ok, err := s.store.Load(id)
 			if err != nil || !ok {
@@ -119,7 +124,13 @@ func (s *SessionStore) MergeTenants(from, to string, dryRun bool) (MergeResult, 
 			archived = append(archived, snap)
 		}
 		res.Sessions += len(archived)
+		if !dryRun {
+			s.rekeyPendingUsage(from, to)
+		}
 		if err := s.store.mergeTenantRows(from, to, dryRun, &res); err != nil {
+			if !dryRun {
+				s.rekeyPendingUsage(to, from)
+			}
 			return res, err
 		}
 	}
@@ -147,6 +158,22 @@ func (s *SessionStore) MergeTenants(from, to string, dryRun bool) (MergeResult, 
 		}
 	}
 	return res, nil
+}
+
+// errMergeSkips is returned by a real merge that would leave a session under the old key: one still open, or shared
+// with another tenant. The dry run reports the count; the merge is retried when the open sessions have completed.
+var errMergeSkips = errors.New("some sessions are still open or shared with another tenant; merge when they have completed")
+
+// rekeyPendingUsage points the ledger rows still waiting for the next flush at the new key, so they do not land
+// under the old one after the stored rows have moved.
+func (s *SessionStore) rekeyPendingUsage(from, to string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.pendingUsage {
+		if s.pendingUsage[i].Tenant == from {
+			s.pendingUsage[i].Tenant = to
+		}
+	}
 }
 
 // mergeCandidates lists the archived sessions, not in memory, that belong to the tenant key alone and are complete,
@@ -187,6 +214,11 @@ func (s *SQLiteStore) mergeTenantRows(from, to string, dryRun bool, res *MergeRe
 		return err
 	}
 	defer tx.Rollback()
+	if !dryRun {
+		if err := takeWriteLock(tx); err != nil {
+			return err
+		}
+	}
 	if res.Runs, err = rekeyRuns(tx, from, to, dryRun); err != nil {
 		return err
 	}
@@ -225,6 +257,15 @@ func (s *SQLiteStore) mergeTenantRows(from, to string, dryRun bool, res *MergeRe
 	}
 	s.announce(topicUsage, nil)
 	return nil
+}
+
+// takeWriteLock makes a transaction that is about to read and then write hold the write lock from its first
+// statement. A deferred transaction that reads first cannot upgrade once another connection has committed, and
+// fails at once with SQLITE_BUSY, which the busy timeout does not retry; a write statement, even one that matches no
+// row, takes the lock up front and waits for it like any other writer.
+func takeWriteLock(tx *sql.Tx) error {
+	_, err := tx.Exec(`UPDATE llm_calls SET tenant = tenant WHERE 0`)
+	return err
 }
 
 // rekeyRuns names the tenant to instead of from in the spec of every evaluation run that has from, and returns how
@@ -300,7 +341,7 @@ type mergeTenantsRequest struct {
 // adminMergeTenantsHandler implements POST /api/admin/merge-tenants {"from": key, "to": key}. Admin only. It moves
 // the sessions, usage and online evaluation rows of one tenant key under another, and its display name when the
 // target has none. Both are tenant keys, never patterns.
-func adminMergeTenantsHandler(store *SessionStore, names *TenantNames, guard mergeGuard) http.HandlerFunc {
+func adminMergeTenantsHandler(store *SessionStore, names *TenantNames, senders *SenderStore, guard mergeGuard) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !roleInfoOrOpen(r.Context()).IsAdmin {
 			writeRoleForbidden(w)
@@ -326,8 +367,19 @@ func adminMergeTenantsHandler(store *SessionStore, names *TenantNames, guard mer
 			writeEvaluateError(w, http.StatusBadRequest, "from and to are the same tenant")
 			return
 		}
-		if _, label := splitTenantKey(to); ValidTenantLabel(label) != nil {
+		if err := validTenantPattern(from); err != nil {
+			writeEvaluateError(w, http.StatusBadRequest, "from: "+err.Error())
+			return
+		}
+		toSender, toLabel := splitTenantKey(to)
+		if ValidTenantLabel(toLabel) != nil || validTenantPattern(to) != nil {
 			writeEvaluateError(w, http.StatusBadRequest, "to is not a valid tenant key")
+			return
+		}
+		// The owner of the moved sessions becomes this sender, and later spans are matched against it, so it must
+		// be one that can send.
+		if toSender != "" && senders != nil && !senders.Exists(toSender) {
+			writeEvaluateError(w, http.StatusBadRequest, "to names a sender that does not exist")
 			return
 		}
 		who := "an admin"
@@ -341,6 +393,10 @@ func adminMergeTenantsHandler(store *SessionStore, names *TenantNames, guard mer
 			res, err = guard(from, req.DryRun, merge)
 		} else {
 			res, err = merge()
+		}
+		if errors.Is(err, errMergeSkips) {
+			writeEvaluateError(w, http.StatusConflict, err.Error()+" (dry run counts them as skipped)")
+			return
 		}
 		if err != nil {
 			logx.Errorf("merge tenants %s into %s by %s failed: %v", from, to, who, err)

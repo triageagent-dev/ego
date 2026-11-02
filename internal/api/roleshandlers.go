@@ -53,7 +53,7 @@ func adminRolesHandler(roleStore *RoleStore) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, map[string]any{"data": roleStore.List(), "error": nil})
 		case http.MethodPost:
 			var req roleBindingRequest
-			if err := decodeJSON(w, r, &req); err != nil {
+			if err := decodeJSONStrict(w, r, &req); err != nil {
 				writeEvaluateError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 				return
 			}

@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"sort"
 	"strings"
@@ -345,10 +348,13 @@ func (n *Notifier) post(ctx context.Context, s Sink, body any) error {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
-		return err
+		return withoutURL(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if s.BearerTokenFile != "" {
+		if !bearerMayTravel(req.URL) {
+			return fmt.Errorf("a bearer token file is sent over https, or over http only to a loopback host or an in-cluster Service")
+		}
 		tok, err := os.ReadFile(s.BearerTokenFile)
 		if err != nil {
 			return fmt.Errorf("reading bearer token: %w", err)
@@ -361,7 +367,7 @@ func (n *Notifier) post(ctx context.Context, s Sink, body any) error {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return withoutURL(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
@@ -369,4 +375,31 @@ func (n *Notifier) post(ctx context.Context, s Sink, body any) error {
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
 	return nil
+}
+
+// withoutURL drops the URL from a transport error. A Discord webhook URL carries its secret in the path, and
+// *url.Error prints it, so the error is logged and returned to callers without it.
+func withoutURL(err error) error {
+	var ue *neturl.Error
+	if errors.As(err, &ue) {
+		return fmt.Errorf("%s: %w", ue.Op, ue.Err)
+	}
+	return err
+}
+
+// bearerMayTravel reports whether a bearer token may be sent to u: https anywhere, http only to a loopback host or
+// an in-cluster Service name, the same rule the decision client applies.
+func bearerMayTravel(u *neturl.URL) bool {
+	if u.Scheme == "https" {
+		return true
+	}
+	if u.Scheme != "http" {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+	if host == "localhost" || strings.HasSuffix(host, ".svc") || strings.HasSuffix(host, ".svc.cluster.local") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

@@ -197,6 +197,9 @@ func (s *RoleStore) Upsert(b RoleBinding) (RoleBinding, error) {
 	if _, err := ParseRole(string(b.Role)); err != nil {
 		return RoleBinding{}, err
 	}
+	if err := validateBindingScope(b); err != nil {
+		return RoleBinding{}, err
+	}
 
 	now := nowRFC3339()
 	s.mu.Lock()
@@ -219,6 +222,36 @@ func (s *RoleStore) Upsert(b RoleBinding) (RoleBinding, error) {
 		}
 	}
 	return b, nil
+}
+
+// validateBindingScope refuses limits that would silently widen or empty a role. A list that is absent (nil) means
+// unrestricted, as it always did; an empty list is refused because it reads as "nothing" and behaves as "everything",
+// and an unrestricted grant on tenants is written ["*"]. Every tenant entry must be a pattern the resolver understands.
+func validateBindingScope(b RoleBinding) error {
+	if b.Tenants != nil {
+		if len(b.Tenants) == 0 {
+			return fmt.Errorf(`tenants is empty; leave it out or use ["*"] for every tenant`)
+		}
+		for _, t := range b.Tenants {
+			if err := validTenantPattern(t); err != nil {
+				return err
+			}
+			if t == "" {
+				return fmt.Errorf("tenants has an empty entry")
+			}
+		}
+	}
+	if b.Agents != nil {
+		if len(b.Agents) == 0 {
+			return fmt.Errorf("agents is empty; leave it out for every agent")
+		}
+		for _, a := range b.Agents {
+			if strings.TrimSpace(a) == "" {
+				return fmt.Errorf("agents has an empty entry")
+			}
+		}
+	}
+	return nil
 }
 
 // Delete removes one binding by ID, reporting ok=false if it didn't exist.
