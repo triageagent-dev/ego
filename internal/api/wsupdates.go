@@ -36,15 +36,19 @@ type heartbeatEvent struct {
 // direct/port-forward access still works over SSE exactly as before.
 func wsUpdatesHandler(hub *sseHub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Registered before the upgrade, so a full hub is refused with a plain status.
+		ch := hub.registerWho(roleInfoOrOpen(r.Context()), streamIdentity(r))
+		if ch == nil {
+			http.Error(w, "too many live streams: try again in a moment", http.StatusServiceUnavailable)
+			return
+		}
+		defer hub.unregister(ch)
 		conn, err := wsUpgrader.Upgrade(w, r, nil)
 		if err != nil {
 			logx.Debugf("ws-updates: upgrade failed: %v", err)
 			return
 		}
 		defer conn.Close()
-
-		ch := hub.registerFor(roleInfoOrOpen(r.Context()))
-		defer hub.unregister(ch)
 
 		// Read pump: WS requires draining incoming frames (pong/close
 		// control frames arrive on the read side even though this client

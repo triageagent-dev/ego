@@ -315,10 +315,17 @@ func (s *SQLiteStore) Load(sessionID string) (snap sessionSnapshot, ok bool, err
 // SearchSnapshots calls fn, newest first, for the archived sessions whose id or stored text mentions needle
 // (ASCII case-insensitive), at most maxRows of them, until fn returns false; since, when set, skips rows last
 // written before it. The archive is the only place a session evicted from memory can be found by text.
-func (s *SQLiteStore) SearchSnapshots(needle string, since time.Time, maxRows int, fn func(sessionSnapshot) bool) error {
+//
+// roleTenants is the caller's tenant limit (nil: none). The search reads every candidate blob, so the rows of tenants the
+// caller cannot see are left out in SQL, before they are read and parsed, through the session index.
+func (s *SQLiteStore) SearchSnapshots(needle string, since time.Time, maxRows int, roleTenants []string, fn func(sessionSnapshot) bool) error {
 	like := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(needle) + "%"
 	q := `SELECT session_id, data FROM sessions WHERE (session_id LIKE ? ESCAPE '\' OR data LIKE ? ESCAPE '\')`
 	args := []any{like, like}
+	if cond, a := tenantsAnyLike("tenants", roleTenants); cond != "" {
+		q += ` AND session_id IN (SELECT session_id FROM session_index WHERE 1 = 1` + cond + `)`
+		args = append(args, a...)
+	}
 	if !since.IsZero() {
 		q += " AND updated_at >= ?"
 		args = append(args, since.UTC().Format(time.RFC3339))

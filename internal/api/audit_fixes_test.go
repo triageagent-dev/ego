@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/triageagent-dev/ego/internal/mcptools"
 )
 
 // The live feed receives only control frames, so a data frame past the limit ends the connection instead of being
@@ -334,3 +335,125 @@ func TestStoredSenderTokensKeepMCPAccess(t *testing.T) {
 		t.Errorf("a token stored before the column = %+v (found %v), want mcp true", tok, ok)
 	}
 }
+
+// One identity keeps a few streams; a further one replaces its oldest, and another identity is not touched.
+func TestStreamsPerIdentityAreCappedByEvictingTheOldest(t *testing.T) {
+	hub := newSSEHub()
+	info := RoleInfo{Role: RoleViewer}
+	var mine []chan any
+	for i := 0; i < maxStreamsPerIdentity; i++ {
+		mine = append(mine, hub.registerWho(info, "github:alice"))
+	}
+	other := hub.registerWho(info, "github:bob")
+	extra := hub.registerWho(info, "github:alice")
+	if extra == nil || other == nil {
+		t.Fatal("a stream was refused below the global cap")
+	}
+	if _, ok := <-mine[0]; ok {
+		t.Error("the oldest stream of the identity is still open")
+	}
+	for i, ch := range mine[1:] {
+		select {
+		case _, ok := <-ch:
+			if !ok {
+				t.Errorf("stream %d of the identity was closed", i+1)
+			}
+		default:
+		}
+	}
+	select {
+	case _, ok := <-other:
+		if !ok {
+			t.Error("another identity lost a stream")
+		}
+	default:
+	}
+	hub.unregister(mine[0]) // the handler's deferred unregister after an eviction must not panic
+}
+
+func TestHubRefusesStreamsPastTheGlobalCap(t *testing.T) {
+	hub := newSSEHub()
+	for i := 0; i < maxStreams; i++ {
+		if hub.registerWho(RoleInfo{Role: RoleViewer}, "") == nil {
+			t.Fatalf("stream %d refused", i)
+		}
+	}
+	if hub.registerWho(RoleInfo{Role: RoleViewer}, "") != nil {
+		t.Error("a stream past the cap was accepted")
+	}
+}
+
+// A viewer limited to one tenant: the search reads that tenant's rows only, and the paged list scans only them.
+func TestSearchAndPageReadOnlyTheCallersTenantsInSQL(t *testing.T) {
+	archive, err := NewSQLiteStore(t.TempDir() + "/s.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	first := NewSessionStoreWithArchive(nil, archive, SessionLimits{})
+	for i, ws := range []string{"ws1", "ws2", "ws2", "ws2"} {
+		id := "s" + string(rune('a'+i))
+		first.Ingest(labelledTracesBody(id, "t"+id, "needle-"+id, ws))
+		first.completeSession(id)
+	}
+	if err := first.flushPersist(); err != nil {
+		t.Fatal(err)
+	}
+
+	var seen []string
+	err = archive.SearchSnapshots("needle", time.Time{}, 100, []string{"ws1"}, func(snap sessionSnapshot) bool {
+		seen = append(seen, snap.SessionID)
+		return true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 1 || seen[0] != "sa" {
+		t.Errorf("search for a ws1 viewer parsed %v, want only sa", seen)
+	}
+	seen = nil
+	_ = archive.SearchSnapshots("needle", time.Time{}, 100, nil, func(snap sessionSnapshot) bool { seen = append(seen, snap.SessionID); return true })
+	if len(seen) != 4 {
+		t.Errorf("an unrestricted search parsed %d sessions, want 4", len(seen))
+	}
+	seen = nil
+	_ = archive.SearchSnapshots("needle", time.Time{}, 100, []string{}, func(snap sessionSnapshot) bool { seen = append(seen, snap.SessionID); return true })
+	if len(seen) != 0 {
+		t.Errorf("a role with an empty tenant limit parsed %v, want nothing", seen)
+	}
+
+	rows, err := archive.indexPage(sessionPageFilter{roleTenants: []string{"ws1"}}, nil, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ID != "sa" {
+		t.Errorf("index page for a ws1 viewer = %d rows, want only sa", len(rows))
+	}
+	rows, _ = archive.indexPage(sessionPageFilter{roleTenants: []string{"ws*"}}, nil, 100)
+	if len(rows) != 4 {
+		t.Errorf("a pattern SQL cannot express must not narrow: %d rows, want 4", len(rows))
+	}
+}
+
+// Text searches run a few at a time; the others are told to retry.
+func TestArchiveSearchesAreGated(t *testing.T) {
+	archive, err := NewSQLiteStore(t.TempDir() + "/s.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	store := NewSessionStoreWithArchive(nil, archive, SessionLimits{})
+	for i := 0; i < readConcurrency; i++ {
+		if !store.searchReads.acquire() {
+			t.Fatal("a place was taken too early")
+		}
+	}
+	if _, busy := store.FindFor(mcptoolsFilter("needle"), RoleInfo{Role: RoleViewer}); !busy {
+		t.Error("a search with every place taken was not told to retry")
+	}
+	if _, busy := store.FindFor(mcptoolsFilter(""), RoleInfo{Role: RoleViewer}); busy {
+		t.Error("a listing without a query was gated")
+	}
+}
+
+func mcptoolsFilter(q string) mcptools.SessionFilter { return mcptools.SessionFilter{Query: q} }

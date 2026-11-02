@@ -58,7 +58,11 @@ func (b *mcpBackend) Metrics(ctx context.Context) ([]mcptools.MetricInfo, error)
 
 func (b *mcpBackend) Sessions(ctx context.Context, filter mcptools.SessionFilter) ([]mcptools.SessionListItem, error) {
 	out := []mcptools.SessionListItem{}
-	for _, s := range b.sessions.Find(filter, allowedBy(roleInfoOrOpen(ctx))) {
+	found, busy := b.sessions.FindFor(filter, roleInfoOrOpen(ctx))
+	if busy {
+		return nil, errors.New("busy: try again in a moment")
+	}
+	for _, s := range found {
 		out = append(out, mcptools.SessionListItem{
 			SessionID: s.SessionID, IsComplete: s.IsComplete, SpanCount: s.SpanCount, StartedAt: s.StartedAt,
 			Agent: strings.Join(s.Agents, ", "), Tenant: strings.Join(s.Tenants, ", "), Service: s.Service,

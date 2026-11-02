@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -14,6 +15,15 @@ type sseHub struct {
 	clients map[chan any]*hubClient
 	// pending holds the topics whose "changed" message is scheduled, see notifyChanged.
 	pending map[string]bool
+	seq     uint64
+}
+
+// streamIdentity names who opened a stream, for the per-identity cap ("" when nobody is signed in).
+func streamIdentity(r *http.Request) string {
+	if id, ok := identityFromContext(r.Context()); ok {
+		return id.Kind + ":" + strings.ToLower(id.Username)
+	}
+	return ""
 }
 
 // hubClient is one subscriber. A client with a scoped role only receives events of sessions whose agents are in
@@ -21,6 +31,10 @@ type sseHub struct {
 // agent name arrives in a later span) makes it re-read the list instead of receiving updates for a session it
 // never heard of.
 type hubClient struct {
+	// who names the identity that opened the stream ("" for none), and seq orders the streams of the hub, so the
+	// oldest of an identity can be told from the newest.
+	who string
+	seq uint64
 	// lagged is set when an event was dropped for the client since it was last told to resync.
 	lagged bool
 	scoped bool
@@ -32,6 +46,14 @@ type hubClient struct {
 // spans in batches of hundreds, so this has to absorb a burst of
 // session_started/session_complete/update events between writes.
 const hubClientBuffer = 1024
+
+// Each stream holds a goroutine, a buffer and a file descriptor, and every event is offered to every stream under the
+// hub's lock. One identity may keep maxStreamsPerIdentity open (a few tabs and devices); a further one replaces its
+// oldest, so a browser that reconnects is never locked out by its own dead connection. maxStreams bounds the hub.
+const (
+	maxStreamsPerIdentity = 8
+	maxStreams            = 1000
+)
 
 // resyncEvent tells a client that events were dropped for it, so it must re-read the session list rather than
 // trust its incremental state.
@@ -101,11 +123,42 @@ func (h *sseHub) registerFor(info RoleInfo) chan any {
 }
 
 func (h *sseHub) add(c *hubClient) chan any {
-	ch := make(chan any, hubClientBuffer)
 	h.mu.Lock()
+	defer h.mu.Unlock()
+	if c.who != "" {
+		var oldest chan any
+		n := 0
+		for ch, o := range h.clients {
+			if o.who != c.who {
+				continue
+			}
+			n++
+			if oldest == nil || o.seq < h.clients[oldest].seq {
+				oldest = ch
+			}
+		}
+		if n >= maxStreamsPerIdentity {
+			delete(h.clients, oldest)
+			close(oldest)
+		}
+	}
+	if len(h.clients) >= maxStreams {
+		return nil
+	}
+	h.seq++
+	c.seq = h.seq
+	ch := make(chan any, hubClientBuffer)
 	h.clients[ch] = c
-	h.mu.Unlock()
 	return ch
+}
+
+// registerWho is registerFor for a stream opened by the identity who. It returns nil when the hub is full.
+func (h *sseHub) registerWho(info RoleInfo, who string) chan any {
+	c := &hubClient{who: who}
+	if info.Scoped() || info.TenantScoped() {
+		c.scoped, c.info, c.seen = true, info, map[string]bool{}
+	}
+	return h.add(c)
 }
 
 func (h *sseHub) unregister(ch chan any) {
@@ -188,14 +241,18 @@ func uiUpdatesHandler(hub *sseHub) http.HandlerFunc {
 			return
 		}
 
+		ch := hub.registerWho(roleInfoOrOpen(r.Context()), streamIdentity(r))
+		if ch == nil {
+			http.Error(w, "too many live streams: try again in a moment", http.StatusServiceUnavailable)
+			return
+		}
+		defer hub.unregister(ch)
+
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(http.StatusOK)
 		flusher.Flush()
-
-		ch := hub.registerFor(roleInfoOrOpen(r.Context()))
-		defer hub.unregister(ch)
 
 		for {
 			select {

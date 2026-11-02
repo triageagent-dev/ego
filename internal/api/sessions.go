@@ -464,6 +464,8 @@ type sessionCompleteEvent struct {
 type SessionStore struct {
 	// egoReads caches the answers about an agent's own turns (REST and MCP alike) and limits how many are built at once.
 	egoReads *readCache
+	// searchReads limits how many archive text searches run at once.
+	searchReads *readCache
 
 	mu               sync.Mutex
 	indexing         sync.WaitGroup // the session-index backfill LoadPersisted starts; Close waits for it, up to indexingCloseWait
@@ -627,6 +629,7 @@ type SessionLimits struct {
 func NewSessionStore(hub *sseHub) *SessionStore {
 	return &SessionStore{
 		egoReads:         newReadCache(),
+		searchReads:      newReadCache(),
 		sessions:         map[string]*Session{},
 		hub:              hub,
 		idleTimeout:      defaultIdleTimeout,

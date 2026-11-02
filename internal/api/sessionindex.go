@@ -317,6 +317,33 @@ type sessionPageFilter struct {
 	llmOnly  bool
 	scored   *bool
 	thread   string
+	// roleTenants is the tenant limit of the caller's role (nil: none). It narrows the rows in SQL to the ones that can
+	// match, so a viewer with few sessions does not make the server read every other tenant's rows to find them; the
+	// role is still checked on each row afterwards.
+	roleTenants []string
+}
+
+// tenantsAnyLike is the SQL condition (starting with " AND") that keeps the rows whose tenants column holds at least
+// one tenant a role limited to patterns may see, and its arguments. It is a superset of the role's check: a pattern it
+// cannot express makes it no condition at all, which is always safe, and an empty limit matches nothing.
+func tenantsAnyLike(column string, patterns []string) (string, []any) {
+	if patterns == nil {
+		return "", nil
+	}
+	if len(patterns) == 0 {
+		return " AND 0", nil
+	}
+	conds := make([]string, 0, len(patterns))
+	args := make([]any, 0, len(patterns))
+	for _, p := range patterns {
+		like, ok := tenantLike(p)
+		if !ok {
+			return "", nil
+		}
+		conds = append(conds, column+` LIKE ? ESCAPE '\'`)
+		args = append(args, like)
+	}
+	return " AND (" + strings.Join(conds, " OR ") + ")", args
 }
 
 // TenantCounts counts the indexed sessions of every tenant key, over the whole archive. The tenant switcher is
@@ -408,6 +435,10 @@ func (f sessionPageFilter) where(after *sessionKey) (string, []any) {
 	if like, ok := tenantLike(f.tenant); ok {
 		q += ` AND tenants LIKE ? ESCAPE '\'`
 		args = append(args, like)
+	}
+	if cond, a := tenantsAnyLike("tenants", f.roleTenants); cond != "" {
+		q += cond
+		args = append(args, a...)
 	}
 	if f.agent != "" {
 		q += ` AND agents LIKE ? ESCAPE '\'`
@@ -516,6 +547,8 @@ type SessionPageRequest struct {
 	Limit   int
 	// Unrestricted says the caller's role allows every session, so the total can be counted in SQL.
 	Unrestricted bool
+	// RoleTenants is the tenant limit of the caller's role (nil: none), applied in SQL as well as per row.
+	RoleTenants []string
 }
 
 // Page lists the sessions of one page, newest first. Sessions in memory are read from memory (they are the
@@ -532,7 +565,7 @@ func (s *SessionStore) Page(req SessionPageRequest, allow func(SessionSummary) b
 		return SessionPage{}, err
 	}
 	f := req.Filter
-	want := sessionPageFilter{since: f.Since, tenant: f.Tenant, agent: f.Agent, service: f.Service, query: strings.ToLower(f.Query), complete: f.Complete, llmOnly: req.LLMOnly, scored: f.Scored, thread: f.Thread}
+	want := sessionPageFilter{since: f.Since, tenant: f.Tenant, agent: f.Agent, service: f.Service, query: strings.ToLower(f.Query), complete: f.Complete, llmOnly: req.LLMOnly, scored: f.Scored, thread: f.Thread, roleTenants: req.RoleTenants}
 
 	keep := func(r sessionIndexRow) bool {
 		if !allow(SessionSummary{Agents: r.Agents, Tenants: r.Tenants}) {

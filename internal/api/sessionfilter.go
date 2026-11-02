@@ -21,6 +21,23 @@ const (
 // caller's role; it is checked on every summary before the filter, so a filter can only narrow what the role may
 // see. Without a query or scored: true only memory is read, as the list has always been.
 func (s *SessionStore) Find(f mcptools.SessionFilter, allow func(SessionSummary) bool) []SessionSummary {
+	return s.find(f, allow, nil)
+}
+
+// FindFor is Find for a request made under info. A text search reads archived blobs, which any signed-in viewer can ask
+// for in a loop, so only a few run at once (busy is true when all the places are taken), and the rows of tenants the
+// role cannot see are left out in SQL before any blob is read.
+func (s *SessionStore) FindFor(f mcptools.SessionFilter, info RoleInfo) (found []SessionSummary, busy bool) {
+	if f.Query != "" && s.store != nil {
+		if !s.searchReads.acquire() {
+			return nil, true
+		}
+		defer s.searchReads.release()
+	}
+	return s.find(f, allowedBy(info), info.Tenants), false
+}
+
+func (s *SessionStore) find(f mcptools.SessionFilter, allow func(SessionSummary) bool, roleTenants []string) []SessionSummary {
 	var cand []SessionSummary
 	seen := map[string]bool{}
 	add := func(sum SessionSummary) {
@@ -37,7 +54,7 @@ func (s *SessionStore) Find(f mcptools.SessionFilter, allow func(SessionSummary)
 	unflagged.Scored = nil
 	if f.Query != "" && s.store != nil {
 		hits := 0
-		err := s.store.SearchSnapshots(f.Query, f.Since, archiveSearchRows, func(snap sessionSnapshot) bool {
+		err := s.store.SearchSnapshots(f.Query, f.Since, archiveSearchRows, roleTenants, func(snap sessionSnapshot) bool {
 			if seen[snap.SessionID] {
 				return true
 			}

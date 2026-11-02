@@ -470,7 +470,7 @@ func sessionsHandler(store *SessionStore) http.HandlerFunc {
 			llm, _ := strconv.ParseBool(r.URL.Query().Get("llm"))
 			page, err := store.Page(SessionPageRequest{
 				Filter: filter, LLMOnly: llm, Cursor: r.URL.Query().Get("cursor"), Limit: n,
-				Unrestricted: !info.Scoped() && !info.TenantScoped(),
+				Unrestricted: !info.Scoped() && !info.TenantScoped(), RoleTenants: info.Tenants,
 			}, allowedBy(info))
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
@@ -489,7 +489,11 @@ func sessionsHandler(store *SessionStore) http.HandlerFunc {
 			return
 		}
 		// The optional filters narrow what the role already allows; a query also reaches the archive.
-		all := store.Find(filter, allowedBy(info))
+		all, busy := store.FindFor(filter, info)
+		if busy {
+			writeEvaluateError(w, http.StatusTooManyRequests, "busy: try again in a moment")
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": all, "error": nil})
 	}
 }
