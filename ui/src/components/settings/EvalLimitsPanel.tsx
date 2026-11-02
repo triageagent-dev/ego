@@ -53,6 +53,8 @@ export const EvalLimitsPanel: React.FC = () => {
   if (unavailable) return null;
   if (loaded === null) return <div css={noteStyle}>Loading…</div>;
 
+  // On Kubernetes the limits come from the chart (GitOps): shown here, changed there.
+  const fixed = loaded.source === 'file';
   const update = (i: number, patch: Partial<ModelRow>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)));
 
   const run = async (action: () => Promise<EvalLimitsState>) => {
@@ -69,14 +71,17 @@ export const EvalLimitsPanel: React.FC = () => {
 
   return (
     <div css={panelStyle}>
+      {fixed && (
+        <div css={noteStyle}>Set in the server's configuration (the chart value <code>evalLimits</code>): change them there.</div>
+      )}
       <div css={pairStyle}>
         <div>
           <label css={labelStyle}>Evaluations one member runs at once</label>
-          <InputNumber size="small" min={1} step={1} value={userConcurrent} placeholder={String(loaded.defaults.userConcurrent)} onChange={(v) => setUserConcurrent(v ?? undefined)} />
+          <InputNumber size="small" disabled={fixed} min={1} step={1} value={userConcurrent} placeholder={String(loaded.defaults.userConcurrent)} onChange={(v) => setUserConcurrent(v ?? undefined)} />
         </div>
         <div>
           <label css={labelStyle}>Evaluations one member starts a minute</label>
-          <InputNumber size="small" min={1} step={1} value={userPerMinute} placeholder={String(loaded.defaults.userPerMinute)} onChange={(v) => setUserPerMinute(v ?? undefined)} />
+          <InputNumber size="small" disabled={fixed} min={1} step={1} value={userPerMinute} placeholder={String(loaded.defaults.userPerMinute)} onChange={(v) => setUserPerMinute(v ?? undefined)} />
         </div>
       </div>
       <div css={hintStyle}>Admins are not held to these two.</div>
@@ -90,33 +95,39 @@ export const EvalLimitsPanel: React.FC = () => {
       {rows.length === 0 && <div css={noteStyle}>No model has a weight or a cap of its own.</div>}
       {rows.map((r, i) => (
         <div key={i} css={modelRowStyle}>
-          <Input size="small" value={r.name} onChange={(e) => update(i, { name: e.target.value })} placeholder={`model name, e.g. ${loaded.defaultModel}`} />
-          <InputNumber size="small" min={0} step={0.5} value={r.weight} placeholder="weight 1" onChange={(v) => update(i, { weight: v ?? undefined })} />
-          <InputNumber size="small" min={0} step={100000} value={r.dailyTokens} placeholder="no cap" onChange={(v) => update(i, { dailyTokens: v ?? undefined })} />
-          <button css={removeStyle} onClick={() => setRows(rows.filter((_, k) => k !== i))} title="Remove this model" aria-label="Remove this model">
-            <X size={12} />
-          </button>
+          <Input size="small" disabled={fixed} value={r.name} onChange={(e) => update(i, { name: e.target.value })} placeholder={`model name, e.g. ${loaded.defaultModel}`} />
+          <InputNumber size="small" disabled={fixed} min={0} step={0.5} value={r.weight} placeholder="weight 1" onChange={(v) => update(i, { weight: v ?? undefined })} />
+          <InputNumber size="small" disabled={fixed} min={0} step={100000} value={r.dailyTokens} placeholder="no cap" onChange={(v) => update(i, { dailyTokens: v ?? undefined })} />
+          {!fixed && (
+            <button css={removeStyle} onClick={() => setRows(rows.filter((_, k) => k !== i))} title="Remove this model" aria-label="Remove this model">
+              <X size={12} />
+            </button>
+          )}
         </div>
       ))}
-      <div css={actionsStyle}>
-        <Button size="small" icon={<Plus size={12} />} onClick={() => setRows([...rows, { name: rows.length === 0 ? loaded.defaultModel : '' }])}>
-          Add a model
-        </Button>
-      </div>
+      {!fixed && (
+        <>
+          <div css={actionsStyle}>
+            <Button size="small" icon={<Plus size={12} />} onClick={() => setRows([...rows, { name: rows.length === 0 ? loaded.defaultModel : '' }])}>
+              Add a model
+            </Button>
+          </div>
 
-      <div css={actionsStyle}>
-        <Button size="small" type="primary" loading={busy} disabled={!dirty || invalid} onClick={() => run(() => saveEvalLimits(limitsOf(userConcurrent, userPerMinute, rows)))}>
-          Save
-        </Button>
-        {dirty && <Button size="small" onClick={() => adopt(loaded)}>Discard changes</Button>}
-        {loaded.source === 'stored' && !dirty && (
-          <Button size="small" loading={busy} onClick={() => run(resetEvalLimits)} title="Drop what was saved here and use the built-in limits">
-            Use the built-in limits
-          </Button>
-        )}
-      </div>
+          <div css={actionsStyle}>
+            <Button size="small" type="primary" loading={busy} disabled={!dirty || invalid} onClick={() => run(() => saveEvalLimits(limitsOf(userConcurrent, userPerMinute, rows)))}>
+              Save
+            </Button>
+            {dirty && <Button size="small" onClick={() => adopt(loaded)}>Discard changes</Button>}
+            {loaded.source === 'stored' && !dirty && (
+              <Button size="small" loading={busy} onClick={() => run(resetEvalLimits)} title="Drop what was saved here and use the built-in limits">
+                Use the built-in limits
+              </Button>
+            )}
+          </div>
+        </>
+      )}
       {invalid && dirty && <div css={warnStyle}>A model name is letters, digits and . _ - (or *), and appears once.</div>}
-      {!loaded.persisted && <div css={warnStyle}>This server keeps no archive: what you save here is lost at a restart.</div>}
+      {!fixed && !loaded.persisted && <div css={warnStyle}>This server keeps no archive: what you save here is lost at a restart.</div>}
       {error && <div css={errorStyle}>{error}</div>}
     </div>
   );

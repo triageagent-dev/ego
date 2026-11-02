@@ -56,6 +56,11 @@ const persistInterval = 10 * time.Second
 // process receives SIGINT/SIGTERM, in which case it flushes a final snapshot before returning.
 func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits, onlineConfigPath, otlpToken string) error {
 	interactiveEval.setDailyCap(limits.EvalDailyTokens)
+	if limits.EvalLimitsFile != "" {
+		if err := LoadEvalLimitsFile(limits.EvalLimitsFile, interactiveEval); err != nil {
+			return err
+		}
+	}
 	if limits.UsageTenantAttr == "" {
 		limits.UsageTenantAttr = DefaultTenantAttr
 	}
@@ -70,7 +75,9 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 			return fmt.Errorf("opening session archive: %w", err)
 		}
 		archive.SetOnChange(hub.notifyChanged)
-		LoadEvalLimits(archive, interactiveEval)
+		if limits.EvalLimitsFile == "" {
+			LoadEvalLimits(archive, interactiveEval)
+		}
 		store = NewSessionStoreWithArchive(hub, archive, limits)
 		if err := store.LoadPersisted(); err != nil {
 			return err

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -335,5 +336,73 @@ func TestJudgeModelsOfNamesOnlyTheModelsAJudgeCalls(t *testing.T) {
 	}, "default-model")
 	if len(got) != 2 || got[0] != "default-model" || got[1] != "other-model" {
 		t.Errorf("models = %v, want the default and other-model once each, and none for a built-in metric", got)
+	}
+}
+
+// On Kubernetes the limits come from the chart: the file is read at start, wins over anything saved, and the
+// endpoint refuses changes so the settings page cannot drift from git.
+func TestEvalLimitsFromAFileAreReadOnly(t *testing.T) {
+	freshEvalGuard(t)
+	dir := t.TempDir()
+	file := dir + "/eval-limits.json"
+	if err := os.WriteFile(file, []byte(`{"userPerMinute":4,"models":{"big":{"weight":4,"dailyTokens":900}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := LoadEvalLimitsFile(file, interactiveEval); err != nil {
+		t.Fatal(err)
+	}
+	if interactiveEval.userRateLimit() != 4 || interactiveEval.limits.model("big").DailyTokens != 900 {
+		t.Errorf("limits from the file = %+v", interactiveEval.limits)
+	}
+
+	archive, err := NewSQLiteStore(dir + "/e.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	h := evalLimitsHandler(archive)
+	admin := RoleInfo{Role: RoleAdmin, IsAdmin: true}
+	if code, got := evalLimitsRequest(t, h, http.MethodGet, "", admin); code != http.StatusOK || got.Source != "file" || got.UserPerMinute != 4 {
+		t.Errorf("GET = %d %+v, want source file", code, got)
+	}
+	for _, m := range []string{http.MethodPut, http.MethodDelete} {
+		if code, _ := evalLimitsRequest(t, h, m, `{"userPerMinute":99}`, admin); code != http.StatusConflict {
+			t.Errorf("%s with the limits in a file = %d, want 409", m, code)
+		}
+	}
+	if interactiveEval.userRateLimit() != 4 {
+		t.Error("a refused change altered the limits")
+	}
+	if v, _ := archive.OnlineState(evalLimitsKey); v != "" {
+		t.Error("a refused change wrote to the archive")
+	}
+}
+
+func TestEvalLimitsFileErrors(t *testing.T) {
+	freshEvalGuard(t)
+	dir := t.TempDir()
+	if err := LoadEvalLimitsFile(dir+"/missing.json", interactiveEval); err == nil {
+		t.Error("a missing file was accepted")
+	}
+	write := func(name, body string) string {
+		p := dir + "/" + name
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	for name, body := range map[string]string{"typo": `{"userConcurent":2}`, "negative": `{"userPerMinute":-1}`, "junk": `not json`} {
+		if err := LoadEvalLimitsFile(write(name, body), interactiveEval); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	// An empty object and an empty file are the built-in limits, still read only.
+	for name, body := range map[string]string{"empty-object": `{}`, "empty-file": ``} {
+		if err := LoadEvalLimitsFile(write(name, body), interactiveEval); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if !interactiveEval.fromFile() || interactiveEval.userConcurrentLimit() != maxUserConcurrentEvals {
+		t.Error("an empty file is not the built-in limits")
 	}
 }

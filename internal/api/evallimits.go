@@ -1,18 +1,21 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
+	"os"
 
 	"github.com/triageagent-dev/ego/internal/judge"
 	"github.com/triageagent-dev/ego/internal/logx"
 )
 
 // EvalLimits tunes the limits on the interactive evaluation endpoints beyond the daily judge-token cap
-// (--eval-daily-tokens). An admin edits them on the settings page; they are saved in the archive and apply at once.
-// Every field is optional; the zero value is the built-in behaviour.
+// (--eval-daily-tokens). Every field is optional; the zero value is the built-in behaviour. On Kubernetes they come
+// from the chart (--eval-limits-file, a mounted ConfigMap) and are read only in the UI; otherwise an admin edits them on
+// the settings page, and they are saved in the archive and apply at once.
 type EvalLimits struct {
 	// UserConcurrent is how many evaluations one signed-in member may have running (default 2), UserPerMinute how many
 	// they may start in a minute (default 10). An admin is held to neither.
@@ -52,6 +55,29 @@ func (l EvalLimits) Validate() error {
 // evalLimitsKey is the online_state key holding the limits an admin saved; absent, the built-in limits apply.
 const evalLimitsKey = "eval_limits"
 
+// LoadEvalLimitsFile reads the limits from the configuration file at path and applies them. They are then fixed for
+// the life of the process: the settings page shows them and refuses changes. A file that does not parse or validate is
+// an error, so a bad deployment fails at start instead of running without the limits.
+func LoadEvalLimitsFile(path string, g *evalGuard) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("evaluation limits: %w", err)
+	}
+	var l EvalLimits
+	if len(bytes.TrimSpace(raw)) > 0 {
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&l); err != nil {
+			return fmt.Errorf("evaluation limits %s: %w", path, err)
+		}
+	}
+	if err := l.Validate(); err != nil {
+		return fmt.Errorf("evaluation limits %s: %w", path, err)
+	}
+	g.setLimitsFile(l)
+	return nil
+}
+
 // LoadEvalLimits applies the limits saved in the archive, if any. Saved limits that no longer validate are
 // ignored and said so.
 func LoadEvalLimits(store *SQLiteStore, g *evalGuard) {
@@ -87,7 +113,8 @@ type evalLimitsDTO struct {
 	} `json:"defaults"`
 	// DefaultModel is the judge model a metric uses when it names none.
 	DefaultModel string `json:"defaultModel"`
-	// Source is "stored" once an admin saved limits, else "default".
+	// Source is "file" when the server's configuration sets them (read only here), "stored" once an admin saved
+	// limits, else "default".
 	Source string `json:"source"`
 	// Persisted is false when the server keeps no archive, so the limits are lost at a restart.
 	Persisted bool `json:"persisted"`
@@ -96,10 +123,13 @@ type evalLimitsDTO struct {
 func evalLimitsAnswer(g *evalGuard, store *SQLiteStore) evalLimitsDTO {
 	g.mu.Lock()
 	l := g.limits
-	stored := g.limitsStored
+	stored, file := g.limitsStored, g.limitsFromFile
 	g.mu.Unlock()
 	out := evalLimitsDTO{EvalLimits: l, DefaultModel: judge.DefaultModel, Source: "default", Persisted: store != nil}
-	if stored {
+	switch {
+	case file:
+		out.Source = "file"
+	case stored:
 		out.Source = "stored"
 	}
 	out.Defaults.UserConcurrent, out.Defaults.UserPerMinute = maxUserConcurrentEvals, userEvalsPerMinute
@@ -113,6 +143,10 @@ func evalLimitsHandler(store *SQLiteStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !roleInfoOrOpen(r.Context()).IsAdmin {
 			writeRoleForbidden(w)
+			return
+		}
+		if r.Method != http.MethodGet && g().fromFile() {
+			writeEvaluateError(w, http.StatusConflict, "the limits are set in the server's configuration (--eval-limits-file; the chart value evalLimits): change them there")
 			return
 		}
 		switch r.Method {

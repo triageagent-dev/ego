@@ -63,11 +63,13 @@ type evalGuard struct {
 	// inflight counts a caller's running evaluations and started holds when the last ones began.
 	inflight map[string]int
 	started  map[string][]time.Time
-	// limits are the per-member and per-model settings an admin saved on the settings page (limitsStored); byModel is
-	// the tokens each model used today, as the model reported them.
-	limits       EvalLimits
-	limitsStored bool
-	byModel      map[string]int64
+	// limits are the per-member and per-model settings: read from the configuration file (limitsFromFile), else saved
+	// by an admin on the settings page (limitsStored). byModel is the tokens each model used today, as the model
+	// reported them.
+	limits         EvalLimits
+	limitsStored   bool
+	limitsFromFile bool
+	byModel        map[string]int64
 }
 
 // userShareDivisor: a caller who is not an admin may use a quarter of the day's budget.
@@ -83,11 +85,25 @@ var interactiveEval = newEvalGuard(DefaultEvalDailyToks)
 // setLimits applies the per-member and per-model limits.
 func (g *evalGuard) setLimits(l EvalLimits) { g.setLimitsStored(l, false) }
 
+// setLimitsFile applies limits read from the server's configuration file; they are then not editable in the UI.
+func (g *evalGuard) setLimitsFile(l EvalLimits) {
+	g.mu.Lock()
+	g.limits, g.limitsFromFile = l, true
+	g.mu.Unlock()
+}
+
 // setLimitsStored is setLimits that also remembers whether an admin saved them.
 func (g *evalGuard) setLimitsStored(l EvalLimits, stored bool) {
 	g.mu.Lock()
 	g.limits, g.limitsStored = l, stored
 	g.mu.Unlock()
+}
+
+// fromFile reports whether the limits come from the server's configuration file.
+func (g *evalGuard) fromFile() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.limitsFromFile
 }
 
 func (g *evalGuard) userConcurrentLimit() int {

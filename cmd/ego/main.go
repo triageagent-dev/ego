@@ -457,6 +457,8 @@ func serveCmd(args []string) error {
 		"span attribute the token usage view reads the tenant from (e.g. tenant.id); empty records no tenant; falls back to EGO_USAGE_TENANT_ATTR")
 	evalDailyTokens := fs.Int64("eval-daily-tokens", envInt64OrDefault("EVAL_DAILY_TOKENS", api.DefaultEvalDailyToks),
 		"judge tokens the interactive evaluation endpoints may use per UTC day, shared by all callers; 0 means unlimited; falls back to EGO_EVAL_DAILY_TOKENS")
+	evalLimitsFile := fs.String("eval-limits-file", env("EVAL_LIMITS_FILE"),
+		"JSON file with the interactive evaluation's limits per signed-in member and per judge model (the Helm chart mounts it from the value evalLimits); when set, the settings page shows them and cannot change them, otherwise an admin edits them there; falls back to EGO_EVAL_LIMITS_FILE")
 	noAuth := fs.Bool("no-auth", envBool("NO_AUTH"),
 		"serve on non-loopback addresses without a login. Without --session-secret, serve refuses to listen on anything but loopback unless this is set, because everyone who can reach it would be an admin; falls back to EGO_NO_AUTH=true")
 	otlpToken := fs.String("otlp-token", env("OTLP_TOKEN"),
@@ -496,7 +498,7 @@ func serveCmd(args []string) error {
 		}
 	}
 	return api.Serve(*addr, *otlpAddr, *otlpGRPCAddr, *healthAddr, *sessionDB, *sessionSecret, githubOAuth, adminUsers, *defaultRole,
-		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, ArchiveAlertPercent: *archiveAlertPercent, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens,
+		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, ArchiveAlertPercent: *archiveAlertPercent, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens, EvalLimitsFile: *evalLimitsFile,
 			SegmentIdle: *segmentIdle, SegmentMaxSpans: *segmentMaxSpans, SegmentMaxAge: *segmentMaxAge}, *onlineConfig, *otlpToken)
 }
 

@@ -1041,7 +1041,8 @@ export interface EvalLimitsState extends EvalLimits {
   defaults: { userConcurrent: number; userPerMinute: number };
   /** The judge model a metric uses when it names none. */
   defaultModel: string;
-  source: 'stored' | 'default';
+  /** `file` when the server's configuration sets them (read only), `stored` once an admin saved them here. */
+  source: 'file' | 'stored' | 'default';
   /** False when the server keeps no archive: the limits are lost at a restart. */
   persisted: boolean;
 }

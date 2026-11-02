@@ -1,0 +1,10 @@
+# The interactive evaluation's limits, from the value evalLimits. Always rendered: on Kubernetes the limits are set here
+# (GitOps) and the settings page shows them read only; a pod restarts when they change (the checksum annotation).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ego.name" . }}-eval-limits
+  labels:
+    {{- include "ego.labels" . | nindent 4 }}
+data:
+  eval-limits.json: {{ .Values.evalLimits | default dict | toJson | quote }}
