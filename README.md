@@ -552,6 +552,7 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`:
 | `EGO_ADMIN_GITHUB_USERS`, `EGO_DEFAULT_ROLE` | `--admin-github-users`, `--default-role` | Roles |
 | `EGO_OTLP_TOKEN` | `--otlp-token` | Shared bearer token for the OTLP receivers (sender tokens work too; with neither, pushes are refused) |
 | `EGO_EVAL_DAILY_TOKENS` | `--eval-daily-tokens` | Judge tokens interactive evaluation may use per UTC day (default 5000000, 0: unlimited) |
+| `EGO_EVAL_LIMITS` | `--eval-limits` | JSON: `userConcurrent` and `userPerMinute` per signed-in member (default 2 and 10; admins exempt), and `models`, a map of judge model name (or `"*"`) to `{weight, dailyTokens}` (weight multiplies a model's tokens against the daily budget; `dailyTokens` caps that model alone) |
 | `EGO_SEGMENT_IDLE`, `EGO_SEGMENT_MAX_SPANS`, `EGO_SEGMENT_MAX_AGE` | `--segment-idle`, `--segment-max-spans`, `--segment-max-age` | When a thread's segment closes: quiet for this long (default 30m), this many spans (2000), or this old (6h) |
 | `EGO_USAGE_TENANT_ATTR` | `--usage-tenant-attr` | Span attribute the Usage view reads the tenant from |
 | `EGO_LOG_LEVEL` | `--log-level` | Log threshold: `debug`, `info` (default), `warn` or `error`. Lines are `time=… level=… msg=…` on stderr |

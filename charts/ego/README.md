@@ -73,7 +73,7 @@ Judge metrics need a model. On GKE the default is Vertex AI through Workload Ide
 `serviceAccount.annotations`); `vertex.enabled=false` leaves only the metrics that need no model. The decision-model metrics (`jev_*`) read
 `JEV_API_KEY` from the Secret named by `jevSecret` (optional); `decision.url`, `decision.model` and `decision.maxStateBytes` point them at another decision model, such as one served by Ollama. Behind a gateway that checks a JWT and holds the model's key itself,
 `decision.token.audience` mounts a projected ServiceAccount token with that audience (rotated by the kubelet, read by ego on every call) at `/var/run/ego/decisions/token` and sends it as the bearer; set `jevSecret` to `""` with it, the chart refuses both, and name the gateway's in-cluster Service in `decision.url` (or use https), since ego refuses to send the token over plain http anywhere else. Interactive evaluation is capped per day
-(`--eval-daily-tokens`, default 5M judge tokens).
+(`--eval-daily-tokens`, default 5M judge tokens); `evalLimits` sets the per-member limits and a weight or daily cap per judge model.
 
 ## Verifying a release
 

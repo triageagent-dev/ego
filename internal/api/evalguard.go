@@ -63,6 +63,10 @@ type evalGuard struct {
 	// inflight counts a caller's running evaluations and started holds when the last ones began.
 	inflight map[string]int
 	started  map[string][]time.Time
+	// limits are the per-member and per-model settings (--eval-limits); byModel is the tokens each model used today,
+	// as the model reported them.
+	limits  EvalLimits
+	byModel map[string]int64
 }
 
 // userShareDivisor: a caller who is not an admin may use a quarter of the day's budget.
@@ -75,6 +79,25 @@ func newEvalGuard(dailyCap int64) *evalGuard {
 // interactiveEval is shared by the handlers, which are built without a common owner.
 var interactiveEval = newEvalGuard(DefaultEvalDailyToks)
 
+// setLimits applies the --eval-limits settings.
+func (g *evalGuard) setLimits(l EvalLimits) {
+	g.mu.Lock()
+	g.limits = l
+	g.mu.Unlock()
+}
+
+func (g *evalGuard) userConcurrentLimit() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.limits.userConcurrent()
+}
+
+func (g *evalGuard) userRateLimit() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.limits.userPerMinute()
+}
+
 // setDailyCap changes the daily judge-token cap; 0 means unlimited.
 func (g *evalGuard) setDailyCap(tokens int64) {
 	g.mu.Lock()
@@ -84,32 +107,43 @@ func (g *evalGuard) setDailyCap(tokens int64) {
 
 func (g *evalGuard) rollLocked(now time.Time) {
 	if day := now.UTC().Format("2006-01-02"); day != g.day {
-		g.day, g.spent, g.byUser = day, 0, nil
+		g.day, g.spent, g.byUser, g.byModel = day, 0, nil, nil
 	}
 }
 
 // add records judge tokens used by one call.
 func (g *evalGuard) add(tokens int64) { g.addFor("", tokens) }
 
-// addFor records judge tokens used by one call for user ("" when the caller is not known).
-func (g *evalGuard) addFor(user string, tokens int64) {
+// addFor records judge tokens used by one call for user ("" when the caller is not known), of no particular model.
+func (g *evalGuard) addFor(user string, tokens int64) { g.addModel(user, "", tokens) }
+
+// addModel records the tokens a call to model used. The day's budget and the member's share count them weighted by
+// the model's weight, so a dearer model uses them up faster; the model's own cap counts them as reported.
+func (g *evalGuard) addModel(user, model string, tokens int64) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.rollLocked(time.Now())
-	g.spent += tokens
+	weighted := g.limits.weighted(model, tokens)
+	g.spent += weighted
 	if user != "" {
 		if g.byUser == nil {
 			g.byUser = map[string]int64{}
 		}
-		g.byUser[user] += tokens
+		g.byUser[user] += weighted
+	}
+	if model != "" {
+		if g.byModel == nil {
+			g.byModel = map[string]int64{}
+		}
+		g.byModel[model] += tokens
 	}
 }
 
-// admit reserves a slot for one evaluation. The returned release must be called when it finishes. When the day's
-// cap is used up, the caller is over their share or their limits, or all slots are busy it returns a status and
-// message instead. The checks and the reservation happen under one lock, so two requests at once cannot both pass a
+// admit reserves a slot for one evaluation that will call the judge models named in models (none when it only runs
+// built-in metrics). The returned release must be called when it finishes. When the day's cap or a model's cap is used
+// up, the caller is over their share or their limits, or all slots are busy it returns a status and message instead. The checks and the reservation happen under one lock, so two requests at once cannot both pass a
 // limit that only one of them fits under.
-func (g *evalGuard) admit(now time.Time, user string, admin bool) (release func(), status int, msg string) {
+func (g *evalGuard) admit(now time.Time, user string, admin bool, models ...string) (release func(), status int, msg string) {
 	counted := !admin && user != ""
 	g.mu.Lock()
 	g.rollLocked(now)
@@ -128,6 +162,12 @@ func (g *evalGuard) admit(now time.Time, user string, admin bool) (release func(
 		g.mu.Unlock()
 		return nil, http.StatusTooManyRequests, "you have used your share of today's judge token budget for interactive evaluation; it resets at 00:00 UTC"
 	}
+	for _, m := range models {
+		if cap := g.limits.model(m).DailyTokens; cap > 0 && g.byModel[m] >= cap {
+			g.mu.Unlock()
+			return nil, http.StatusTooManyRequests, fmt.Sprintf("the daily token budget for the judge model %s is used up; it resets at 00:00 UTC, or use another model", m)
+		}
+	}
 	if counted {
 		recent := g.started[user][:0]
 		for _, t := range g.started[user] {
@@ -137,12 +177,12 @@ func (g *evalGuard) admit(now time.Time, user string, admin bool) (release func(
 		}
 		g.started[user] = recent
 		switch {
-		case g.inflight[user] >= maxUserConcurrentEvals:
+		case g.inflight[user] >= g.limits.userConcurrent():
 			g.mu.Unlock()
-			return nil, http.StatusTooManyRequests, fmt.Sprintf("you already have %d evaluations running; wait for one to finish", maxUserConcurrentEvals)
-		case len(recent) >= userEvalsPerMinute:
+			return nil, http.StatusTooManyRequests, fmt.Sprintf("you already have %d evaluations running; wait for one to finish", g.limits.userConcurrent())
+		case len(recent) >= g.limits.userPerMinute():
 			g.mu.Unlock()
-			return nil, http.StatusTooManyRequests, fmt.Sprintf("you started %d evaluations in the last minute; try again shortly", userEvalsPerMinute)
+			return nil, http.StatusTooManyRequests, fmt.Sprintf("you started %d evaluations in the last minute; try again shortly", g.limits.userPerMinute())
 		}
 	}
 	select {

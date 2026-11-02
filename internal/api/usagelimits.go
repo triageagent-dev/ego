@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"sort"
 	"time"
 )
 
@@ -24,6 +25,22 @@ type limitDTO struct {
 func counted(v int64) *int64 { return &v }
 
 // snapshot is the guard's daily cap, what interactive evaluations used today and how many run now.
+// modelSnapshot lists the judge models that have a cap of their own, with what each used today.
+func (g *evalGuard) modelSnapshot(now time.Time) (names []string, caps, used map[string]int64) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.rollLocked(now)
+	caps, used = map[string]int64{}, map[string]int64{}
+	for name, m := range g.limits.Models {
+		if m.DailyTokens > 0 && name != "*" {
+			names = append(names, name)
+			caps[name], used[name] = m.DailyTokens, g.byModel[name]
+		}
+	}
+	sort.Strings(names)
+	return names, caps, used
+}
+
 func (g *evalGuard) snapshot(now time.Time) (dailyCap, spent int64, running int) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -53,11 +70,21 @@ func usageLimits(store *SessionStore, online *OnlineEngine, info RoleInfo, now t
 		limitDTO{Key: "eval.tokens", Label: "Judge tokens per day", Group: "Evaluate page", Limit: capTokens, Used: counted(spent), Unit: "tokens",
 			Note: "Shared by everyone who evaluates here; resets at 00:00 UTC."},
 		limitDTO{Key: "eval.running", Label: "Evaluations at once", Group: "Evaluate page", Limit: maxConcurrentEvals, Used: counted(int64(running)), Unit: "count"},
+		limitDTO{Key: "eval.user.running", Label: "Your evaluations at once", Group: "Evaluate page", Limit: int64(interactiveEval.userConcurrentLimit()), Unit: "count",
+			Note: "Per member; an admin is not held to it."},
+		limitDTO{Key: "eval.user.rate", Label: "Evaluations you may start per minute", Group: "Evaluate page", Limit: int64(interactiveEval.userRateLimit()), Unit: "count",
+			Note: "Per member; an admin is not held to it."},
 		limitDTO{Key: "eval.traces", Label: "Traces in one evaluation", Group: "Evaluate page", Limit: maxTraceFiles, Unit: "count"},
 		limitDTO{Key: "eval.metrics", Label: "Metrics in one evaluation", Group: "Evaluate page", Limit: maxEvaluators, Unit: "count"},
 		limitDTO{Key: "eval.samples", Label: "Judge samples per metric", Group: "Evaluate page", Limit: maxJudgeSamples, Unit: "count"},
 		limitDTO{Key: "eval.rubrics", Label: "Rubrics per metric", Group: "Evaluate page", Limit: maxRubrics, Unit: "count"},
 	)
+
+	names, caps, used := interactiveEval.modelSnapshot(now)
+	for _, name := range names {
+		out = append(out, limitDTO{Key: "eval.model." + name, Label: "Judge tokens per day: " + name, Group: "Evaluate page", Limit: caps[name], Used: counted(used[name]), Unit: "tokens",
+			Note: "Of this model alone, whoever asks; resets at 00:00 UTC."})
+	}
 
 	// The online budget is not per tenant, so a role limited to tenants or agents does not see it, as on the quality page.
 	if online != nil && !info.Scoped() && !info.TenantScoped() {

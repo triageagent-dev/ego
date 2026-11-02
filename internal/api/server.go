@@ -56,6 +56,7 @@ const persistInterval = 10 * time.Second
 // process receives SIGINT/SIGTERM, in which case it flushes a final snapshot before returning.
 func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits, onlineConfigPath, otlpToken string) error {
 	interactiveEval.setDailyCap(limits.EvalDailyTokens)
+	interactiveEval.setLimits(limits.EvalLimits)
 	if limits.UsageTenantAttr == "" {
 		limits.UsageTenantAttr = DefaultTenantAttr
 	}

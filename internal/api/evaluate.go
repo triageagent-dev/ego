@@ -269,7 +269,7 @@ func newJudgeModelGetter(ctx context.Context, user string) func(string) (judge.M
 		if err != nil {
 			return nil, fmt.Errorf("setting up judge model %s: %w", modelName, err)
 		}
-		m.WithUsageHook(func(tokens int64) { interactiveEval.addFor(user, tokens) })
+		m.WithUsageHook(func(tokens int64) { interactiveEval.addModel(user, modelName, tokens) })
 		judgeClients[modelName] = m
 		return m, nil
 	}
@@ -389,7 +389,7 @@ func evaluateHandler(store *SQLiteStore, sessions *SessionStore) http.HandlerFun
 		}
 
 		user, admin := callerOf(r)
-		release, status, msg := interactiveEval.admit(time.Now(), user, admin)
+		release, status, msg := interactiveEval.admit(time.Now(), user, admin, judgeModelsOf(req.cfg.Evaluators, judge.DefaultModel)...)
 		if release == nil {
 			writeEvaluateError(w, status, msg)
 			return
@@ -454,7 +454,7 @@ func evaluateStreamHandler(store *SQLiteStore, sessions *SessionStore) http.Hand
 		}
 
 		user, admin := callerOf(r)
-		release, _, admitMsg := interactiveEval.admit(time.Now(), user, admin)
+		release, _, admitMsg := interactiveEval.admit(time.Now(), user, admin, judgeModelsOf(req.cfg.Evaluators, judge.DefaultModel)...)
 		if release == nil {
 			writeSSEData(w, map[string]any{"error": admitMsg})
 			flusher.Flush()

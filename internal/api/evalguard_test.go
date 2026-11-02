@@ -167,3 +167,96 @@ func freshEvalGuard(t *testing.T) {
 	interactiveEval = newEvalGuard(DefaultEvalDailyToks)
 	t.Cleanup(func() { interactiveEval = old })
 }
+
+func TestParseEvalLimits(t *testing.T) {
+	l, err := ParseEvalLimits(`{"userConcurrent":3,"userPerMinute":5,"models":{"big-model":{"weight":4,"dailyTokens":1000},"*":{"weight":0.5}}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.userConcurrent() != 3 || l.userPerMinute() != 5 || l.model("big-model").Weight != 4 || l.model("other").Weight != 0.5 {
+		t.Errorf("parsed %+v", l)
+	}
+	if d := (EvalLimits{}); d.userConcurrent() != maxUserConcurrentEvals || d.userPerMinute() != userEvalsPerMinute {
+		t.Error("the defaults are not the built-in limits")
+	}
+	if l, err := ParseEvalLimits(""); err != nil || l.Models != nil {
+		t.Errorf("an empty string = %+v %v, want the defaults", l, err)
+	}
+	for _, bad := range []string{`{"usersConcurrent":2}`, `{"userPerMinute":-1}`, `{"models":{"a b":{}}}`, `{"models":{"m":{"weight":-1}}}`, `{"models":{"m":{"dailyTokens":-5}}}`, `not json`} {
+		if _, err := ParseEvalLimits(bad); err == nil {
+			t.Errorf("accepted %s", bad)
+		}
+	}
+}
+
+// A dearer model uses the day's budget and a member's share up faster; the model's own cap counts what it reports.
+func TestEvalGuardWeighsModelsAndCapsThemSeparately(t *testing.T) {
+	g := newEvalGuard(1000)
+	g.setLimits(EvalLimits{Models: map[string]ModelLimit{"big": {Weight: 4, DailyTokens: 100}, "*": {}}})
+	now := time.Now()
+
+	g.addModel("alice", "big", 60)
+	g.addModel("alice", "small", 60)
+	if _, spent, _ := g.snapshot(now); spent != 60*4+60 {
+		t.Errorf("spent = %d, want 300 (60 weighted by 4, plus 60)", spent)
+	}
+	// alice's share is a quarter of 1000: 300 is over it, although she reported only 120 tokens.
+	if rel, status, msg := g.admit(now, "alice", false, "small"); rel != nil || status != http.StatusTooManyRequests || !strings.Contains(msg, "share") {
+		t.Errorf("alice past her weighted share = %v %d %q", rel != nil, status, msg)
+	}
+
+	g.addModel("bob", "big", 50) // 110 reported in all: over the model's own cap of 100.
+	if rel, status, msg := g.admit(now, "carol", false, "small", "big"); rel != nil || status != http.StatusTooManyRequests || !strings.Contains(msg, "big") {
+		t.Errorf("a request naming a model past its cap = %v %d %q", rel != nil, status, msg)
+	}
+	if rel, _, _ := g.admit(now, "carol", true, "big"); rel != nil {
+		t.Error("an admin was let past a model's cap")
+	}
+	if rel, _, _ := g.admit(now, "carol", false, "small"); rel == nil {
+		t.Error("a request that does not name the capped model was refused")
+	} else {
+		rel()
+	}
+	if rel, _, _ := g.admit(now, "carol", false); rel == nil {
+		t.Error("a request with no judge model was refused")
+	} else {
+		rel()
+	}
+	g.day = "2000-01-01" // the next UTC day starts every count from zero.
+	if rel, _, _ := g.admit(now, "carol", false, "big"); rel == nil {
+		t.Error("the model's cap did not reset on a new day")
+	} else {
+		rel()
+	}
+}
+
+func TestEvalGuardTakesTheMemberLimitsFromTheSettings(t *testing.T) {
+	g := newEvalGuard(0)
+	g.setLimits(EvalLimits{UserConcurrent: 1, UserPerMinute: 2})
+	now := time.Now()
+	rel, _, _ := g.admit(now, "alice", false)
+	if rel == nil {
+		t.Fatal("the first evaluation was refused")
+	}
+	if r, _, msg := g.admit(now, "alice", false); r != nil || !strings.Contains(msg, "1 evaluations running") {
+		t.Errorf("a second at once = %v %q, want refused at 1", r != nil, msg)
+	}
+	rel()
+	rel, _, _ = g.admit(now.Add(time.Second), "alice", false)
+	rel()
+	if r, _, msg := g.admit(now.Add(2*time.Second), "alice", false); r != nil || !strings.Contains(msg, "2 evaluations in the last minute") {
+		t.Errorf("a third in the minute = %v %q, want refused at 2", r != nil, msg)
+	}
+}
+
+func TestJudgeModelsOfNamesOnlyTheModelsAJudgeCalls(t *testing.T) {
+	got := judgeModelsOf([]evaluatorConfigDTO{
+		{Name: "tool_trajectory_avg_score"},
+		{Name: "hallucinations_v1"},
+		{Name: "hallucinations_v1", JudgeModel: "other-model"},
+		{Name: "hallucinations_v1", JudgeModel: "other-model"},
+	}, "default-model")
+	if len(got) != 2 || got[0] != "default-model" || got[1] != "other-model" {
+		t.Errorf("models = %v, want the default and other-model once each, and none for a built-in metric", got)
+	}
+}
