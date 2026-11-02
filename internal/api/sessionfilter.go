@@ -123,7 +123,7 @@ func allowedBy(info RoleInfo) func(SessionSummary) bool {
 // filterSessions keeps the summaries that match f. It runs on a list already narrowed to what the caller's role may
 // see, never before, so a filter cannot widen anything.
 func filterSessions(list []SessionSummary, f mcptools.SessionFilter) []SessionSummary {
-	if f.Agent == "" && f.Tenant == "" && f.Since.IsZero() && f.Query == "" && f.Complete == nil && f.Thread == "" {
+	if f.Agent == "" && f.Service == "" && f.Tenant == "" && f.Since.IsZero() && f.Query == "" && f.Complete == nil && f.Thread == "" {
 		return list
 	}
 	out := make([]SessionSummary, 0, len(list))
@@ -146,6 +146,9 @@ func sessionMatches(s SessionSummary, f mcptools.SessionFilter) bool {
 		return false
 	}
 	if f.Agent != "" && !containsString(s.Agents, f.Agent) {
+		return false
+	}
+	if f.Service != "" && !containsString(s.Services, f.Service) {
 		return false
 	}
 	if f.Tenant != "" && !sessionInTenant(s.Tenants, f.Tenant) {

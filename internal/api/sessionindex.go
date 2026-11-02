@@ -43,7 +43,9 @@ type sessionIndexRow struct {
 	LLMCalls  int
 	Tenants   []string
 	Agents    []string
-	Search    string
+	// Services are the distinct service.name values of the session's spans.
+	Services []string
+	Search   string
 	// Thread and Part place the segment in its thread; Closed says it is final; FirstMs and EndedMs are the start of
 	// its first span and the end of its last;
 	// TraceIDs are the traces it holds, so a thread's routing can be rebuilt from the index alone.
@@ -148,6 +150,7 @@ func indexRowOf(s *Session) sessionIndexRow {
 		LLMCalls:  llm,
 		Tenants:   tenants,
 		Agents:    agents,
+		Services:  spanServices(s.Spans),
 		Search:    strings.ToLower(strings.Join(text, indexSep)),
 		Thread:    s.threadKey(),
 		Part:      s.partNo(),
@@ -189,6 +192,8 @@ func ensureSessionIndexSchema(db *sql.DB) error {
 		{"trace_ids", "TEXT"},
 		// NULL on a row written before turns were counted; BackfillSessionIndex indexes those sessions again.
 		{"turns", "INTEGER"},
+		// NULL on a row written before services were indexed; BackfillSessionIndex reads those sessions again too.
+		{"services", "TEXT"},
 	} {
 		if err := addColumn(db, "session_index", c.name, c.def); err != nil {
 			return err
@@ -206,20 +211,20 @@ func ensureSessionIndexSchema(db *sql.DB) error {
 }
 
 // writeIndexRows upserts index rows. With fillOnly, a row the index already has is rewritten only while it lacks its
-// trace ids (written before segments) or its turn count: the backfill read the session some moments ago, and must not overwrite what a
+// trace ids (written before segments), its turn count or its services: the backfill read the session some moments ago, and must not overwrite what a
 // flush has written since.
 func writeIndexRows(tx *sql.Tx, rows []sessionIndexRow, fillOnly bool) error {
 	guard := ""
 	if fillOnly {
-		guard = " WHERE (session_index.trace_ids IS NULL OR session_index.turns IS NULL)"
+		guard = " WHERE (session_index.trace_ids IS NULL OR session_index.turns IS NULL OR session_index.services IS NULL)"
 	}
 	stmt, err := tx.Prepare(`INSERT INTO session_index (session_id, started_ms, complete, llm_calls, tenants, agents, search,
-			thread, part, closed, first_ms, ended_ms, trace_ids, segmented, turns)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			thread, part, closed, first_ms, ended_ms, trace_ids, segmented, turns, services)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET started_ms = excluded.started_ms, complete = excluded.complete,
 			llm_calls = excluded.llm_calls, tenants = excluded.tenants, agents = excluded.agents, search = excluded.search,
 			thread = excluded.thread, part = excluded.part, closed = excluded.closed, first_ms = excluded.first_ms, ended_ms = excluded.ended_ms,
-			trace_ids = excluded.trace_ids, segmented = excluded.segmented, turns = excluded.turns` + guard)
+			trace_ids = excluded.trace_ids, segmented = excluded.segmented, turns = excluded.turns, services = excluded.services` + guard)
 	if err != nil {
 		return err
 	}
@@ -238,7 +243,7 @@ func writeIndexRows(tx *sql.Tx, rows []sessionIndexRow, fillOnly bool) error {
 			seg = 1
 		}
 		if _, err := stmt.Exec(r.ID, r.StartedMs, done, r.LLMCalls, joinIndexList(r.Tenants), joinIndexList(r.Agents), r.Search,
-			r.Thread, r.Part, closed, r.FirstMs, r.EndedMs, joinIndexList(r.TraceIDs), seg, r.Turns); err != nil {
+			r.Thread, r.Part, closed, r.FirstMs, r.EndedMs, joinIndexList(r.TraceIDs), seg, r.Turns, joinIndexList(r.Services)); err != nil {
 			return err
 		}
 	}
@@ -254,7 +259,7 @@ func (s *SQLiteStore) BackfillSessionIndex(tenantAttr string) (int, error) {
 	for {
 		rows, err := s.db.Query(`SELECT s.session_id, s.data FROM sessions s
 			LEFT JOIN session_index i ON i.session_id = s.session_id
-			WHERE (i.session_id IS NULL OR i.trace_ids IS NULL OR i.turns IS NULL) AND s.session_id > ? ORDER BY s.session_id LIMIT ?`, last, batch)
+			WHERE (i.session_id IS NULL OR i.trace_ids IS NULL OR i.turns IS NULL OR i.services IS NULL) AND s.session_id > ? ORDER BY s.session_id LIMIT ?`, last, batch)
 		if err != nil {
 			return added, err
 		}
@@ -306,6 +311,7 @@ type sessionPageFilter struct {
 	since    time.Time
 	tenant   string
 	agent    string
+	service  string
 	query    string // lower case
 	complete *bool
 	llmOnly  bool
@@ -334,6 +340,37 @@ func (s *SQLiteStore) TenantCounts() (map[string]int, error) {
 		}
 	}
 	return counts, rows.Err()
+}
+
+// ServiceCounts counts, for every tenant key, the indexed sessions each service reported into it. A session with
+// two services counts for both; a row not yet read back by BackfillSessionIndex has none and counts for no service.
+func (s *SQLiteStore) ServiceCounts() (map[string]map[string]int, error) {
+	rows, err := s.db.Query(`SELECT tenants, services FROM session_index WHERE tenants != '' AND services IS NOT NULL AND services != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := map[string]map[string]int{}
+	for rows.Next() {
+		var tenants, services string
+		if err := rows.Scan(&tenants, &services); err != nil {
+			return nil, err
+		}
+		addServiceCounts(counts, splitIndexList(tenants), splitIndexList(services))
+	}
+	return counts, rows.Err()
+}
+
+// addServiceCounts counts one session for each of its tenants and each of its services.
+func addServiceCounts(counts map[string]map[string]int, tenants, services []string) {
+	for _, t := range tenants {
+		for _, svc := range services {
+			if counts[t] == nil {
+				counts[t] = map[string]int{}
+			}
+			counts[t][svc]++
+		}
+	}
 }
 
 // tenantLike narrows the tenants column for a tenant pick; ok is false for patterns SQL cannot express, which the
@@ -375,6 +412,10 @@ func (f sessionPageFilter) where(after *sessionKey) (string, []any) {
 	if f.agent != "" {
 		q += ` AND agents LIKE ? ESCAPE '\'`
 		args = append(args, "%"+indexSep+likeEscape(f.agent)+indexSep+"%")
+	}
+	if f.service != "" {
+		q += ` AND services LIKE ? ESCAPE '\'`
+		args = append(args, "%"+indexSep+likeEscape(f.service)+indexSep+"%")
 	}
 	if f.query != "" {
 		q += ` AND search LIKE ? ESCAPE '\'`
@@ -432,7 +473,7 @@ func (s *SQLiteStore) countIndex(f sessionPageFilter, skip []string) (int, error
 // indexPage returns up to limit index rows, newest first, older than after, matching f.
 func (s *SQLiteStore) indexPage(f sessionPageFilter, after *sessionKey, limit int) ([]sessionIndexRow, error) {
 	cond, args := f.where(after)
-	q := `SELECT session_id, started_ms, complete, llm_calls, tenants, agents, search, thread, ` + scoredExpr + ` FROM session_index WHERE 1 = 1` + cond
+	q := `SELECT session_id, started_ms, complete, llm_calls, tenants, agents, search, thread, services, ` + scoredExpr + ` FROM session_index WHERE 1 = 1` + cond
 	q += " ORDER BY started_ms DESC, session_id DESC LIMIT ?"
 	args = append(args, limit)
 	rows, err := s.db.Query(q, args...)
@@ -445,11 +486,12 @@ func (s *SQLiteStore) indexPage(f sessionPageFilter, after *sessionKey, limit in
 		var r sessionIndexRow
 		var done, scored int
 		var tenants, agents string
-		if err := rows.Scan(&r.ID, &r.StartedMs, &done, &r.LLMCalls, &tenants, &agents, &r.Search, &r.Thread, &scored); err != nil {
+		var services sql.NullString
+		if err := rows.Scan(&r.ID, &r.StartedMs, &done, &r.LLMCalls, &tenants, &agents, &r.Search, &r.Thread, &services, &scored); err != nil {
 			return nil, err
 		}
 		r.Complete, r.Scored = done == 1, scored == 1
-		r.Tenants, r.Agents = splitIndexList(tenants), splitIndexList(agents)
+		r.Tenants, r.Agents, r.Services = splitIndexList(tenants), splitIndexList(agents), splitIndexList(services.String)
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -490,7 +532,7 @@ func (s *SessionStore) Page(req SessionPageRequest, allow func(SessionSummary) b
 		return SessionPage{}, err
 	}
 	f := req.Filter
-	want := sessionPageFilter{since: f.Since, tenant: f.Tenant, agent: f.Agent, query: strings.ToLower(f.Query), complete: f.Complete, llmOnly: req.LLMOnly, scored: f.Scored, thread: f.Thread}
+	want := sessionPageFilter{since: f.Since, tenant: f.Tenant, agent: f.Agent, service: f.Service, query: strings.ToLower(f.Query), complete: f.Complete, llmOnly: req.LLMOnly, scored: f.Scored, thread: f.Thread}
 
 	keep := func(r sessionIndexRow) bool {
 		if !allow(SessionSummary{Agents: r.Agents, Tenants: r.Tenants}) {
@@ -500,6 +542,9 @@ func (s *SessionStore) Page(req SessionPageRequest, allow func(SessionSummary) b
 			return false
 		}
 		if want.agent != "" && !containsString(r.Agents, want.agent) {
+			return false
+		}
+		if want.service != "" && !containsString(r.Services, want.service) {
 			return false
 		}
 		if want.tenant != "" && !sessionInTenant(r.Tenants, want.tenant) {

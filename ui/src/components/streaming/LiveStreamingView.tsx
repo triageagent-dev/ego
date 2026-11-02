@@ -6,7 +6,7 @@ import { config } from '../../config';
 import { onFeedMessage, onFeedOpen } from '../../lib/connection';
 import { parseHash, sessionLink } from '../shell/routes';
 import { CursorPager } from '../ui/Pager';
-import { useSelectedTenant } from '../../lib/tenant';
+import { useSelectedService, useSelectedTenant } from '../../lib/tenant';
 import { store, stored } from '../../lib/stored';
 import { SessionEvalSetFile, SessionTraceFile } from '../../lib/sessionFiles';
 import type { ConversationElement, LiveSession, SessionFailure, StreamingInvocation } from '../../lib/types';
@@ -115,6 +115,7 @@ export function LiveStreamingView() {
   // 1h, since a wide one lists thousands of sessions.
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('1h');
   const pickedTenant = useSelectedTenant();
+  const pickedService = useSelectedService();
   const [searchQuery, setSearchQuery] = useState(() => stored('ego.search') ?? '');
   // The thread whose id was put in the search box by a click on a part chip.
   const [threadSearch, setThreadSearch] = useState('');
@@ -161,7 +162,7 @@ export function LiveStreamingView() {
     setOpenId(null);
     autoOpened.current = false;
     setSelectedGoldenId(null);
-  }, [pickedTenant]);
+  }, [pickedTenant, pickedService]);
   const loadSessionRef = useRef<(id: string) => void>(() => {});
   const fetchPageRef = useRef<(cursor: string) => void>(() => {});
   // The list is paged by the server: the ids of the page on show, and the cursor of the next one.
@@ -223,6 +224,7 @@ export function LiveStreamingView() {
     const ms = TIME_RANGES.find(r => r.key === timeRange)?.ms;
     if (ms && (!byId || threadSearched)) p.set('since', `${ms / 3_600_000}h`);
     if (pickedTenant) p.set('tenant', pickedTenant.endsWith('/*') ? pickedTenant.slice(0, -1) : pickedTenant);
+    if (pickedService) p.set('service', pickedService);
     if (debouncedQuery) p.set('q', debouncedQuery);
     if (!showNoLLM && !byId) p.set('llm', 'true');
     if (scoredOnly && !byId) p.set('scored', 'true');

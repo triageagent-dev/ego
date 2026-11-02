@@ -3,7 +3,7 @@ import { css } from '@emotion/react';
 import { ChevronDown, LogIn, LogOut, Settings, User } from 'lucide-react';
 import { clearFlags } from '../../lib/flagged';
 import { useMe } from '../../lib/me';
-import { setSelectedTenant, useSelectedTenant, useTenantOptions } from '../../lib/tenant';
+import { setSelection, useSelectedService, useSelectedTenant, useTenantOptions } from '../../lib/tenant';
 import { TenantPicker } from './TenantPicker';
 
 // The header's account menu: the tenant picker, the settings and the way out. It is there without a sign-in too (a
@@ -12,6 +12,7 @@ export const AccountMenu: React.FC = () => {
   const me = useMe();
   const options = useTenantOptions();
   const picked = useSelectedTenant();
+  const pickedService = useSelectedService();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +42,8 @@ export const AccountMenu: React.FC = () => {
       ? `${picked.slice(0, -2)} · all`
       : (() => {
           const o = options?.find((x) => x.key === picked);
-          return o ? o.name || o.label : picked;
+          const name = o ? o.name || o.label : picked;
+          return pickedService ? `${name} › ${pickedService}` : name;
         })();
 
   const signedIn = !!me?.authenticated;
@@ -63,8 +65,9 @@ export const AccountMenu: React.FC = () => {
               <TenantPicker
                 options={options}
                 picked={picked}
-                onPick={(key) => {
-                  setSelectedTenant(key);
+                pickedService={pickedService}
+                onPick={(key, service) => {
+                  setSelection(key, service);
                   setOpen(false);
                 }}
               />

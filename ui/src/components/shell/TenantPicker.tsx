@@ -11,6 +11,9 @@ interface Row {
   sessions?: number;
   // A group heading (the sender), not something to pick.
   head?: boolean;
+  // A service row: the tenant it belongs to, and its name. Picking it shows that tenant's sessions of that service.
+  tenant?: string;
+  service?: string;
 }
 
 // Rows on screen at once. A longer list is not scrolled: the letter rail moves the window and typing narrows it.
@@ -26,7 +29,12 @@ const ALL: Row = { key: '', label: 'All tenants' };
 // (the core or agent that reports them) when there is more than one, so two tenants of the same name read as what
 // they are: the same tenant on two senders. A fixed window of rows, the pick checked, a letter rail that moves the
 // window. "All of <sender>" is every tenant of one sender.
-export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; onPick: (key: string) => void }> = ({ options, picked, onPick }) => {
+export const TenantPicker: React.FC<{
+  options: TenantOption[];
+  picked: string;
+  pickedService?: string;
+  onPick: (key: string, service?: string) => void;
+}> = ({ options, picked, pickedService = '', onPick }) => {
   const [query, setQuery] = useState('');
 
   const rows = useMemo(() => {
@@ -38,7 +46,20 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
       options
         .filter((o) => (o.sender ?? '') === sender)
         .sort((a, b) => named(a).localeCompare(named(b), undefined, { sensitivity: 'base' }))
-                .map((o) => ({ key: o.key, label: named(o), sessions: o.sessions, title: `${o.key} · ${o.sessions} session${o.sessions === 1 ? '' : 's'}` }));
+        .flatMap((o): Row[] => [
+          { key: o.key, label: named(o), sessions: o.sessions, title: `${o.key} · ${o.sessions} session${o.sessions === 1 ? '' : 's'}` },
+          // A tenant with one service has nothing to tell apart; with several, each is a row to narrow the list by.
+          ...(o.services && o.services.length > 1
+            ? o.services.map((s): Row => ({
+                key: `${o.key}\u0001${s.name}`,
+                label: s.name,
+                tenant: o.key,
+                service: s.name,
+                sessions: s.sessions,
+                title: `${o.key} · service ${s.name} · ${s.sessions} session${s.sessions === 1 ? '' : 's'}`,
+              }))
+            : []),
+        ]);
     if (groups.length <= 1) return tenantsOf(groups[0] ?? '');
     return groups.flatMap((sender): Row[] => [
       { key: `head:${sender}`, label: sender || 'other', head: true },
@@ -59,7 +80,7 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
         continue;
       }
       if (r.key.endsWith('/*')) continue;
-      if (`${r.label} ${r.key}`.toLowerCase().includes(q)) {
+      if (`${r.label} ${r.tenant ?? ''} ${r.key}`.toLowerCase().includes(q)) {
         if (head) {
           out.push(head);
           head = null;
@@ -73,7 +94,7 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
   // The window opens so that the current pick is in it.
   const [start, setStart] = useState(() => Math.max(0, rows.findIndex((r) => r.key === picked) - WINDOW + 1));
 
-  const isTenant = (r: Row) => !r.head && !r.key.endsWith('/*');
+  const isTenant = (r: Row) => !r.head && !r.key.endsWith('/*') && !r.service;
   const letterOf = (r: Row) => {
     const c = r.label.charAt(0).toUpperCase();
     return /[A-Z]/.test(c) ? c : '#';
@@ -111,20 +132,24 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
     if (i >= 0) setStart(Math.min(i, maxStart));
   };
 
-  const pickable = (r: Row) => (
+  const pickable = (r: Row) => {
+    // A tenant row is the pick only while no service of it is narrowed to.
+    const on = r.service ? r.tenant === picked && r.service === pickedService : r.key === picked && !pickedService;
+    return (
     <button
       key={r.key}
-      css={[rowStyle, r.key === picked && pickedStyle]}
+      css={[rowStyle, r.service && serviceRowStyle, on && pickedStyle]}
       role="option"
-      aria-selected={r.key === picked}
+      aria-selected={on}
       title={r.title}
-      onClick={() => onPick(r.key)}
+      onClick={() => (r.service ? onPick(r.tenant ?? '', r.service) : onPick(r.key))}
     >
-      <span css={checkStyle}>{r.key === picked && <Check size={13} />}</span>
+      <span css={checkStyle}>{on && <Check size={13} />}</span>
       <span css={labelStyle}>{r.label}</span>
       {r.sessions !== undefined && <span css={countStyle}>{r.sessions > 0 ? r.sessions.toLocaleString() : '–'}</span>}
     </button>
-  );
+    );
+  };
 
   return (
     <div css={wrapStyle}>
@@ -140,7 +165,7 @@ export const TenantPicker: React.FC<{ options: TenantOption[]; picked: string; o
           }}
           onKeyDown={(e) => {
             const first = shown.find((r) => !r.head);
-            if (e.key === 'Enter' && first) onPick(first.key);
+            if (e.key === 'Enter' && first) onPick(first.service ? (first.tenant ?? '') : first.key, first.service);
             else if (e.key === 'ArrowDown') {
               e.preventDefault();
               move(1);
@@ -237,6 +262,12 @@ const rowStyle = css`
   &:hover {
     background: var(--bg-elevated);
   }
+`;
+
+// A service sits under its tenant, a step in from the tenant's own row.
+const serviceRowStyle = css`
+  padding-left: 24px;
+  color: var(--text-secondary);
 `;
 
 const pickedStyle = css`

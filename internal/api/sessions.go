@@ -117,8 +117,10 @@ type SessionSummary struct {
 	// Tenants are the session's tenant keys ("<sender>/<label>"), one per distinct label on its spans.
 	Tenants []string `json:"tenants,omitempty"`
 	Models  []string `json:"models,omitempty"`
-	// Service is the first service.name seen on the session's spans.
-	Service string `json:"service,omitempty"`
+	// Service is the first service.name seen on the session's spans, Services every distinct one: a session whose
+	// spans come from two programs (a core and a spot it called) is listed under both.
+	Service  string   `json:"service,omitempty"`
+	Services []string `json:"services,omitempty"`
 	// Scored is true when online evaluation scored the session (set by Find and the ?id= lookup, not by
 	// summarize): the session card then shows judge scores a person can label.
 	Scored bool `json:"scored,omitempty"`
@@ -170,6 +172,7 @@ func summarize(s *Session) SessionSummary {
 		CacheReadTokens:  cacheRead,
 		CacheWriteTokens: cacheWrite,
 		Service:          service,
+		Services:         spanServices(s.Spans),
 		TotalTokens:      inTokens + outTokens,
 		InputTokens:      inTokens,
 		OutputTokens:     outTokens,
@@ -245,6 +248,22 @@ func spanServiceAndTokens(spans []*tracepkg.Span) (service string, input, output
 		}
 	}
 	return service, input, output
+}
+
+// spanServices lists the distinct service.name values on spans, in the order first seen, at most maxIdentities. The
+// name is whatever the sender declares: it names the program that reported, not a tenant or an identity ego checks.
+func spanServices(spans []*tracepkg.Span) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, sp := range spans {
+		v := cleanIdentity(strings.TrimSpace(sp.TagString(adk.OtelServiceName)))
+		if v == "" || seen[v] || len(out) >= maxIdentities {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
 }
 
 // spanCacheTokens sums the prompt-cache parts of the input tokens of the LLM spans.
@@ -1520,6 +1539,22 @@ func (s *SessionStore) TenantCounts() map[string]int {
 		for _, k := range sum.Tenants {
 			counts[k]++
 		}
+	}
+	return counts
+}
+
+// ServiceCounts is TenantCounts for the services of each tenant.
+func (s *SessionStore) ServiceCounts() map[string]map[string]int {
+	if s.store != nil {
+		if counts, err := s.store.ServiceCounts(); err == nil {
+			return counts
+		} else {
+			logx.Warnf("session archive: counting services: %v", err)
+		}
+	}
+	counts := map[string]map[string]int{}
+	for _, sum := range s.List() {
+		addServiceCounts(counts, sum.Tenants, sum.Services)
 	}
 	return counts
 }

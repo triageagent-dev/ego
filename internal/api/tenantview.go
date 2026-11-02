@@ -52,6 +52,15 @@ type tenantOption struct {
 	Label    string `json:"label"`
 	Name     string `json:"name,omitempty"`
 	Sessions int    `json:"sessions"`
+	// Services are the programs that reported into the tenant, by the service.name their sender declares, the one
+	// with most sessions first. A filter on the session list, never a grant: the role is checked on the tenant.
+	Services []serviceOption `json:"services,omitempty"`
+}
+
+// serviceOption is one service of a tenant and how many of its sessions it reported.
+type serviceOption struct {
+	Name     string `json:"name"`
+	Sessions int    `json:"sessions"`
 }
 
 func newTenantOption(key string, sessions int) tenantOption {
@@ -73,6 +82,7 @@ func tenantOptions(store *SessionStore, names *TenantNames, info RoleInfo) ([]te
 		return nil, errTenantsScoped
 	}
 	counts := store.TenantCounts()
+	services := store.ServiceCounts()
 	out := make([]tenantOption, 0, len(counts))
 	for k, n := range counts {
 		if !info.AllowsAnyTenant([]string{k}) {
@@ -80,6 +90,15 @@ func tenantOptions(store *SessionStore, names *TenantNames, info RoleInfo) ([]te
 		}
 		o := newTenantOption(k, n)
 		o.Name = names.Name(k)
+		for svc, c := range services[k] {
+			o.Services = append(o.Services, serviceOption{Name: svc, Sessions: c})
+		}
+		sort.Slice(o.Services, func(i, j int) bool {
+			if o.Services[i].Sessions != o.Services[j].Sessions {
+				return o.Services[i].Sessions > o.Services[j].Sessions
+			}
+			return o.Services[i].Name < o.Services[j].Name
+		})
 		out = append(out, o)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })

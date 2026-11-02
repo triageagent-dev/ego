@@ -129,6 +129,8 @@ type ThreadListItem struct {
 type SessionFilter struct {
 	// Agent is an exact agent name (gen_ai.agent.name).
 	Agent string
+	// Service is an exact service.name: the program that reported the session, as its sender declares it.
+	Service string
 	// Tenant is a tenant key, "<sender>/*" or "<sender>/" for every tenant of one sender.
 	Tenant string
 	// Since keeps sessions that started at or after it.
@@ -149,6 +151,9 @@ func (f SessionFilter) Values() url.Values {
 	q := url.Values{}
 	if f.Agent != "" {
 		q.Set("agent", f.Agent)
+	}
+	if f.Service != "" {
+		q.Set("service", f.Service)
 	}
 	if f.Tenant != "" {
 		q.Set("tenant", wireTenant(f.Tenant))
@@ -187,7 +192,7 @@ func ParseSessionFilter(q url.Values, now time.Time) (SessionFilter, error) {
 		return SessionFilter{}, err
 	}
 	f := SessionFilter{
-		Agent: strings.TrimSpace(q.Get("agent")), Tenant: strings.TrimSpace(q.Get("tenant")),
+		Agent: strings.TrimSpace(q.Get("agent")), Service: strings.TrimSpace(q.Get("service")), Tenant: strings.TrimSpace(q.Get("tenant")),
 		Since: since, Query: strings.TrimSpace(q.Get("q")), Thread: strings.TrimSpace(q.Get("thread")),
 	}
 	if v := q.Get("complete"); v != "" {
@@ -304,6 +309,15 @@ type TenantInfo struct {
 	Sender   string `json:"sender,omitempty"`
 	Label    string `json:"label"`
 	Name     string `json:"name,omitempty"`
+	Sessions int    `json:"sessions"`
+	// Services are the programs that reported into the tenant (service.name), the busiest first; pass one as
+	// `service` to list_sessions.
+	Services []ServiceInfo `json:"services,omitempty"`
+}
+
+// ServiceInfo is one service of a tenant and how many of its sessions it reported.
+type ServiceInfo struct {
+	Name     string `json:"name"`
 	Sessions int    `json:"sessions"`
 }
 

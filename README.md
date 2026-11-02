@@ -407,8 +407,8 @@ its own, so a call cannot ask for `spots/<other>`. ego then drops the call's `te
 | `get_ego_tools` | Your ego by tool: calls, failures, failure rate and average time of every tool, for a window or one session. |
 | `get_ego_errors` | Your ego by error: what failed, grouped by tool and text, how often, when, and the session of the latest, for a window or one session. |
 | `get_usage` | Token spend in a window, by kind, tenant, model or service, and the largest sessions. |
-| `list_sessions`, `summarize_session` | Sessions with filters (agent, tenant, since, text, complete); one session's turns and tool calls. |
-| `list_tenants` | The tenants you may see: key, sender, label, display name and session count, with a `query` over key and name. The key is what `tenant` filters and `set_role_binding` take. |
+| `list_sessions`, `summarize_session` | Sessions with filters (agent, service, tenant, since, text, complete); one session's turns and tool calls. |
+| `list_tenants` | The tenants you may see: key, sender, label, display name, session count and the services that reported into each, with a `query` over key and name. The key is what `tenant` filters and `set_role_binding` take. |
 | `get_session_spans` | One session's spans with their attributes; `errors_only` returns the failed ones with their message and their parent's attributes, to find why a session shows an error. |
 | `list_metrics`, `list_runs`, `get_run_results` | Metrics; evaluation runs and their per-case results. |
 | `run_findings` | Run the findings sweep now. Admin. |
@@ -481,6 +481,10 @@ ego separates what people see by **tenant**, and gives access by **GitHub team**
   or `*` (every tenant, for staff and admins). People see only what their grants cover, in sessions, traces, usage,
   quality scores and on the live feed. The tenant switcher in the header lets them pick one of their tenants (all of
   them for admins) and narrows the sessions, Tokens and Quality views to it.
+- A tenant that more than one program reports into (a core and the spot that works for it, say) lists those
+  **services** under its row in the switcher, by the `service.name` their sender declares. Picking one narrows the
+  session list to the sessions that service reported (`service` on `list_sessions`, `services` on `list_tenants`). It is a
+  filter on what the role already sees, not a grant: the name is whatever the sender says, and access stays with the tenant.
 - A signed-in user that **no grant covers sees nothing** (`--default-role none`; the default is still `member`, which
   sees every tenant). Teams are read at sign-in. The shared `--otlp-token` is a sender with no name: its tenants keep
   their bare label as the key.

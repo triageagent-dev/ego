@@ -212,6 +212,9 @@ func (b *mcpBackend) Tenants(ctx context.Context) ([]mcptools.TenantInfo, error)
 	out := make([]mcptools.TenantInfo, len(opts))
 	for i, o := range opts {
 		out[i] = mcptools.TenantInfo{Key: o.Key, Sender: o.Sender, Label: o.Label, Name: o.Name, Sessions: o.Sessions}
+		for _, svc := range o.Services {
+			out[i].Services = append(out[i].Services, mcptools.ServiceInfo{Name: svc.Name, Sessions: svc.Sessions})
+		}
 	}
 	return out, nil
 }

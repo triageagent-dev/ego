@@ -134,6 +134,8 @@ func Tools(b Backend, o Options) []server.ServerTool {
 				mcp.Description("Maximum number of sessions to return.")),
 			mcp.WithString("agent",
 				mcp.Description("Only sessions in which this exact agent name (gen_ai.agent.name) ran.")),
+			mcp.WithString("service",
+				mcp.Description("Only sessions in which this exact service (service.name, the program that reported them) ran; list_tenants lists a tenant's services.")),
 			mcp.WithString("tenant",
 				mcp.Description("Only sessions of this tenant key, or \"<sender>/*\" for every tenant of one sender.")),
 			mcp.WithString("since",
@@ -153,7 +155,8 @@ func Tools(b Backend, o Options) []server.ServerTool {
 			readsEgo,
 			mcp.WithDescription("The tenants you may see, by key: a tenant's key (<sender>/<label>) is the identity that "+
 				"grants and the tenant filters use, its name is only how people see it in the switcher, and sessions is "+
-				"how many sessions it has. Use it to find the key to pass as `tenant` to the other tools and as `tenants` "+
+				"how many sessions it has, and services are the programs that reported into it (pass one as `service` to "+
+				"list_sessions). Use it to find the key to pass as `tenant` to the other tools and as `tenants` "+
 				"to set_role_binding when you only know a tenant's name. Requires the ego server to be running."),
 			mcp.WithString("query",
 				mcp.Description("Case-insensitive text to find in the tenant key or name. Omit for all you may see.")),
@@ -487,11 +490,12 @@ func listSessionsHandler(b Backend) server.ToolHandlerFunc {
 			return toolError(err)
 		}
 		filter := SessionFilter{
-			Agent:  strings.TrimSpace(req.GetString("agent", "")),
-			Tenant: strings.TrimSpace(req.GetString("tenant", "")),
-			Since:  since,
-			Query:  strings.TrimSpace(req.GetString("query", "")),
-			Thread: strings.TrimSpace(req.GetString("thread", "")),
+			Agent:   strings.TrimSpace(req.GetString("agent", "")),
+			Service: strings.TrimSpace(req.GetString("service", "")),
+			Tenant:  strings.TrimSpace(req.GetString("tenant", "")),
+			Since:   since,
+			Query:   strings.TrimSpace(req.GetString("query", "")),
+			Thread:  strings.TrimSpace(req.GetString("thread", "")),
 		}
 		// A bool argument is only a filter when it was given: false means "still open", absent means both.
 		if _, given := req.GetArguments()["complete"]; given {

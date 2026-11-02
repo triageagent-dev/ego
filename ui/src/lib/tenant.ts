@@ -13,6 +13,8 @@ export interface TenantOption {
   // Display name an admin gave the tenant; the key stays its identity.
   name?: string;
   sessions: number;
+  // The programs that reported into the tenant (service.name, as their sender declares it), the busiest first.
+  services?: { name: string; sessions: number }[];
 }
 
 export function selectedTenant(): string {
@@ -23,14 +25,33 @@ export function selectedTenant(): string {
   }
 }
 
-export function setSelectedTenant(key: string): void {
+// The service picked under the tenant, '' for all of them. Only the session list narrows by it: a service says which
+// program reported, and the views of usage and quality stay per tenant.
+const SERVICE_KEY = 'ego.service';
+
+export function selectedService(): string {
+  try {
+    return localStorage.getItem(SERVICE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+// Picks a tenant, and a service of it when one is given. A new tenant starts with all its services.
+export function setSelection(key: string, service = ''): void {
   try {
     if (key) localStorage.setItem(KEY, key);
     else localStorage.removeItem(KEY);
+    if (key && service) localStorage.setItem(SERVICE_KEY, service);
+    else localStorage.removeItem(SERVICE_KEY);
   } catch {
     // blocked storage: the pick just won't survive a reload
   }
   window.dispatchEvent(new Event(CHANGED));
+}
+
+export function setSelectedTenant(key: string): void {
+  setSelection(key);
 }
 
 function subscribe(onChange: () => void): () => void {
@@ -44,6 +65,10 @@ function subscribe(onChange: () => void): () => void {
 
 export function useSelectedTenant(): string {
   return useSyncExternalStore(subscribe, selectedTenant, () => '');
+}
+
+export function useSelectedService(): string {
+  return useSyncExternalStore(subscribe, selectedService, () => '');
 }
 
 // Adds ?tenant= to a URL when a tenant is picked, for the endpoints the server narrows (usage, quality).
@@ -188,6 +213,14 @@ export function useTenantOptions(): TenantOption[] | null {
       (picked.endsWith('/*') && options.some((o) => o.key.startsWith(picked.slice(0, -1))));
     if (!known) setSelectedTenant('');
   }, [options, picked]);
+
+  // A remembered service that the tenant no longer has (or a tenant that was left) is dropped, not shown as empty.
+  const service = useSelectedService();
+  useEffect(() => {
+    if (!options || !service) return;
+    const o = options.find((x) => x.key === picked);
+    if (!o || !o.services?.some((s) => s.name === service)) setSelection(picked);
+  }, [options, picked, service]);
 
   return options;
 }
