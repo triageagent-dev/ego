@@ -1019,13 +1019,10 @@ func onlineFailedHandler(e *OnlineEngine, store *SQLiteStore) http.HandlerFunc {
 	}
 }
 
-// PurgeTenants runs purge (the removal of the tenants' rows) with the detector held still and the tenants' open
-// alerts and hourly runs dropped from memory first. Otherwise the next tick would find an open alert of a purged
-// tenant in memory and write its row back, and a worker would add results to a run that is gone.
-func (e *OnlineEngine) PurgeTenants(keys []string, dryRun bool, purge func() (PurgeResult, error)) (PurgeResult, error) {
-	if dryRun {
-		return purge()
-	}
+// quiet runs fn with the detector held still and the open alerts and hourly runs of the tenants dropped from memory
+// first. Otherwise the next tick would find an open alert of a tenant whose rows fn changed in memory and write its
+// old row back, and a worker would add results to a run that is gone.
+func (e *OnlineEngine) quiet(keys []string, fn func()) {
 	e.tickMu.Lock()
 	defer e.tickMu.Unlock()
 	set := map[string]bool{}
@@ -1044,5 +1041,27 @@ func (e *OnlineEngine) PurgeTenants(keys []string, dryRun bool, purge func() (Pu
 		}
 	}
 	e.mu.Unlock()
-	return purge()
+	fn()
+}
+
+// PurgeTenants runs purge (the removal of the tenants' rows) with the engine held still (see quiet).
+func (e *OnlineEngine) PurgeTenants(keys []string, dryRun bool, purge func() (PurgeResult, error)) (PurgeResult, error) {
+	if dryRun {
+		return purge()
+	}
+	var res PurgeResult
+	var err error
+	e.quiet(keys, func() { res, err = purge() })
+	return res, err
+}
+
+// MergeTenants runs merge with the engine held still (see quiet), for the tenant whose rows it moves.
+func (e *OnlineEngine) MergeTenants(from string, dryRun bool, merge func() (MergeResult, error)) (MergeResult, error) {
+	if dryRun {
+		return merge()
+	}
+	var res MergeResult
+	var err error
+	e.quiet([]string{from}, func() { res, err = merge() })
+	return res, err
 }

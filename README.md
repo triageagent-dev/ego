@@ -499,6 +499,12 @@ ego separates what people see by **tenant**, and gives access by **GitHub team**
 # a display name for a tenant key (admin; an empty name clears it)
 curl -X POST   "$EGO/api/admin/tenant-names"             -H "Authorization: Bearer $ADMIN" -d '{"key":"core/0123-abcd","name":"Checkout"}'
 
+# move one tenant key under another (admin): a core that got its sender token after it had started leaves its first sessions
+# under the bare label; this re-keys them, with their usage, scores, findings, corrections, alerts, labels and runs, and moves
+# the tenant's name when the target has none. Session ids stay, so no link breaks. A session still open, or shared with another tenant,
+# is left and counted as skipped: run it again later. "dryRun":true counts and moves nothing.
+curl -X POST   "$EGO/api/admin/merge-tenants"            -H "Authorization: Bearer $ADMIN" -d '{"from":"0123-abcd","to":"core/0123-abcd"}'
+
 # remove tenants that no longer exist (admin): their sessions, usage rows and names go at once instead of at retention;
 # a session that also belongs to another tenant stays; the tenant's findings, corrections, human labels, alerts and evaluation runs go with it
 curl -X POST   "$EGO/api/admin/purge-tenants"            -H "Authorization: Bearer $ADMIN" -d '{"keys":["core/old-demo","legacy-label"]}'

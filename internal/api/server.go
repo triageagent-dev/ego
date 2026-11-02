@@ -189,6 +189,11 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		purgeGuarded = onlineEngine.PurgeTenants
 	}
 	mux.HandleFunc("/api/admin/purge-tenants", adminPurgeTenantsHandler(store, tenantNames, purgeGuarded))
+	var mergeGuarded mergeGuard
+	if onlineEngine != nil {
+		mergeGuarded = onlineEngine.MergeTenants
+	}
+	mux.HandleFunc("/api/admin/merge-tenants", adminMergeTenantsHandler(store, tenantNames, mergeGuarded))
 	mux.HandleFunc("/api/admin/senders", adminSendersHandler(senderStore))
 	mux.HandleFunc("/api/admin/senders/{id}", adminSenderByIDHandler(senderStore))
 	mux.HandleFunc("/api/admin/senders/{id}/tokens", adminSenderTokensHandler(senderStore, tenantNames))
