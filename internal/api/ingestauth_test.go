@@ -34,11 +34,11 @@ func newTestSenders(t *testing.T) (*SenderStore, string, string) {
 			t.Fatal(err)
 		}
 	}
-	acme, _, err := ts.NewToken("acme", "ci", "")
+	acme, _, err := ts.NewToken("acme", "ci", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	globex, _, err := ts.NewToken("globex", "", "")
+	globex, _, err := ts.NewToken("globex", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestFailedIngestAuthIsThrottledPerSource(t *testing.T) {
 	if _, err := ts.Create("acme", ""); err != nil {
 		t.Fatal(err)
 	}
-	token, _, _ := ts.NewToken("acme", "", "")
+	token, _, _ := ts.NewToken("acme", "", "", false)
 	a := &ingestAuth{globalToken: "shared", senders: ts}
 	h := a.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
 	push := func(from, bearer string) int {

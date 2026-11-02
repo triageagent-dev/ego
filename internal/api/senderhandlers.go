@@ -16,6 +16,8 @@ type senderTokenRequest struct {
 	// called in the UI.
 	Tenant     string `json:"tenant,omitempty"`
 	TenantName string `json:"tenantName,omitempty"`
+	// MCP lets the token read over /mcp as well as send (see SenderToken.MCP). Off unless asked for.
+	MCP bool `json:"mcp,omitempty"`
 }
 
 // adminSendersHandler implements GET (list) and POST (create) on /api/admin/senders. Admin only.
@@ -111,7 +113,7 @@ func adminSenderTokensHandler(senders *SenderStore, names *TenantNames) http.Han
 					return
 				}
 			}
-			token, meta, err := senders.NewToken(id, req.Label, req.Tenant)
+			token, meta, err := senders.NewToken(id, req.Label, req.Tenant, req.MCP)
 			if err != nil {
 				writeEvaluateError(w, http.StatusInternalServerError, "failed to mint token: "+err.Error())
 				return

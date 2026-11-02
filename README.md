@@ -376,8 +376,9 @@ The server mounts a [Model Context Protocol](https://modelcontextprotocol.io/) e
 claude mcp add --transport http ego https://ego.example.com/mcp --header "Authorization: Bearer $TOKEN"
 ```
 
-An agent can use the OTLP sender token it already sends traces with: on `/mcp` it acts as a member limited to
-that sender's tenants, so one token covers sending traces and reading verdicts. A session token or a GitHub token
+An agent can use the OTLP sender token it already sends traces with when that token was minted with `"mcp": true`: on
+`/mcp` it acts as a member limited to that sender's tenants, so one token covers sending traces and reading verdicts. A
+token minted without it only sends, so a leaked exporter credential cannot read sessions back. A session token or a GitHub token
 of an org member works too. `ego mcp` is the same registry on stdio, for a client that cannot reach the server
 over HTTP; it adds `evaluate_traces`, which scores local files.
 
@@ -511,7 +512,7 @@ curl -X POST   "$EGO/api/admin/purge-tenants"            -H "Authorization: Bear
 
 # senders and their tokens (admin)
 curl -X POST   "$EGO/api/admin/senders"                  -H "Authorization: Bearer $ADMIN" -d '{"id":"core","name":"production core"}'
-curl -X POST   "$EGO/api/admin/senders/core/tokens"      -H "Authorization: Bearer $ADMIN" -d '{"label":"exporter"}'   # the token is in the answer, once
+curl -X POST   "$EGO/api/admin/senders/core/tokens"      -H "Authorization: Bearer $ADMIN" -d '{"label":"exporter"}'   # the token is in the answer, once; add "mcp":true to let it read over /mcp too
 # a token bound to one tenant of its sender, with the tenant's name: its spans belong to that tenant whatever label
 # they carry, and on /mcp it reads that tenant only. Several tokens of one sender make several tenants.
 curl -X POST   "$EGO/api/admin/senders/core/tokens"      -H "Authorization: Bearer $ADMIN" -d '{"label":"demo-1","tenant":"demo-1","tenantName":"Demo 1"}'
@@ -612,12 +613,12 @@ root-level `/api/...` endpoint needs an entry in `httpRoute.rootPaths`, or the g
 
 ### Releasing
 
-**Releasing:** push a version tag (`git tag vX.Y.Z && git push origin vX.Y.Z`). The *Release* workflow runs the
-checks, builds the four binaries, pushes the multi-arch image and the Helm chart to ghcr.io and creates the GitHub
+**Releasing:** push a version tag (`git tag vX.Y.Z && git push origin vX.Y.Z`). The *Release* workflow waits for the CI checks of the
+tagged commit (tests, vet, gofmt, the vulnerability scan) and stops if one failed, builds the four binaries, pushes the multi-arch image and the Helm chart to ghcr.io and creates the GitHub
 release with the binaries and `checksums.txt`. The checksums file and the image are signed keyless with the workflow's
 identity (`cosign verify-blob --bundle checksums.txt.bundle --certificate-identity-regexp
 "https://github.com/triageagent-dev/ego/" --certificate-oidc-issuer https://token.actions.githubusercontent.com
-checksums.txt`, and `cosign verify` on the image). The chart is not signed. The fallback when Actions cannot run is
+checksums.txt`, and `cosign verify` on the image and on the chart). `install.sh` checks that signature when `cosign` is installed. The fallback when Actions cannot run is
 `make release-local RELEASE_TAG=vX.Y.Z` (`scripts/release-local.sh`) from a clean checkout of the commit: the same
 steps on a maintainer's machine, without the signatures; releases v0.1.51 to v0.1.59 were made this way. Use one path
 or the other for a tag, never both. New GHCR packages are private until their visibility is changed under the package

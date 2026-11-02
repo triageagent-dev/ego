@@ -104,7 +104,11 @@ type SenderToken struct {
 	Label  string `json:"label,omitempty"`
 	// Tenant binds the token to one tenant of its sender: whatever label the spans carry, they belong to this tenant,
 	// and the token reads this tenant only. Empty leaves the sender's spans to label themselves.
-	Tenant    string `json:"tenant,omitempty"`
+	Tenant string `json:"tenant,omitempty"`
+	// MCP lets the token also read over /mcp, as a member limited to its sender (or its tenant). A token that only
+	// sends traces has it off, so a leaked exporter credential cannot read sessions, prompts and responses back.
+	// Tokens minted before the field existed keep the access they had.
+	MCP       bool   `json:"mcp"`
 	CreatedAt string `json:"createdAt"`
 }
 
@@ -290,7 +294,7 @@ func (s *SenderStore) Delete(id string) (bool, error) {
 }
 
 // NewToken mints an ingest token for sender and returns it; it is not stored in clear and cannot be shown again.
-func (s *SenderStore) NewToken(sender, label, tenant string) (token string, meta SenderToken, err error) {
+func (s *SenderStore) NewToken(sender, label, tenant string, mcp bool) (token string, meta SenderToken, err error) {
 	if tenant != "" {
 		if err := ValidTenantLabel(tenant); err != nil {
 			return "", SenderToken{}, err
@@ -307,7 +311,7 @@ func (s *SenderStore) NewToken(sender, label, tenant string) (token string, meta
 		return "", SenderToken{}, fmt.Errorf("sender %q does not exist", sender)
 	}
 	rec := senderTokenRecord{
-		SenderToken: SenderToken{ID: newRandomID("st"), Sender: sender, Label: strings.TrimSpace(label), Tenant: tenant, CreatedAt: nowRFC3339()},
+		SenderToken: SenderToken{ID: newRandomID("st"), Sender: sender, Label: strings.TrimSpace(label), Tenant: tenant, MCP: mcp, CreatedAt: nowRFC3339()},
 		hash:        hashSenderToken(token),
 	}
 	if s.archive != nil {

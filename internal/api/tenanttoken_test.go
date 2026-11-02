@@ -13,14 +13,14 @@ func TestTenantBoundTokenKeepsToTheTenant(t *testing.T) {
 	if _, err := ss.Create("demo", ""); err != nil {
 		t.Fatal(err)
 	}
-	token, meta, err := ss.NewToken("demo", "ci", "t1")
+	token, meta, err := ss.NewToken("demo", "ci", "t1", false)
 	if err != nil || meta.Tenant != "t1" {
 		t.Fatalf("token = %+v err=%v", meta, err)
 	}
 	if tok, ok := ss.Resolve(token); !ok || tok.Sender != "demo" || tok.Tenant != "t1" {
 		t.Fatalf("resolve = %+v %v, want demo bound to t1", tok, ok)
 	}
-	if _, _, err := ss.NewToken("demo", "", "a b"); err == nil {
+	if _, _, err := ss.NewToken("demo", "", "a b", false); err == nil {
 		t.Error("a tenant with a space was accepted")
 	}
 

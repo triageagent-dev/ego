@@ -271,3 +271,66 @@ func TestStreamsEndWhenARoleChanges(t *testing.T) {
 	}
 	hub.broadcast(map[string]string{"type": "x"}) // no send on a closed channel
 }
+
+// A token that only sends traces is not a read credential: /mcp accepts it only when it was minted with mcp.
+func TestIngestTokenReadsOverMCPOnlyWhenMintedWithIt(t *testing.T) {
+	f := newMCPFixture(t)
+	senders, err := NewSenderStore(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := senders.Create("core", ""); err != nil {
+		t.Fatal(err)
+	}
+	sendOnly, meta, _ := senders.NewToken("core", "", "", false)
+	if meta.MCP {
+		t.Fatal("a token minted without mcp reports mcp")
+	}
+	reader, _, _ := senders.NewToken("core", "", "", true)
+	roles, err := NewRoleStore(nil, RoleNone, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mcpRoute("a-session-secret-that-is-long-enough", senders, roles, "", nil, nil, f.backend)
+
+	if code, _ := callTool(t, h, sendOnly, "get_quality", nil); code != http.StatusUnauthorized && code != http.StatusFound {
+		t.Errorf("send-only token on /mcp = %d, want it refused", code)
+	}
+	if code, res := callTool(t, h, reader, "get_quality", nil); code != http.StatusOK || res.IsError {
+		t.Errorf("token minted with mcp = %d %+v", code, res)
+	}
+}
+
+// A token stored before the column existed keeps the read access it had.
+func TestStoredSenderTokensKeepMCPAccess(t *testing.T) {
+	path := t.TempDir() + "/s.db"
+	archive, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	senders, err := NewSenderStore(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := senders.Create("core", ""); err != nil {
+		t.Fatal(err)
+	}
+	// A row as the previous release wrote it: no mcp column value.
+	if _, err := archive.db.Exec(`INSERT INTO sender_tokens (id, sender, label, hash, created_at, tenant) VALUES ('st-old', 'core', '', ?, '2026-01-01T00:00:00Z', '')`, hashSenderToken("egs_old")); err != nil {
+		t.Fatal(err)
+	}
+	archive.Close()
+	archive, err = NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	senders, err = NewSenderStore(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, ok := senders.Resolve("egs_old")
+	if !ok || !tok.MCP {
+		t.Errorf("a token stored before the column = %+v (found %v), want mcp true", tok, ok)
+	}
+}

@@ -433,7 +433,7 @@ func TestSenderStoreAndAdminAPI(t *testing.T) {
 	if _, ok := again.Resolve(minted.Data.Token); ok || rec.Code != http.StatusOK {
 		t.Fatalf("a revoked token still resolves (%d)", rec.Code)
 	}
-	tok2, _, _ := again.NewToken("core", "", "")
+	tok2, _, _ := again.NewToken("core", "", "", true)
 	req = admin(httptest.NewRequest(http.MethodDelete, "/", nil))
 	req.SetPathValue("id", "core")
 	adminSenderByIDHandler(again)(httptest.NewRecorder(), req)

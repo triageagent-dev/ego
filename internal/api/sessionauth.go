@@ -136,7 +136,8 @@ func requireSession(secret string, ghTokens *githubTokenValidator, revoked *revo
 // senderGate lets a sender's ingest token through to direct, the role-resolving handler, as the sender itself:
 // the agent that sends its traces with that token reads its own verdicts with it, and needs no second credential.
 // Any other request, including one bearing the shared --otlp-token (which names no sender), goes to session, the
-// usual login check. It applies to the MCP path only, so a token minted for sending traces opens nothing else.
+// usual login check. It applies to the MCP path only, so a token minted for sending traces opens nothing else, and
+// only to a token minted with mcp: a token that just sends traces is not a read credential.
 //
 // Without a session secret there is no login and every caller is an admin, and without a SenderStore there are no
 // sender tokens: the gate is then inert and session is returned as it is.
@@ -146,7 +147,7 @@ func senderGate(secret string, senders *SenderStore, direct, session http.Handle
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if token, ok := bearerToken(r.Header.Get("Authorization")); ok {
-			if tok, found := senders.Resolve(token); found {
+			if tok, found := senders.Resolve(token); found && tok.MCP {
 				id := identity{Username: "sender:" + tok.Sender, Kind: identitySender, Sender: tok.Sender, SenderTenant: tok.Tenant}
 				direct.ServeHTTP(w, r.WithContext(withIdentity(r.Context(), id)))
 				return

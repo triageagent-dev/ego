@@ -39,6 +39,22 @@ echo "Downloading ego $version for $os/$arch"
 curl -fsSL -o "$tmp/$name.tar.gz" "$base/$name.tar.gz"
 curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt"
 
+# The checksums are signed by the release workflow (keyless cosign). With cosign installed the signature is checked
+# before anything is trusted; without it only the checksum is, so install cosign to verify the download end to end.
+if [ "${EGO_SKIP_VERIFY:-}" = 1 ]; then
+  echo "EGO_SKIP_VERIFY=1: the signature of the checksums is not checked" >&2
+elif command -v cosign >/dev/null 2>&1; then
+  curl -fsSL -o "$tmp/checksums.txt.bundle" "$base/checksums.txt.bundle" ||
+    { echo "no signature bundle for $version; set EGO_SKIP_VERIFY=1 to install without checking it" >&2; exit 1; }
+  cosign verify-blob --bundle "$tmp/checksums.txt.bundle" \
+    --certificate-identity-regexp "^https://github.com/$repo/[.]github/workflows/release[.]yml@refs/tags/v" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    "$tmp/checksums.txt" >/dev/null 2>&1 || { echo "signature check of checksums.txt failed" >&2; exit 1; }
+  echo "Signature of checksums.txt verified"
+else
+  echo "cosign not found: the checksum is checked, its signature is not" >&2
+fi
+
 want="$(grep " $name.tar.gz\$" "$tmp/checksums.txt" | cut -d' ' -f1)"
 if command -v sha256sum >/dev/null 2>&1; then got="$(sha256sum "$tmp/$name.tar.gz" | cut -d' ' -f1)"; else got="$(shasum -a 256 "$tmp/$name.tar.gz" | cut -d' ' -f1)"; fi
 [ -n "$want" ] && [ "$want" = "$got" ] || { echo "checksum mismatch" >&2; exit 1; }

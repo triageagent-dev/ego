@@ -100,8 +100,8 @@ jobs:
   vuln:
     name: Go vulnerability scan
     runs-on: ubuntu-latest
-    # Reports known vulnerabilities in the call graph; not a gate yet, a finding is fixed by bumping the module.
-    continue-on-error: true
+    # A vulnerability in the call graph fails the run, and so blocks a release (release.yml waits for this check). It
+    # reports only what the code can reach; the fix is to bump the module or the toolchain.
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
