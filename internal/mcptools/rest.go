@@ -366,6 +366,35 @@ func (b *REST) DeleteRoleBinding(ctx context.Context, id string) (map[string]boo
 	return out, nil
 }
 
+func (b *REST) MintSenderToken(ctx context.Context, in SenderTokenInput) (*SenderToken, error) {
+	body := map[string]any{"mcp": in.MCP}
+	if in.Label != "" {
+		body["label"] = in.Label
+	}
+	if in.Tenant != "" {
+		body["tenant"] = in.Tenant
+	}
+	if in.TenantName != "" {
+		body["tenantName"] = in.TenantName
+	}
+	var raw struct {
+		Token string `json:"token"`
+		Meta  struct {
+			ID        string `json:"id"`
+			Sender    string `json:"sender"`
+			Label     string `json:"label"`
+			Tenant    string `json:"tenant"`
+			MCP       bool   `json:"mcp"`
+			CreatedAt string `json:"createdAt"`
+		} `json:"meta"`
+	}
+	if err := b.post(ctx, "/api/admin/senders/"+url.PathEscape(in.Sender)+"/tokens", body, &raw); err != nil {
+		return nil, err
+	}
+	return &SenderToken{Token: raw.Token, ID: raw.Meta.ID, Sender: raw.Meta.Sender, Label: raw.Meta.Label,
+		Tenant: raw.Meta.Tenant, MCP: raw.Meta.MCP, CreatedAt: raw.Meta.CreatedAt}, nil
+}
+
 // The quality and explain endpoints answer in the tools' own shape, so they decode straight into it.
 
 func (b *REST) EgoScore(ctx context.Context, q ActivityQuery) ([]TurnScore, error) {

@@ -42,6 +42,9 @@ type Backend interface {
 	SetRoleBinding(ctx context.Context, in RoleBindingInput) (RoleBinding, error)
 	DeleteRoleBinding(ctx context.Context, id string) (map[string]bool, error)
 
+	// MintSenderToken answers mint_sender_token: a new ingest token for an existing sender. Requires an admin.
+	MintSenderToken(ctx context.Context, in SenderTokenInput) (*SenderToken, error)
+
 	// EgoScore answers get_ego_score: the score of the agents that work in turns, from their turns, for the
 	// caller's tenants.
 	EgoScore(ctx context.Context, q ActivityQuery) ([]TurnScore, error)

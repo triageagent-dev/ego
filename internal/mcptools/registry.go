@@ -450,6 +450,24 @@ func Tools(b Backend, o Options) []server.ServerTool {
 					mcp.Description("ID of an existing role binding to update in place (from list_role_bindings). Omit to create a new binding.")),
 			), Handler: setRoleBindingHandler(b)},
 
+			server.ServerTool{Tool: mcp.NewTool("mint_sender_token",
+				hints(false, false, false, false),
+				mcp.WithDescription("Mint an ingest token (egs_...) for an existing sender: the credential an agent or "+
+					"OpenTelemetry Collector sends its traces with. The token is in the answer once and cannot be read "+
+					"again, so hand it to its owner through a secret store, never into a chat or a log. Bind it to one "+
+					"tenant with tenant, and let it read back over /mcp only with mcp. Requires the caller to be an admin."),
+				mcp.WithString("sender", mcp.Required(),
+					mcp.Description("ID of the sender the token belongs to; it must already exist.")),
+				mcp.WithString("label",
+					mcp.Description("Free text naming what the token is for, shown in the sender's token list.")),
+				mcp.WithString("tenant",
+					mcp.Description("Bind the token to this one tenant label of the sender: whatever label the spans carry, they belong to it, and the token reads it only. Omit to let the spans label themselves.")),
+				mcp.WithString("tenant_name",
+					mcp.Description("Display name for the bound tenant. Needs tenant.")),
+				mcp.WithBoolean("mcp",
+					mcp.Description("Let the token also read over /mcp, limited to its sender (or its tenant). Off by default, so a leaked exporter credential cannot read sessions back.")),
+			), Handler: mintSenderTokenHandler(b)},
+
 			server.ServerTool{Tool: mcp.NewTool("run_findings",
 				hints(false, false, false, true),
 				mcp.WithDescription("Run the findings sweep now instead of waiting for findings.every: every series with "+
@@ -931,6 +949,26 @@ func setRoleBindingHandler(b Backend) server.ToolHandlerFunc {
 			Role:        role,
 			Agents:      req.GetStringSlice("agents", nil),
 			Tenants:     req.GetStringSlice("tenants", nil),
+		})
+		if err != nil {
+			return toolError(err)
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func mintSenderTokenHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		sender, err := req.RequireString("sender")
+		if err != nil {
+			return toolError(err)
+		}
+		out, err := b.MintSenderToken(ctx, SenderTokenInput{
+			Sender:     sender,
+			Label:      req.GetString("label", ""),
+			Tenant:     req.GetString("tenant", ""),
+			TenantName: req.GetString("tenant_name", ""),
+			MCP:        req.GetBool("mcp", false),
 		})
 		if err != nil {
 			return toolError(err)

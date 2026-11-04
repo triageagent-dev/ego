@@ -343,6 +343,27 @@ type RoleBindingInput struct {
 	Tenants     []string
 }
 
+// SenderTokenInput is the argument of mint_sender_token.
+type SenderTokenInput struct {
+	Sender     string
+	Label      string
+	Tenant     string
+	TenantName string
+	MCP        bool
+}
+
+// SenderToken is the result of mint_sender_token. Token is the credential itself: it is shown here once and ego
+// keeps only its hash.
+type SenderToken struct {
+	Token     string `json:"token"`
+	ID        string `json:"id"`
+	Sender    string `json:"sender"`
+	Label     string `json:"label,omitempty"`
+	Tenant    string `json:"tenant,omitempty"`
+	MCP       bool   `json:"mcp"`
+	CreatedAt string `json:"created_at"`
+}
+
 // Quality is the result of get_quality: how the caller's tenants are doing over the last Hours.
 type Quality struct {
 	Hours int    `json:"hours"`

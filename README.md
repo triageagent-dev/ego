@@ -413,6 +413,7 @@ its own, so a call cannot ask for `spots/<other>`. ego then drops the call's `te
 | `get_session_spans` | One session's spans with their attributes; `errors_only` returns the failed ones with their message and their parent's attributes, to find why a session shows an error. |
 | `list_metrics`, `list_runs`, `get_run_results` | Metrics; evaluation runs and their per-case results. |
 | `run_findings` | Run the findings sweep now. Admin. |
+| `mint_sender_token` | Mint an ingest token (`egs_…`) for an existing sender: `sender`, `label`, `tenant`, `tenant_name`, `mcp`. The token is in the answer once. Admin; on stdio only with `--admin-tools`. |
 | `list_role_bindings`, `set_role_binding`, `delete_role_binding` | Manage roles. Admin; on stdio only with `--admin-tools`. |
 
 Prompt `rsi_loop` returns the agent-side skill. Every tool is limited to the tenants the caller may see.

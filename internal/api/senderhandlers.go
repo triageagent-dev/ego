@@ -1,6 +1,8 @@
 package api
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 )
 
@@ -96,26 +98,9 @@ func adminSenderTokensHandler(senders *SenderStore, names *TenantNames) http.Han
 					return
 				}
 			}
-			if req.TenantName != "" && req.Tenant == "" {
-				writeEvaluateError(w, http.StatusBadRequest, "tenantName needs a tenant")
-				return
-			}
-			if req.Tenant != "" {
-				if err := ValidTenantLabel(req.Tenant); err != nil {
-					writeEvaluateError(w, http.StatusBadRequest, err.Error())
-					return
-				}
-			}
-			// The name is checked before the token exists, so a bad one does not leave a token behind.
-			if req.TenantName != "" {
-				if err := names.Set(tenantKey(id, req.Tenant), req.TenantName); err != nil {
-					writeEvaluateError(w, http.StatusBadRequest, err.Error())
-					return
-				}
-			}
-			token, meta, err := senders.NewToken(id, req.Label, req.Tenant, req.MCP)
+			token, meta, status, err := mintSenderToken(senders, names, id, req)
 			if err != nil {
-				writeEvaluateError(w, http.StatusInternalServerError, "failed to mint token: "+err.Error())
+				writeEvaluateError(w, status, err.Error())
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{"token": token, "meta": meta}, "error": nil})
@@ -123,6 +108,33 @@ func adminSenderTokensHandler(senders *SenderStore, names *TenantNames) http.Han
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	}
+}
+
+// mintSenderToken is the one place an ingest token is minted, for POST /api/admin/senders/{id}/tokens and for the
+// mint_sender_token tool. The tenant's display name is checked and stored before the token exists, so a bad one
+// does not leave a token behind. The status is the HTTP status of the error, when there is one.
+func mintSenderToken(senders *SenderStore, names *TenantNames, sender string, req senderTokenRequest) (string, SenderToken, int, error) {
+	if req.TenantName != "" && req.Tenant == "" {
+		return "", SenderToken{}, http.StatusBadRequest, errors.New("tenantName needs a tenant")
+	}
+	if req.Tenant != "" {
+		if err := ValidTenantLabel(req.Tenant); err != nil {
+			return "", SenderToken{}, http.StatusBadRequest, err
+		}
+	}
+	if req.TenantName != "" {
+		if names == nil {
+			return "", SenderToken{}, http.StatusBadRequest, errors.New("tenant names are not available on this server")
+		}
+		if err := names.Set(tenantKey(sender, req.Tenant), req.TenantName); err != nil {
+			return "", SenderToken{}, http.StatusBadRequest, err
+		}
+	}
+	token, meta, err := senders.NewToken(sender, req.Label, req.Tenant, req.MCP)
+	if err != nil {
+		return "", SenderToken{}, http.StatusInternalServerError, fmt.Errorf("failed to mint token: %w", err)
+	}
+	return token, meta, http.StatusOK, nil
 }
 
 // adminSenderTokenByIDHandler implements DELETE /api/admin/senders/{id}/tokens/{tokenId}. Admin only.

@@ -291,6 +291,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 
 	mcpTools := newMCPBackend(store, archive, onlineEngine, roleStore)
 	mcpTools.names = tenantNames
+	mcpTools.senders = senderStore
 	topMux.Handle(mcpPath, mcpRoute(sessionSecret, senderStore, roleStore, roleOrg, ghTokens, revoked, mcpTools))
 
 	go func() {

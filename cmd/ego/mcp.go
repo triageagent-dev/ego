@@ -45,7 +45,7 @@ func mcpCmd(args []string) error {
 		"bearer token sent as an Authorization: Bearer header on every request to --server-url, for a GitHub-OAuth-gated deployment; falls back to EGO_SESSION_TOKEN, then to `gh auth token` if neither is set and gh is installed and logged in. Mint one with: ego auth mint-token --name <label>, or just use gh auth login instead.")
 	traceDir := fs.String("trace-dir", env("MCP_TRACE_DIR"),
 		"directory evaluate_traces may read trace, eval set and question files from (default: the current directory); paths outside it, including through symlinks, are refused; falls back to EGO_MCP_TRACE_DIR")
-	adminTools := fs.Bool("admin-tools", false, "register the role-binding tools (list_role_bindings, set_role_binding, delete_role_binding); off by default so a prompt-injected client cannot change access with your credential")
+	adminTools := fs.Bool("admin-tools", false, "register the admin tools (list_role_bindings, set_role_binding, delete_role_binding, mint_sender_token); off by default so a prompt-injected client cannot change access or mint ingest tokens with your credential")
 	noGHAuth := fs.Bool("no-gh-auth", false, "disable the gh auth token fallback; fail with no credential instead of shelling out to gh")
 	if err := fs.Parse(args); err != nil {
 		return err

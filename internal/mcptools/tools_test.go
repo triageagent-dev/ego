@@ -58,6 +58,10 @@ func (b *toolBackend) RunFindings(context.Context) (*SweepReport, error) {
 	return &SweepReport{Candidates: 2, Written: 1, SkippedBudget: 1}, nil
 }
 
+func (b *toolBackend) MintSenderToken(_ context.Context, in SenderTokenInput) (*SenderToken, error) {
+	return &SenderToken{Token: "egs_x", ID: "st1", Sender: in.Sender, Tenant: in.Tenant, MCP: in.MCP}, nil
+}
+
 func allTools(b Backend) map[string]server.ServerTool {
 	out := map[string]server.ServerTool{}
 	// evaluate_traces is added by ego mcp, which reads local files; any handler stands in for it here.
@@ -121,6 +125,7 @@ func TestToolsDeclareTheirBehaviour(t *testing.T) {
 		"register_correction": {false, false, false, false},
 		"label_session":       {false, false, false, false},
 		"set_role_binding":    {false, true, true, false},
+		"mint_sender_token":   {false, false, false, false},
 		"run_findings":        {false, false, false, true},
 		"delete_role_binding": {false, true, true, false},
 	}

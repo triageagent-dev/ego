@@ -22,6 +22,8 @@ type mcpBackend struct {
 	roles    *RoleStore
 	// names gives tenants their display names for list_tenants; nil (a test, or no archive) names none.
 	names *TenantNames
+	// senders holds the ingest tokens mint_sender_token creates; nil (a test) mints none.
+	senders *SenderStore
 }
 
 // newMCPBackend returns the in-process mcptools.Backend. archive, online and roles may be nil, as they are when
@@ -274,6 +276,26 @@ func (b *mcpBackend) DeleteRoleBinding(ctx context.Context, id string) (map[stri
 		return nil, errors.New("role binding not found")
 	}
 	return map[string]bool{"deleted": true}, nil
+}
+
+func (b *mcpBackend) MintSenderToken(ctx context.Context, in mcptools.SenderTokenInput) (*mcptools.SenderToken, error) {
+	if !roleInfoOrOpen(ctx).IsAdmin {
+		return nil, errors.New("admin role required")
+	}
+	if b.senders == nil {
+		return nil, errors.New("ingest tokens are not available on this server")
+	}
+	if !b.senders.Exists(in.Sender) {
+		return nil, errors.New("sender not found")
+	}
+	token, meta, _, err := mintSenderToken(b.senders, b.names, in.Sender, senderTokenRequest{
+		Label: in.Label, Tenant: in.Tenant, TenantName: in.TenantName, MCP: in.MCP,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &mcptools.SenderToken{Token: token, ID: meta.ID, Sender: meta.Sender, Label: meta.Label,
+		Tenant: meta.Tenant, MCP: meta.MCP, CreatedAt: meta.CreatedAt}, nil
 }
 
 func (b *mcpBackend) EgoScore(ctx context.Context, q mcptools.ActivityQuery) ([]mcptools.TurnScore, error) {
