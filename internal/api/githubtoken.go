@@ -58,6 +58,9 @@ type githubTokenValidator struct {
 	inflight  map[string]*githubLookup
 	lookups   chan struct{}
 	lastSweep time.Time
+	// fails counts, per source address, the tokens GitHub refused: a source over its limit gets no more lookups for
+	// the rest of the window, so it cannot fill the lookup slots that other callers need.
+	fails failCounter
 }
 
 func newGitHubTokenValidator(cfg *GitHubOAuthConfig) *githubTokenValidator {
@@ -76,6 +79,13 @@ func newGitHubTokenValidator(cfg *GitHubOAuthConfig) *githubTokenValidator {
 // session cookie. A nil validator (no GitHub OAuth configured) or an
 // empty token always fails closed.
 func (v *githubTokenValidator) validate(token string) (username string, ok bool) {
+	return v.validateFrom("", token)
+}
+
+// validateFrom is validate for a request from source (a host address; "" for none). A token already known is
+// answered from the cache for any source. A new one costs GitHub lookups, which a source whose recent tokens were
+// refused no longer gets.
+func (v *githubTokenValidator) validateFrom(source, token string) (username string, ok bool) {
 	if v == nil || v.cfg == nil || !plausibleGitHubToken(token) {
 		return "", false
 	}
@@ -93,6 +103,10 @@ func (v *githubTokenValidator) validate(token string) (username string, ok bool)
 		<-call.done
 		return call.entry.username, call.entry.ok
 	}
+	if source != "" && v.fails.over(source) {
+		v.mu.Unlock()
+		return "", false
+	}
 	call := &githubLookup{done: make(chan struct{})}
 	v.inflight[key] = call
 	v.mu.Unlock()
@@ -106,6 +120,9 @@ func (v *githubTokenValidator) validate(token string) (username string, ok bool)
 	}
 	v.mu.Unlock()
 	close(call.done)
+	if source != "" && call.entry.cacheable && !call.entry.ok {
+		v.fails.record(source)
+	}
 	return call.entry.username, call.entry.ok
 }
 

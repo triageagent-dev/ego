@@ -33,50 +33,11 @@ type ingestAuth struct {
 	rejectLast time.Time
 	rejected   int
 
-	failMu sync.Mutex
-	fails  map[string]failWindow
+	fails failCounter
 }
-
-// failWindow counts the refused pushes of one source in the current minute.
-type failWindow struct {
-	start time.Time
-	n     int
-}
-
-const (
-	// failLimit refused pushes in one failWindowLen from one source make the next ones answer "slow down" instead of
-	// "unauthorized"; failTracked bounds the table of sources.
-	failLimit     = 30
-	failWindowLen = time.Minute
-	failTracked   = 4096
-)
 
 // recordFailure counts a refused push from source and reports that the source is over its limit.
-func (a *ingestAuth) recordFailure(source string) bool {
-	a.failMu.Lock()
-	defer a.failMu.Unlock()
-	now := time.Now()
-	if a.fails == nil {
-		a.fails = map[string]failWindow{}
-	}
-	w := a.fails[source]
-	if now.Sub(w.start) > failWindowLen {
-		w = failWindow{start: now}
-	}
-	w.n++
-	if len(a.fails) >= failTracked {
-		for k, v := range a.fails {
-			if now.Sub(v.start) > failWindowLen {
-				delete(a.fails, k)
-			}
-		}
-		if len(a.fails) >= failTracked {
-			clear(a.fails)
-		}
-	}
-	a.fails[source] = w
-	return w.n > failLimit
-}
+func (a *ingestAuth) recordFailure(source string) bool { return a.fails.record(source) }
 
 // sourceOf is the host part of a remote address.
 func sourceOf(addr string) string {

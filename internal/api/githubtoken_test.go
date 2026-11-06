@@ -231,3 +231,33 @@ func TestGitHubTokenValidator_SharedLookupAndBoundedCache(t *testing.T) {
 		t.Fatalf("cache holds %d entries, want at most %d", len(v.cache), maxGitHubCacheEntries)
 	}
 }
+
+// A source whose tokens GitHub keeps refusing gets no more lookups in the window, while a token already known
+// still answers from the cache, so a flood of made-up values cannot starve people signing in with real ones.
+func TestGitHubTokenLookupsStopForASourceWhoseTokensAreRefused(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++ // GitHub refuses every token here
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+	original := githubAPIBaseURL
+	githubAPIBaseURL = srv.URL
+	t.Cleanup(func() { githubAPIBaseURL = original })
+	v := newGitHubTokenValidator(&GitHubOAuthConfig{Org: "triageagent-dev"})
+	for i := 0; i < failLimit+10; i++ {
+		v.validateFrom("203.0.113.9", fmt.Sprintf("ghp_%036d", i))
+	}
+	if calls > (failLimit+1)*3 {
+		t.Fatalf("GitHub was called %d times for %d refused tokens from one source", calls, failLimit+10)
+	}
+	before := calls
+	v.validateFrom("203.0.113.9", "ghp_brandnewtoken0123456789abcdefghij")
+	if calls != before {
+		t.Error("a source over its limit still got a lookup")
+	}
+	v.validateFrom("198.51.100.1", "ghp_anothernewtoken0123456789abcdefghi")
+	if calls == before {
+		t.Error("another source was refused lookups because of the first")
+	}
+}

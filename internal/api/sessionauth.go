@@ -90,7 +90,7 @@ func authenticate(r *http.Request, secret string, ghTokens *githubTokenValidator
 		// Only the MCP path takes a raw GitHub token: that is where `ego mcp` and other MCP clients sign in with the
 		// output of `gh auth token`. The UI and the REST API take a session, an API token or a delegate token.
 		if r.URL.Path == mcpPath {
-			if username, ok := ghTokens.validate(token); ok {
+			if username, ok := ghTokens.validateFrom(sourceOf(r.RemoteAddr), token); ok {
 				return identity{Username: username, Kind: identityGitHub}, true
 			}
 		}
