@@ -366,6 +366,14 @@ func (b *REST) DeleteRoleBinding(ctx context.Context, id string) (map[string]boo
 	return out, nil
 }
 
+func (b *REST) RevokeSenderToken(ctx context.Context, sender, tokenID string) (map[string]bool, error) {
+	var out map[string]bool
+	if err := b.delete(ctx, "/api/admin/senders/"+url.PathEscape(sender)+"/tokens/"+url.PathEscape(tokenID), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (b *REST) MintSenderToken(ctx context.Context, in SenderTokenInput) (*SenderToken, error) {
 	if in.CreateSender {
 		var senders []struct {

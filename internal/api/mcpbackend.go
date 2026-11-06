@@ -278,6 +278,23 @@ func (b *mcpBackend) DeleteRoleBinding(ctx context.Context, id string) (map[stri
 	return map[string]bool{"deleted": true}, nil
 }
 
+func (b *mcpBackend) RevokeSenderToken(ctx context.Context, sender, tokenID string) (map[string]bool, error) {
+	if !roleInfoOrOpen(ctx).IsAdmin {
+		return nil, errors.New("admin role required")
+	}
+	if b.senders == nil {
+		return nil, errors.New("ingest tokens are not available on this server")
+	}
+	ok, err := b.senders.RevokeToken(sender, tokenID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to revoke token: %w", err)
+	}
+	if !ok {
+		return nil, errors.New("token not found")
+	}
+	return map[string]bool{"revoked": true}, nil
+}
+
 func (b *mcpBackend) MintSenderToken(ctx context.Context, in mcptools.SenderTokenInput) (*mcptools.SenderToken, error) {
 	if !roleInfoOrOpen(ctx).IsAdmin {
 		return nil, errors.New("admin role required")

@@ -36,6 +36,8 @@ export function viewForHash(hash: string): ViewType | null {
   const { name } = parseHash(hash);
   // Settings is not a tab: it opens from the account menu.
   if (name === 'settings') return 'settings';
+  // The admin page opens from the account menu, for an admin.
+  if (name === 'admin') return 'admin';
   // The tabs were called "tokens" and "quality" before; old links keep working.
   const label = name === 'tokens' ? 'usage' : name === 'quality' ? 'ego' : name;
   return TABS.find((t) => t.label === label)?.view ?? null;

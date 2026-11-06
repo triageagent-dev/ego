@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { css } from '@emotion/react';
-import { ChevronDown, LogIn, LogOut, Settings, User } from 'lucide-react';
+import { ChevronDown, LogIn, LogOut, Settings, Shield, User } from 'lucide-react';
 import { clearFlags } from '../../lib/flagged';
 import { useMe } from '../../lib/me';
 import { setSelection, useSelectedService, useSelectedTenant, useTenantOptions } from '../../lib/tenant';
@@ -90,6 +90,18 @@ export const AccountMenu: React.FC = () => {
             <Settings size={14} />
             settings
           </button>
+          {(!me?.authenticated || me.role === 'admin') && (
+            <button
+              css={itemStyle}
+              onClick={() => {
+                location.hash = '#admin';
+                setOpen(false);
+              }}
+            >
+              <Shield size={14} />
+              admin
+            </button>
+          )}
           {(signedIn || canSignIn) && <div css={dividerStyle} />}
           {signedIn && (
             // A form post, not a link: logout changes state, and the server accepts it only as POST.

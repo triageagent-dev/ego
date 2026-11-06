@@ -308,7 +308,7 @@ export interface LimitItem {
 }
 
 // View types
-export type ViewType = 'upload' | 'dashboard' | 'inspector' | 'comparison' | 'builder' | 'streaming' | 'runs' | 'usage' | 'quality' | 'settings';
+export type ViewType = 'upload' | 'dashboard' | 'inspector' | 'comparison' | 'builder' | 'streaming' | 'runs' | 'usage' | 'quality' | 'settings' | 'admin';
 
 // Persisted run history (durable storage, GET /api/runs)
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';

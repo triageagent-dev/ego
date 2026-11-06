@@ -62,6 +62,10 @@ func (b *toolBackend) MintSenderToken(_ context.Context, in SenderTokenInput) (*
 	return &SenderToken{Token: "egs_x", ID: "st1", Sender: in.Sender, Tenant: in.Tenant, MCP: in.MCP}, nil
 }
 
+func (b *toolBackend) RevokeSenderToken(context.Context, string, string) (map[string]bool, error) {
+	return map[string]bool{"revoked": true}, nil
+}
+
 func allTools(b Backend) map[string]server.ServerTool {
 	out := map[string]server.ServerTool{}
 	// evaluate_traces is added by ego mcp, which reads local files; any handler stands in for it here.
@@ -128,6 +132,7 @@ func TestToolsDeclareTheirBehaviour(t *testing.T) {
 		"mint_sender_token":   {false, false, false, false},
 		"run_findings":        {false, false, false, true},
 		"delete_role_binding": {false, true, true, false},
+		"revoke_sender_token": {false, true, true, false},
 	}
 	tools := allTools(&toolBackend{})
 	if len(tools) != len(expected) {

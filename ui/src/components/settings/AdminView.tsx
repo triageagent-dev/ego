@@ -1,9 +1,11 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { css } from '@emotion/react';
-import { Button, Checkbox, Drawer, Input, Modal, Popconfirm, Table, Tabs } from 'antd';
+import { Button, Checkbox, Input, Modal, Popconfirm, Table, Tabs } from 'antd';
 import { Check, Copy } from 'lucide-react';
 import { createSender, deleteSender, getAdminOverview, mintSenderToken, revokeSenderToken } from '../../api/client';
 import type { AdminOverview, AdminSender, AdminTenant } from '../../lib/types';
+import { PageTitle } from '../shell/PageTitle';
+import { pageStyle, subtitleStyle, titleStyle } from '../ui/page';
 
 // 1,234,567 -> 1.2M
 function short(n: number): string {
@@ -229,9 +231,8 @@ const KeysTab: React.FC<{ data: AdminOverview; reload: () => void }> = ({ data, 
   );
 };
 
-/** The admin's view of every tenant and key, opened from the settings page. */
-export const AdminPanel: React.FC = () => {
-  const [open, setOpen] = useState(false);
+/** The admin page: every tenant with its figures, and every sender with its keys. */
+export const AdminView: React.FC = () => {
   const [data, setData] = useState<AdminOverview | null>(null);
   const [error, setError] = useState('');
 
@@ -243,18 +244,17 @@ export const AdminPanel: React.FC = () => {
       setError(e instanceof Error ? e.message : String(e));
     }
   }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   return (
-    <>
-      <Button
-        onClick={() => {
-          setOpen(true);
-          void load();
-        }}
-      >
-        Tenants and keys
-      </Button>
-      <Drawer open={open} onClose={() => setOpen(false)} width={860} title="tenants and keys" destroyOnClose>
+    <div css={pageStyle}>
+      <PageTitle>
+        <h1 css={titleStyle}>admin</h1>
+        <p css={subtitleStyle}>every tenant with its figures, and the keys that let a sender's traces in</p>
+      </PageTitle>
+      <div css={bodyStyle}>
         {error && <div css={errorStyle}>{error}</div>}
         {data === null && !error && <div css={noteStyle}>Loading…</div>}
         {data && (
@@ -265,10 +265,14 @@ export const AdminPanel: React.FC = () => {
             ]}
           />
         )}
-      </Drawer>
-    </>
+      </div>
+    </div>
   );
 };
+
+const bodyStyle = css`
+  max-width: 1100px;
+`;
 
 const hintStyle = css`
   margin: 0 0 12px;

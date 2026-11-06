@@ -44,6 +44,9 @@ type Backend interface {
 
 	// MintSenderToken answers mint_sender_token: a new ingest token for an existing sender. Requires an admin.
 	MintSenderToken(ctx context.Context, in SenderTokenInput) (*SenderToken, error)
+	// RevokeSenderToken answers revoke_sender_token: deletes one ingest token of a sender, so what uses it is refused
+	// at once. Requires an admin.
+	RevokeSenderToken(ctx context.Context, sender, tokenID string) (map[string]bool, error)
 
 	// EgoScore answers get_ego_score: the score of the agents that work in turns, from their turns, for the
 	// caller's tenants.

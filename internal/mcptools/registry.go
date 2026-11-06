@@ -470,6 +470,16 @@ func Tools(b Backend, o Options) []server.ServerTool {
 					mcp.Description("Let the token also read over /mcp, limited to its sender (or its tenant). Off by default, so a leaked exporter credential cannot read sessions back.")),
 			), Handler: mintSenderTokenHandler(b)},
 
+			server.ServerTool{Tool: mcp.NewTool("revoke_sender_token",
+				hints(false, true, true, false),
+				mcp.WithDescription("Revoke an ingest token of a sender by its ID (the id mint_sender_token answered with, or the one "+
+					"in the admin page's key list): whatever sends or reads with it is refused at once. Requires the caller to be an admin."),
+				mcp.WithString("sender", mcp.Required(),
+					mcp.Description("ID of the sender the token belongs to.")),
+				mcp.WithString("token_id", mcp.Required(),
+					mcp.Description("ID of the token to revoke (st-...), never the token itself.")),
+			), Handler: revokeSenderTokenHandler(b)},
+
 			server.ServerTool{Tool: mcp.NewTool("run_findings",
 				hints(false, false, false, true),
 				mcp.WithDescription("Run the findings sweep now instead of waiting for findings.every: every series with "+
@@ -974,6 +984,24 @@ func mintSenderTokenHandler(b Backend) server.ToolHandlerFunc {
 
 			CreateSender: req.GetBool("create_sender", false),
 		})
+		if err != nil {
+			return toolError(err)
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func revokeSenderTokenHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		sender, err := req.RequireString("sender")
+		if err != nil {
+			return toolError(err)
+		}
+		id, err := req.RequireString("token_id")
+		if err != nil {
+			return toolError(err)
+		}
+		out, err := b.RevokeSenderToken(ctx, sender, id)
 		if err != nil {
 			return toolError(err)
 		}

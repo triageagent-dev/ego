@@ -64,7 +64,7 @@ func TestRoleToolsNeedAdminOption(t *testing.T) {
 	has := func(opts mcpOptions, name string) bool {
 		return newMCPServer(mcptools.NewREST("", "", nil), opts).GetTool(name) != nil
 	}
-	for _, name := range []string{"list_role_bindings", "set_role_binding", "delete_role_binding", "mint_sender_token"} {
+	for _, name := range []string{"list_role_bindings", "set_role_binding", "delete_role_binding", "mint_sender_token", "revoke_sender_token"} {
 		if has(mcpOptions{}, name) {
 			t.Errorf("%s is registered without --admin-tools", name)
 		}

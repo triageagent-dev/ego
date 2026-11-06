@@ -14,6 +14,7 @@ import { ClassicHeader } from './components/shell/ClassicHeader';
 import { Sidebar } from './components/shell/Sidebar';
 import { startConnectionMonitor } from './lib/connection';
 import { TABS, tabForView, viewForHash } from './components/shell/routes';
+import { AdminView } from './components/settings/AdminView';
 import { SettingsView } from './components/settings/SettingsView';
 import { SessionExpiredBanner } from './components/SessionExpiredBanner';
 import { ArchiveBanner } from './components/ArchiveBanner';
@@ -51,6 +52,8 @@ function useShellNavigation() {
       history.pushState(null, '', `#${tab.label}`);
     } else if (currentView === 'settings' && viewForHash(location.hash) !== 'settings') {
       history.pushState(null, '', '#settings');
+    } else if (currentView === 'admin' && viewForHash(location.hash) !== 'admin') {
+      history.pushState(null, '', '#admin');
     }
   }, [currentView]);
 
@@ -93,6 +96,7 @@ function AppContent() {
       {state.currentView === 'usage' && <UsageView />}
       {state.currentView === 'quality' && <QualityView />}
       {state.currentView === 'settings' && <SettingsView />}
+      {state.currentView === 'admin' && <AdminView />}
     </main>
   );
 
