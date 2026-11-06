@@ -3,6 +3,7 @@ import { css } from '@emotion/react';
 import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, Legend, LinearScale, LineElement, PointElement, Tooltip } from 'chart.js';
 import { getAdminUsage } from '../../api/client';
+import { store, stored } from '../../lib/stored';
 import type { AdminTenant, UsageSeries } from '../../lib/types';
 import { ChartBox } from '../ui/ChartBox';
 import { cardStyle, cardTitleStyle, segActiveStyle, segBtnStyle, segmentStyle } from '../ui/page';
@@ -40,8 +41,23 @@ const pad = (n: number) => String(n).padStart(2, '0');
 
 /** How the tenants trend: one line per tenant over the window, for the figure picked. It follows the table's filters. */
 export const TenantTrends: React.FC<{ tenants: AdminTenant[] }> = ({ tenants }) => {
-  const [metric, setMetric] = useState<Metric>('calls');
-  const [hours, setHours] = useState(24 * 7);
+  // The figure and the range stay as they were left in this browser; the first visit shows the last 24 hours.
+  const [metric, setMetricState] = useState<Metric>(() => {
+    const saved = stored('ego.admin.trend.metric');
+    return METRICS.find((m) => m.key === saved)?.key ?? 'calls';
+  });
+  const [hours, setHoursState] = useState(() => {
+    const saved = Number(stored('ego.admin.trend.hours'));
+    return RANGES.find((r) => r.hours === saved)?.hours ?? 24;
+  });
+  const setMetric = (m: Metric) => {
+    setMetricState(m);
+    store('ego.admin.trend.metric', m);
+  };
+  const setHours = (h: number) => {
+    setHoursState(h);
+    store('ego.admin.trend.hours', String(h));
+  };
   const [series, setSeries] = useState<UsageSeries | null>(null);
   const [error, setError] = useState('');
 
