@@ -205,6 +205,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	}
 	mux.HandleFunc("/api/admin/eval-limits", evalLimitsHandler(archive))
 	mux.HandleFunc("/api/admin/merge-tenants", adminMergeTenantsHandler(store, tenantNames, senderStore, mergeGuarded))
+	mux.HandleFunc("/api/admin/overview", adminOverviewHandler(store, archive, tenantNames, senderStore))
 	mux.HandleFunc("/api/admin/senders", adminSendersHandler(senderStore))
 	mux.HandleFunc("/api/admin/senders/{id}", adminSenderByIDHandler(senderStore))
 	mux.HandleFunc("/api/admin/senders/{id}/tokens", adminSenderTokensHandler(senderStore, tenantNames))

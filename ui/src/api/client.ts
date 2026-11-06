@@ -15,6 +15,9 @@ import type {
   OnlineJob,
   EvalLimits,
   EvalLimitsState,
+  AdminOverview,
+  AdminSenderToken,
+  MintTokenRequest,
   OnlineJobs,
   UsageSeries,
   ActivitySubject,
@@ -623,4 +626,40 @@ export async function resetOnlineJobs(): Promise<OnlineJobs> {
   const response = await fetch(config.api.endpoints.onlineJobs, { method: 'DELETE' });
   if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to reset the scoring jobs'));
   return unwrap<OnlineJobs>(response);
+}
+
+export async function getAdminOverview(): Promise<AdminOverview> {
+  const response = await fetch(config.api.endpoints.adminOverview);
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to load the overview'));
+  return unwrap<AdminOverview>(response);
+}
+
+export async function createSender(id: string, name?: string): Promise<void> {
+  const response = await fetch(config.api.endpoints.adminSenders, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, name }),
+  });
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to create the sender'));
+}
+
+export async function deleteSender(id: string): Promise<void> {
+  const response = await fetch(`${config.api.endpoints.adminSenders}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to delete the sender'));
+}
+
+/** Mints an ingest token; the returned value is the only time it is shown. */
+export async function mintSenderToken(sender: string, req: MintTokenRequest): Promise<{ token: string; meta: AdminSenderToken }> {
+  const response = await fetch(`${config.api.endpoints.adminSenders}/${encodeURIComponent(sender)}/tokens`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to mint the token'));
+  return unwrap<{ token: string; meta: AdminSenderToken }>(response);
+}
+
+export async function revokeSenderToken(sender: string, tokenId: string): Promise<void> {
+  const response = await fetch(`${config.api.endpoints.adminSenders}/${encodeURIComponent(sender)}/tokens/${encodeURIComponent(tokenId)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to revoke the token'));
 }

@@ -1055,3 +1055,49 @@ export interface OnlineJobs {
   /** Kinds that sent sessions with no job to score them. */
   unscored: { kind: string; sessions: number }[];
 }
+
+/** One tenant of the admin overview, with its LLM-call figures for the window (`since`). */
+export interface AdminTenant {
+  key: string;
+  sender?: string;
+  label: string;
+  name?: string;
+  sessions: number;
+  calls: number;
+  errors: number;
+  inputTokens: number;
+  outputTokens: number;
+  lastCall?: number;
+  /** Ingest tokens bound to this tenant. */
+  tokens: number;
+}
+
+/** An ingest token's metadata; the value is shown once, when it is minted. */
+export interface AdminSenderToken {
+  id: string;
+  sender: string;
+  label?: string;
+  tenant?: string;
+  mcp: boolean;
+  createdAt: string;
+}
+
+export interface AdminSender {
+  id: string;
+  name?: string;
+  createdAt: string;
+  tokens: AdminSenderToken[];
+}
+
+export interface AdminOverview {
+  since: number;
+  tenants: AdminTenant[];
+  senders: AdminSender[];
+}
+
+export interface MintTokenRequest {
+  label?: string;
+  tenant?: string;
+  tenantName?: string;
+  mcp?: boolean;
+}

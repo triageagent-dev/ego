@@ -31,6 +31,8 @@ export const config = {
       online: `${API_BASE_URL}/api/online`,
       onlineJobs: `${API_BASE_URL}/api/online/jobs`,
       evalLimits: `${API_BASE_URL}/api/admin/eval-limits`,
+      adminOverview: `${API_BASE_URL}/api/admin/overview`,
+      adminSenders: `${API_BASE_URL}/api/admin/senders`,
       onlineFindings: `${API_BASE_URL}/api/online/findings`,
       onlineCorrections: `${API_BASE_URL}/api/online/corrections`,
       onlineLabels: `${API_BASE_URL}/api/online/labels`,

@@ -8,6 +8,7 @@ import { PageTitle } from '../shell/PageTitle';
 import { VersionLink } from '../shell/VersionLink';
 import { errorStyle, pageStyle, subtitleStyle, titleStyle } from '../ui/page';
 import { EvalLimitsPanel } from './EvalLimitsPanel';
+import { AdminPanel } from './AdminPanel';
 import { EvalSettingsForm } from './EvalSettingsForm';
 import { ScoringJobsPanel } from './ScoringJobsPanel';
 
@@ -117,6 +118,14 @@ export const SettingsView: React.FC = () => {
             </p>
             <ScoringJobsPanel canEdit={!me?.authenticated || me.role === 'admin'} />
           </section>
+
+          {(!me?.authenticated || me.role === 'admin') && (
+            <section css={sectionStyle}>
+              <h2 css={sectionTitleStyle}>tenants and keys</h2>
+              <p css={hintStyle}>Every tenant with its figures, and the keys that let a sender's traces in: mint, revoke, add a sender.</p>
+              <AdminPanel />
+            </section>
+          )}
 
           {(!me?.authenticated || me.role === 'admin') && (
             <section css={sectionStyle}>
