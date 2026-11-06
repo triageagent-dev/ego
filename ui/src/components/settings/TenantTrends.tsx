@@ -26,8 +26,8 @@ const RANGES: { label: string; hours: number }[] = [
   { label: '30d', hours: 24 * 30 },
 ];
 
-// Lines drawn by name; the tenants past this many are summed into one grey line, as the usage page does. The names are
-// listed under the chart, so a long list takes no room from the plot.
+// Lines drawn in their own colour; the tenants past this many are summed into one grey line, as the usage page does.
+// The colours are read off the table's rows, so a long list takes no room from the plot.
 const NAMED_LINES = 12;
 const OTHER = 'Other';
 
@@ -41,7 +41,7 @@ function short(n: number): string {
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /** How the tenants trend: one line per tenant over the window, for the figure picked. It follows the table's filters. */
-export const TenantTrends: React.FC<{ tenants: AdminTenant[] }> = ({ tenants }) => {
+export const TenantTrends: React.FC<{ tenants: AdminTenant[]; onColors?: (colors: Map<string, string>) => void }> = ({ tenants, onColors }) => {
   // The figure and the range stay as they were left in this browser; the first visit shows the last 24 hours.
   const [metric, setMetricState] = useState<Metric>(() => {
     const saved = stored('ego.admin.trend.metric');
@@ -96,6 +96,9 @@ export const TenantTrends: React.FC<{ tenants: AdminTenant[] }> = ({ tenants }) 
       .sort((a, b) => b.total - a.total);
     const named = ranked.slice(0, NAMED_LINES);
     const rest = ranked.slice(NAMED_LINES);
+    const colors = new Map<string, string>();
+    named.forEach((r, i) => colors.set(r.key, KIND_SLOTS[i % KIND_SLOTS.length]));
+    rest.forEach((r) => colors.set(r.key, OTHER_COLOR));
     const datasets = named.map((r, i) => ({
       label: shown.get(r.key) ?? r.key,
       data: r.row,
@@ -122,8 +125,13 @@ export const TenantTrends: React.FC<{ tenants: AdminTenant[] }> = ({ tenants }) 
       const d = new Date(t);
       return width >= 24 * 3600 * 1000 ? `${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : `${pad(d.getHours())}:00`;
     });
-    return { labels, datasets, hourly: width < 24 * 3600 * 1000 };
+    return { labels, datasets, colors, hourly: width < 24 * 3600 * 1000 };
   }, [series, shown, metric]);
+
+  // The table under the chart is the legend: it paints each tenant's swatch in the colour of its line.
+  useEffect(() => {
+    onColors?.(chart?.colors ?? new Map());
+  }, [chart, onColors]);
 
   const label = METRICS.find((m) => m.key === metric)!.label;
   return (
@@ -173,16 +181,6 @@ export const TenantTrends: React.FC<{ tenants: AdminTenant[] }> = ({ tenants }) 
           />
         </ChartBox>
       )}
-      {chart && chart.datasets.length > 0 && (
-        <ul css={legendStyle}>
-          {chart.datasets.map((d) => (
-            <li key={d.label} css={legendItemStyle} title={d.label}>
-              <span css={swatchStyle} style={{ background: d.borderColor }} />
-              <span css={legendNameStyle}>{d.label}</span>
-            </li>
-          ))}
-        </ul>
-      )}
     </section>
   );
 };
@@ -211,38 +209,4 @@ const noteStyle = css`
   margin: 8px 0;
   color: var(--text-muted);
   font-size: 12px;
-`;
-
-const legendStyle = css`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 18px;
-  max-height: 96px;
-  margin: 8px 0 0;
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
-`;
-
-const legendItemStyle = css`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  max-width: 240px;
-  color: #a8b2c1;
-  font-size: 12px;
-`;
-
-const swatchStyle = css`
-  flex: none;
-  width: 11px;
-  height: 11px;
-  border-radius: 2px;
-`;
-
-const legendNameStyle = css`
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 `;

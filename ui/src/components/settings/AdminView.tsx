@@ -123,6 +123,20 @@ const NewKey: React.FC<{ senders: string[]; initialSender?: string; onDone: (m: 
   );
 };
 
+const tenantCellStyle = css`
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+`;
+
+const swatchStyle = css`
+  flex: none;
+  width: 11px;
+  height: 11px;
+  margin-top: 5px;
+  border-radius: 2px;
+`;
+
 const byNumber = (pick: (t: AdminTenant) => number) => (a: AdminTenant, b: AdminTenant) => pick(a) - pick(b);
 const nameOf = (t: AdminTenant) => (t.name || t.label).toLowerCase();
 
@@ -130,6 +144,8 @@ const TenantsTab: React.FC<{ data: AdminOverview }> = ({ data }) => {
   const [query, setQuery] = useState('');
   const [sender, setSender] = useState<string | undefined>();
   const [withTraffic, setWithTraffic] = useState(false);
+  // Each tenant's line colour in the trend chart, so the rows below it are its legend.
+  const [colors, setColors] = useState<Map<string, string>>(new Map());
 
   const senders = useMemo(() => [...new Set(data.tenants.map((t) => t.sender).filter((x): x is string => !!x))].sort(), [data.tenants]);
   const rows = useMemo(() => {
@@ -155,7 +171,7 @@ const TenantsTab: React.FC<{ data: AdminOverview }> = ({ data }) => {
           {rows.length === data.tenants.length ? `${rows.length} tenants` : `${rows.length} of ${data.tenants.length}`}
         </span>
       </div>
-      <TenantTrends tenants={rows} />
+      <TenantTrends tenants={rows} onColors={setColors} />
       <Table<AdminTenant>
         size="small"
         rowKey="key"
@@ -167,9 +183,12 @@ const TenantsTab: React.FC<{ data: AdminOverview }> = ({ data }) => {
             title: 'tenant',
             sorter: (a, b) => nameOf(a).localeCompare(nameOf(b)),
             render: (_, t) => (
-              <div>
-                <div>{t.name || t.label}</div>
-                <div css={monoStyle}>{t.key}</div>
+              <div css={tenantCellStyle}>
+                <span css={swatchStyle} style={{ background: colors.get(t.key) ?? 'transparent' }} title={colors.has(t.key) ? 'its line in the chart' : 'no data in the chart'} />
+                <div>
+                  <div>{t.name || t.label}</div>
+                  <div css={monoStyle}>{t.key}</div>
+                </div>
               </div>
             ),
           },
