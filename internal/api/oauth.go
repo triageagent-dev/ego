@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -29,8 +30,9 @@ type GitHubOAuthConfig struct {
 	Org           string
 	SessionSecret string
 	PublicURL     string // e.g. "https://your-app.example.com", no trailing slash
-	// AuditLog records who signed in or was refused, by GitHub username. Off by default: the log carries no
-	// user names unless an operator asks for a sign-in trail.
+	// AuditLog records who signed in or was refused, by GitHub username. Off by default: the sign-in trail carries no
+	// user names unless an operator asks for it. A change of access (auditLog in audit.go) is logged with the acting
+	// identity regardless: who changed who may do what is the record an operator must always have.
 	AuditLog bool
 }
 
@@ -279,6 +281,9 @@ func fetchGitHubLogin(client *http.Client, accessToken string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return "", fmt.Errorf("%w: GitHub user endpoint returned %d", errGitHubRefused, resp.StatusCode)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("GitHub user endpoint returned %d", resp.StatusCode)
 	}
@@ -366,5 +371,17 @@ func checkOrgMembership(client *http.Client, org, username, accessToken string) 
 		return false, err
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusNoContent, nil
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		return true, nil
+	case http.StatusNotFound, http.StatusFound, http.StatusUnauthorized, http.StatusForbidden:
+		// GitHub's answers for "not a member", "not visible to this token" and a bad token: a refusal.
+		return false, nil
+	}
+	// Anything else (a rate limit, a 5xx) says nothing about membership.
+	return false, fmt.Errorf("GitHub membership endpoint returned %d", resp.StatusCode)
 }
+
+// errGitHubRefused marks a lookup that GitHub answered with "this token is not valid", as opposed to one that did
+// not get an answer. Only a refusal is remembered and counted against the caller's source.
+var errGitHubRefused = errors.New("github refused the token")

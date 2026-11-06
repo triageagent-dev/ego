@@ -83,7 +83,8 @@ auth:
   # none is the default: access is granted per member (or team) by a role binding, and --admin-github-users names the
   # first admin. member would let every signed-in member of the organisation read and write EVERY tenant.
   defaultRole: none
-  # -- Log the GitHub user name of every sign-in and refused sign-in (--audit-log). Off: the log carries no user names.
+  # -- Log the GitHub user name of every sign-in and refused sign-in (--audit-log). Off: the sign-in trail carries no
+  # user names. Changes of access (role bindings, senders, ingest tokens, revocations) are always logged with the actor.
   auditLog: false
   githubOrg: ""
   publicUrl: ""

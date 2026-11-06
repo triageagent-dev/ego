@@ -1,11 +1,9 @@
 // mcp.go implements `ego mcp`: a Model Context Protocol server on stdio, for use with Claude Code, Cursor,
 // GitHub Copilot CLI, and other MCP clients.
 //
-// Two ways to supply it, checked in this order: --session-token/EGO_SESSION_TOKEN (an ego-minted token from
-// `ego auth mint-token`), or, if neither is set, a fallback to running `gh auth token` and sending that GitHub
-// token straight through - internal/api's requireSession accepts a live GitHub token as an alternative to its
-// own signed tokens (see internal/api/githubtoken.go), precisely so this needs no separately minted secret at
-// all when the caller already has `gh` authenticated as a member of the deployment's GitHub org.
+// It reaches the server through its REST API with --session-token/EGO_SESSION_TOKEN (an ego-minted token from
+// `ego auth mint-token`). A raw GitHub token is not a credential for the REST API: the server takes one on its own
+// /mcp endpoint only, which is where a remote MCP client signs in with `gh auth token`'s output.
 // evaluate_traces needs no server and no token at all: it loads trace files from local disk and evaluates them
 // in-process, exactly like `ego run`. Every other tool is defined in internal/mcptools, shared with the MCP
 // endpoint of `serve`, and reaches the server through its REST API.
@@ -18,7 +16,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -42,11 +39,10 @@ func mcpCmd(args []string) error {
 	serverURL := fs.String("server-url", env("SERVER_URL"),
 		"ego server URL for every tool except evaluate_traces (default: http://localhost:8001); falls back to EGO_SERVER_URL")
 	sessionToken := fs.String("session-token", env("SESSION_TOKEN"),
-		"bearer token sent as an Authorization: Bearer header on every request to --server-url, for a GitHub-OAuth-gated deployment; falls back to EGO_SESSION_TOKEN, then to `gh auth token` if neither is set and gh is installed and logged in. Mint one with: ego auth mint-token --name <label>, or just use gh auth login instead.")
+		"bearer token sent as an Authorization: Bearer header on every request to --server-url, for a GitHub-OAuth-gated deployment; falls back to EGO_SESSION_TOKEN. Mint one with: ego auth mint-token --name <label>. A GitHub token is not accepted here; a remote MCP client sends one to the server's /mcp endpoint instead.")
 	traceDir := fs.String("trace-dir", env("MCP_TRACE_DIR"),
 		"directory evaluate_traces may read trace, eval set and question files from (default: the current directory); paths outside it, including through symlinks, are refused; falls back to EGO_MCP_TRACE_DIR")
 	adminTools := fs.Bool("admin-tools", false, "register the admin tools (list_role_bindings, set_role_binding, delete_role_binding, mint_sender_token, revoke_sender_token); off by default so a prompt-injected client cannot change access or mint ingest tokens with your credential")
-	noGHAuth := fs.Bool("no-gh-auth", false, "disable the gh auth token fallback; fail with no credential instead of shelling out to gh")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -57,12 +53,8 @@ func mcpCmd(args []string) error {
 	}
 
 	token := *sessionToken
-	if token == "" && !*noGHAuth {
-		if tokenSafeFor(url) {
-			token = ghAuthToken()
-		} else {
-			fmt.Fprintf(os.Stderr, "ego mcp: not sending the gh auth token to %s (it is neither https nor a loopback address); pass --session-token to authenticate there\n", url)
-		}
+	if token != "" && !tokenSafeFor(url) {
+		return fmt.Errorf("not sending the session token to %s: it is neither https nor a loopback address", url)
 	}
 
 	root := *traceDir
@@ -82,25 +74,6 @@ func mcpCmd(args []string) error {
 
 	s := newMCPServer(backend, mcpOptions{root: root, adminTools: *adminTools})
 	return server.ServeStdio(s)
-}
-
-// ghAuthToken shells out to `gh auth token` as a zero-config fallback
-// credential for a GitHub-OAuth-gated deployment: if the caller already
-// has the GitHub CLI authenticated (gh auth login), that token is an
-// active member's real GitHub token, which internal/api/githubtoken.go
-// accepts directly - no ego-specific secret to mint or store
-// anywhere. Best-effort: gh not being installed, not being logged in, or
-// exiting non-zero for any other reason all just mean "no token", exactly
-// as if --session-token/EGO_SESSION_TOKEN had been left unset;
-// this never fails mcpCmd outright - a request to an auth-gated
-// deployment then simply fails at the HTTP layer with a normal "not
-// authenticated" error, same as always having had no token at all.
-func ghAuthToken() string {
-	out, err := exec.Command("gh", "auth", "token").Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // mcpOptions are the choices that limit what an MCP client can reach. root confines the files evaluate_traces reads;
@@ -346,7 +319,8 @@ func confineToRoot(root, p string) (string, error) {
 	return resolved, nil
 }
 
-// tokenSafeFor reports whether a credential may be sent to serverURL: https, or plain http to this machine.
+// tokenSafeFor reports whether a credential may be sent to serverURL: https, or plain http to this machine. A
+// session token over plain http to another host would cross the network in clear text.
 func tokenSafeFor(serverURL string) bool {
 	u, err := url.Parse(serverURL)
 	if err != nil {

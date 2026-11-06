@@ -58,7 +58,8 @@ func (r *certReloader) get(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	st, err := os.Stat(r.certFile)
 	if err != nil {
 		if r.cert != nil {
-			return r.cert, nil // keep serving the last good pair
+			r.loaded = time.Now() // keep serving the last good pair, and look again after recheckEvery
+			return r.cert, nil
 		}
 		return nil, err
 	}
@@ -69,7 +70,8 @@ func (r *certReloader) get(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	c, err := tls.LoadX509KeyPair(r.certFile, r.keyFile)
 	if err != nil {
 		if r.cert != nil {
-			return r.cert, nil // a half-written renewal: keep the last good pair, try again later
+			r.loaded = time.Now() // a half-written renewal: keep the last good pair, try again after recheckEvery
+			return r.cert, nil
 		}
 		return nil, err
 	}

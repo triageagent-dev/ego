@@ -261,3 +261,35 @@ func TestGitHubTokenLookupsStopForASourceWhoseTokensAreRefused(t *testing.T) {
 		t.Error("another source was refused lookups because of the first")
 	}
 }
+
+// A GitHub outage is not a refusal: it is neither remembered for the token nor counted against the source, so
+// nobody is locked out by it and the next request asks again.
+func TestGitHubOutageIsNeitherCachedNorCounted(t *testing.T) {
+	var calls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusBadGateway)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	original := githubAPIBaseURL
+	githubAPIBaseURL = srv.URL
+	t.Cleanup(func() { githubAPIBaseURL = original })
+
+	v := newGitHubTokenValidator(&GitHubOAuthConfig{Org: "triageagent-dev"})
+	for i := 0; i < failLimit+5; i++ {
+		if _, ok := v.validateFrom("203.0.113.9", fmt.Sprintf("ghp_%036d", i)); ok {
+			t.Fatal("a token was accepted during an outage")
+		}
+	}
+	if calls != failLimit+5 {
+		t.Fatalf("GitHub was asked %d times; an outage must not lock the source out", calls)
+	}
+	if v.fails.over("203.0.113.9") {
+		t.Fatal("an outage counted as refusals")
+	}
+	if len(v.cache) != 0 {
+		t.Fatalf("%d outage answers were cached", len(v.cache))
+	}
+}

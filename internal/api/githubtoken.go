@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"regexp"
 	"strings"
@@ -152,13 +153,24 @@ func (v *githubTokenValidator) lookup(token string) githubTokenCacheEntry {
 		return githubTokenCacheEntry{}
 	}
 
+	// A refusal (a bad token, a non-member) is an answer: cached, and counted against the source. A lookup that got
+	// no answer (network, a rate limit, a 5xx) is neither, so a GitHub outage locks nobody out and is retried.
 	var entry githubTokenCacheEntry
-	entry.cacheable = true
 	login, err := fetchGitHubLogin(v.client, token)
-	if err == nil {
-		if member, memberErr := checkOrgMembership(v.client, v.cfg.Org, login, token); memberErr == nil && member {
+	switch {
+	case err == nil:
+		member, memberErr := checkOrgMembership(v.client, v.cfg.Org, login, token)
+		if memberErr != nil {
+			return entry
+		}
+		entry.cacheable = true
+		if member {
 			entry.username, entry.ok = login, true
 		}
+	case errors.Is(err, errGitHubRefused):
+		entry.cacheable = true
+	default:
+		return entry
 	}
 
 	if entry.ok {

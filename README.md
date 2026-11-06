@@ -420,10 +420,10 @@ its own, so a call cannot ask for `spots/<other>`. ego then drops the call's `te
 Prompt `rsi_loop` returns the agent-side skill. Every tool is limited to the tenants the caller may see.
 
 ```bash
-EGO_SERVER_URL=https://ego.example.com ego mcp     # stdio; authenticates with --session-token, else `gh auth token`
+EGO_SERVER_URL=https://ego.example.com ego mcp     # stdio; authenticates with --session-token / EGO_SESSION_TOKEN
 ```
 
-To mint a long-lived token for a client with no `gh`:
+To mint a token for it (a GitHub token signs in on the server's `/mcp` endpoint only, not on the REST API `ego mcp` uses):
 
 ```bash
 ego auth mint-token --name ci --role member --secret "$EGO_SESSION_SECRET"
@@ -562,7 +562,7 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`:
 | `EGO_SEGMENT_IDLE`, `EGO_SEGMENT_MAX_SPANS`, `EGO_SEGMENT_MAX_AGE` | `--segment-idle`, `--segment-max-spans`, `--segment-max-age` | When a thread's segment closes: quiet for this long (default 30m), this many spans (2000), or this old (6h) |
 | `EGO_USAGE_TENANT_ATTR` | `--usage-tenant-attr` | Span attribute the Usage view reads the tenant from |
 | `EGO_LOG_LEVEL` | `--log-level` | Log threshold: `debug`, `info` (default), `warn` or `error`. Lines are `time=… level=… msg=…` on stderr |
-| `EGO_AUDIT_LOG` | `--audit-log` | Log the GitHub user name of every sign-in and refused sign-in (off by default: no user names in the log) |
+| `EGO_AUDIT_LOG` | `--audit-log` | Log the GitHub user name of every sign-in and refused sign-in (off by default). Changes of access (role bindings, senders, ingest tokens, revocations, finding reviews) are always logged with the acting identity |
 | `EGO_ONLINE_CONFIG` | `--online-config` | Online evaluation config file |
 | `EGO_DECISION_URL`, `EGO_DECISION_MODEL`, `EGO_DECISION_MAX_STATE_BYTES` | (`ego run`: `--jev-model`) | The decision model behind the `jev_*` metrics; empty: the hosted default |
 | `EGO_DECISION_API_KEY` or `EGO_DECISION_TOKEN_FILE` | (`ego run`: `--jev-api-key`, `--jev-token-file`) | Its credential: a key, or a file read on every call and sent as the bearer (a projected ServiceAccount token for a gateway that checks a JWT); never both |
