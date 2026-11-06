@@ -43,6 +43,7 @@ func TestOrdinaryTextIsLeftAlone(t *testing.T) {
 		"kubectl get pods -n triage-xray",
 		"commit 5489f82468694e37c870809b790cfdb216993f641ccd95c8166953a336279e94",
 		"Set the password in the Secret, never in the Deployment.",
+		"basic internationalization support, and the bearer of the responsibility",
 	} {
 		if got := r.Text(s); got != s {
 			t.Errorf("changed ordinary text: %q -> %q", s, got)
@@ -64,6 +65,29 @@ func TestMaskingAnEncodedBodyKeepsItValidJSON(t *testing.T) {
 	for _, leaked := range []string{"bob@example.com", "ghp_0123", "BEGIN PRIVATE KEY", "abcdef0123456789"} {
 		if strings.Contains(string(out), leaked) {
 			t.Errorf("%q survived in %s", leaked, out)
+		}
+	}
+
+	// key=value inside a body: a bare number, a value with an escaped quote, and JSON encoded inside a string (how
+	// a tool's output lands in the body) all mask without breaking the document.
+	for _, body := range []string{
+		`{"state":{"secret":1234567}}`,
+		`{"password":"abcdef\"ghi"}`,
+		`{"out":"{\"password\": \"hunter2hunter2\"}"}`,
+		`{"env":"API_KEY=sk_live_0123456789 PASSWORD: hunter2hunter2; next"}`,
+	} {
+		out := r.Bytes([]byte(body))
+		var back any
+		if err := json.Unmarshal(out, &back); err != nil {
+			t.Errorf("masked body is not JSON: %v\n%s -> %s", err, body, out)
+		}
+		for _, leaked := range []string{"1234567", "abcdef", "hunter2", "0123456789"} {
+			if strings.Contains(string(out), leaked) {
+				t.Errorf("%q survived in %s", leaked, out)
+			}
+		}
+		if !strings.Contains(string(out), Mask) {
+			t.Errorf("nothing masked in %s", out)
 		}
 	}
 }
