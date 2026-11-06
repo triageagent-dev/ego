@@ -260,6 +260,8 @@ func (b *mcpBackend) SetRoleBinding(ctx context.Context, in mcptools.RoleBinding
 	if err != nil {
 		return mcptools.RoleBinding{}, err
 	}
+	auditLog(ctx, "role.set", "bindingId", binding.ID, "subjectType", binding.SubjectType, "subject", binding.Subject,
+		"role", string(binding.Role), "agents", binding.Agents, "tenants", binding.Tenants, "via", "mcp")
 	return toolRoleBinding(binding), nil
 }
 
@@ -275,6 +277,7 @@ func (b *mcpBackend) DeleteRoleBinding(ctx context.Context, id string) (map[stri
 	if !ok {
 		return nil, errors.New("role binding not found")
 	}
+	auditLog(ctx, "role.delete", "bindingId", id, "via", "mcp")
 	return map[string]bool{"deleted": true}, nil
 }
 
@@ -292,6 +295,7 @@ func (b *mcpBackend) RevokeSenderToken(ctx context.Context, sender, tokenID stri
 	if !ok {
 		return nil, errors.New("token not found")
 	}
+	auditLog(ctx, "token.revoke", "sender", sender, "tokenId", tokenID, "via", "mcp")
 	return map[string]bool{"revoked": true}, nil
 }
 
@@ -309,6 +313,7 @@ func (b *mcpBackend) MintSenderToken(ctx context.Context, in mcptools.SenderToke
 		if _, err := b.senders.Create(in.Sender, ""); err != nil {
 			return nil, err
 		}
+		auditLog(ctx, "sender.create", "sender", in.Sender, "via", "mcp")
 	}
 	token, meta, _, err := mintSenderToken(b.senders, b.names, in.Sender, senderTokenRequest{
 		Label: in.Label, Tenant: in.Tenant, TenantName: in.TenantName, MCP: in.MCP,
@@ -316,6 +321,7 @@ func (b *mcpBackend) MintSenderToken(ctx context.Context, in mcptools.SenderToke
 	if err != nil {
 		return nil, err
 	}
+	auditLog(ctx, "token.mint", "sender", in.Sender, "tokenId", meta.ID, "tenant", meta.Tenant, "mcp", meta.MCP, "via", "mcp")
 	return &mcptools.SenderToken{Token: token, ID: meta.ID, Sender: meta.Sender, Label: meta.Label,
 		Tenant: meta.Tenant, MCP: meta.MCP, CreatedAt: meta.CreatedAt}, nil
 }

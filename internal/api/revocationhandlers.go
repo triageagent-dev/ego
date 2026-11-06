@@ -53,6 +53,7 @@ func adminRevocationsHandler(revoked *revocations) http.HandlerFunc {
 				writeEvaluateError(w, http.StatusInternalServerError, "failed to record the revocation: "+err.Error())
 				return
 			}
+			auditLog(r.Context(), "revocation.add", "tokenId", req.TokenID, "subject", req.Subject)
 			writeJSON(w, http.StatusOK, map[string]any{"data": revoked.List(), "error": nil})
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

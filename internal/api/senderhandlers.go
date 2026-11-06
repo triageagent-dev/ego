@@ -43,6 +43,7 @@ func adminSendersHandler(senders *SenderStore) http.HandlerFunc {
 				writeEvaluateError(w, http.StatusBadRequest, err.Error())
 				return
 			}
+			auditLog(r.Context(), "sender.create", "sender", req.ID)
 			writeJSON(w, http.StatusOK, map[string]any{"data": t, "error": nil})
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -70,6 +71,7 @@ func adminSenderByIDHandler(senders *SenderStore) http.HandlerFunc {
 			writeEvaluateError(w, http.StatusNotFound, "sender not found")
 			return
 		}
+		auditLog(r.Context(), "sender.delete", "sender", r.PathValue("id"))
 		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]bool{"deleted": true}, "error": nil})
 	}
 }
@@ -103,6 +105,7 @@ func adminSenderTokensHandler(senders *SenderStore, names *TenantNames) http.Han
 				writeEvaluateError(w, status, err.Error())
 				return
 			}
+			auditLog(r.Context(), "token.mint", "sender", id, "tokenId", meta.ID, "tenant", meta.Tenant, "mcp", meta.MCP)
 			writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{"token": token, "meta": meta}, "error": nil})
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -157,6 +160,7 @@ func adminSenderTokenByIDHandler(senders *SenderStore) http.HandlerFunc {
 			writeEvaluateError(w, http.StatusNotFound, "token not found")
 			return
 		}
+		auditLog(r.Context(), "token.revoke", "sender", r.PathValue("id"), "tokenId", r.PathValue("tokenId"))
 		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]bool{"revoked": true}, "error": nil})
 	}
 }

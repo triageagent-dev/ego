@@ -74,6 +74,8 @@ func adminRolesHandler(roleStore *RoleStore) http.HandlerFunc {
 				writeEvaluateError(w, http.StatusBadRequest, err.Error())
 				return
 			}
+			auditLog(r.Context(), "role.set", "bindingId", binding.ID, "subjectType", binding.SubjectType,
+				"subject", binding.Subject, "role", string(binding.Role), "agents", binding.Agents, "tenants", binding.Tenants)
 			writeJSON(w, http.StatusOK, map[string]any{"data": binding, "error": nil})
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -105,6 +107,7 @@ func adminRoleByIDHandler(roleStore *RoleStore) http.HandlerFunc {
 			writeEvaluateError(w, http.StatusNotFound, "role binding not found")
 			return
 		}
+		auditLog(r.Context(), "role.delete", "bindingId", r.PathValue("id"))
 		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]bool{"deleted": true}, "error": nil})
 	}
 }
