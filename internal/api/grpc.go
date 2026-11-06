@@ -45,7 +45,7 @@ func (s *traceServiceServer) Export(ctx context.Context, req *coltracepb.ExportT
 // Never gated by sessionSecret, matching otlpAddr's HTTP counterpart -
 // trace ingestion is a service-to-service push, not a UI/API call a signed
 // session cookie applies to. Senders must present a bearer credential when ingest tokens are configured (see ingestAuth).
-func newOTLPGRPCServer(store *SessionStore, auth *ingestAuth) *grpc.Server {
+func newOTLPGRPCServer(store *SessionStore, auth *ingestAuth, extra ...grpc.ServerOption) *grpc.Server {
 	opts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(maxOTLPBody),
 		grpc.MaxConcurrentStreams(64),
@@ -56,6 +56,7 @@ func newOTLPGRPCServer(store *SessionStore, auth *ingestAuth) *grpc.Server {
 		opts = append(opts, grpc.InTapHandle(auth.tapHandle()))
 	}
 	opts = append(opts, grpc.ForceServerCodecV2(denseGuardCodec{encodingProto()}))
+	opts = append(opts, extra...)
 	s := grpc.NewServer(opts...)
 	coltracepb.RegisterTraceServiceServer(s, &traceServiceServer{store: store})
 	return s

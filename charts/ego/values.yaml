@@ -165,6 +165,13 @@ otlpAuth:
   # -- Key in the Secret. A value of the form "Bearer <token>" (an exporter header kept as-is) works too.
   key: OTLP_TOKEN
 
+# -- TLS for the OTLP receivers (4317 and 4318). Name a kubernetes.io/tls Secret (tls.crt, tls.key; cert-manager makes
+# one) and both receivers serve TLS with it, re-reading the pair when the Secret is renewed. Empty keeps them plain,
+# so the sender bearer token crosses the cluster in clear text: turn it on, or at least the NetworkPolicy below. Senders
+# then point at the same endpoints with TLS on (insecure: false) and trust the certificate's issuer.
+otlpTLS:
+  secretName: ""
+
 # -- NetworkPolicy for the pods. When enabled, only the ingress rules listed here are allowed (an empty list
 # denies all ingress, so list the UI/gateway on 8001 and every telemetry producer on 4317/4318). Rules are
 # standard NetworkPolicy ingress rules, for example:

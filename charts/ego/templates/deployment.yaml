@@ -51,6 +51,10 @@ spec:
             - --addr=:{{ .Values.listenPort }}
             - --otlp-addr=:4318
             - --otlp-grpc-addr=:4317
+            {{- if .Values.otlpTLS.secretName }}
+            - --otlp-tls-cert=/etc/ego/otlp-tls/tls.crt
+            - --otlp-tls-key=/etc/ego/otlp-tls/tls.key
+            {{- end }}
             - --health-addr=:9090
             {{- with .Values.auth.defaultRole }}
             - --default-role={{ . }}
@@ -192,6 +196,11 @@ spec:
           volumeMounts:
             - name: session-db
               mountPath: /data
+            {{- if .Values.otlpTLS.secretName }}
+            - name: otlp-tls
+              mountPath: /etc/ego/otlp-tls
+              readOnly: true
+            {{- end }}
             # The root filesystem is read-only; uploads spill to temp files here.
             - name: tmp
               mountPath: /tmp
@@ -217,6 +226,11 @@ spec:
         - name: session-db
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.claimName }}
+        {{- if .Values.otlpTLS.secretName }}
+        - name: otlp-tls
+          secret:
+            secretName: {{ .Values.otlpTLS.secretName }}
+        {{- end }}
         - name: tmp
           emptyDir:
             sizeLimit: 256Mi

@@ -23,6 +23,8 @@ import (
 	"github.com/triageagent-dev/ego/internal/otlp"
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 	uiassets "github.com/triageagent-dev/ego/ui"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 // Version defaults to "dev" for a plain `go build`/`go run`; the release
@@ -54,7 +56,14 @@ const persistInterval = 10 * time.Second
 // The UI is baked into the binary via the ui package's go:embed (see Makefile's build-ui - embedding reads
 // whatever was on disk in ui/dist at `go build` time). Blocks until any listener returns an error or the
 // process receives SIGINT/SIGTERM, in which case it flushes a final snapshot before returning.
-func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits, onlineConfigPath, otlpToken string) error {
+func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits, onlineConfigPath, otlpToken string, otlpTLS OTLPTLS) error {
+	if err := otlpTLS.check(); err != nil {
+		return err
+	}
+	otlpTLSConfig, err := otlpTLS.config()
+	if err != nil {
+		return err
+	}
 	interactiveEval.setDailyCap(limits.EvalDailyTokens)
 	if limits.EvalLimitsFile != "" {
 		if err := LoadEvalLimitsFile(limits.EvalLimitsFile, interactiveEval); err != nil {
@@ -246,8 +255,15 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		errCh <- newHTTPServer(healthAddr, healthMux, 10*time.Second, 10*time.Second).ListenAndServe()
 	}()
 	go func() {
+		srv := newHTTPServer(otlpAddr, otlpMux, 60*time.Second, 60*time.Second)
+		if otlpTLSConfig != nil {
+			srv.TLSConfig = otlpTLSConfig
+			logx.Infof("ego OTLP/HTTP receiver listening on %s with TLS (POST /v1/traces)", otlpAddr)
+			errCh <- srv.ListenAndServeTLS("", "")
+			return
+		}
 		logx.Infof("ego OTLP/HTTP receiver listening on %s (POST /v1/traces)", otlpAddr)
-		errCh <- newHTTPServer(otlpAddr, otlpMux, 60*time.Second, 60*time.Second).ListenAndServe()
+		errCh <- srv.ListenAndServe()
 	}()
 	go func() {
 		lis, err := net.Listen("tcp", otlpGRPCAddr)
@@ -255,8 +271,12 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 			errCh <- fmt.Errorf("listening on %s for OTLP/gRPC: %w", otlpGRPCAddr, err)
 			return
 		}
-		logx.Infof("ego OTLP/gRPC receiver listening on %s", otlpGRPCAddr)
-		errCh <- newOTLPGRPCServer(store, ingest).Serve(lis)
+		var creds []grpc.ServerOption
+		if otlpTLSConfig != nil {
+			creds = append(creds, grpc.Creds(credentials.NewTLS(otlpTLSConfig)))
+		}
+		logx.Infof("ego OTLP/gRPC receiver listening on %s (TLS %t)", otlpGRPCAddr, otlpTLSConfig != nil)
+		errCh <- newOTLPGRPCServer(store, ingest, creds...).Serve(lis)
 	}()
 	// /api/health and /auth/me stay reachable on addr itself, unwrapped by
 	// requireSession, alongside the dedicated health port: k8s probes hit

@@ -441,6 +441,10 @@ func serveCmd(args []string) error {
 		"comma-separated GitHub logins idempotently granted the admin role at startup (see internal/api/roles.go); falls back to EGO_ADMIN_GITHUB_USERS. Only takes effect when --session-secret is set. The only way to get a first admin into an otherwise-empty role store - after that, admins manage every role (including further admins) via GET/POST /api/admin/roles.")
 	defaultRole := fs.String("default-role", envOrDefault("DEFAULT_ROLE", "member"),
 		"role (admin | member | viewer | none) granted to any authenticated user with no matching role binding; falls back to EGO_DEFAULT_ROLE. \"member\" (the default) gives full read/write access to a deployment that never configures a role binding; \"none\" gives no access, so only teams and users with a binding see anything.")
+	otlpTLSCert := fs.String("otlp-tls-cert", env("OTLP_TLS_CERT"),
+		"PEM certificate that turns on TLS for the OTLP receivers (4317 and 4318), so sender tokens do not cross the network in clear text; needs --otlp-tls-key; the pair is re-read when the files change; falls back to EGO_OTLP_TLS_CERT")
+	otlpTLSKey := fs.String("otlp-tls-key", env("OTLP_TLS_KEY"),
+		"PEM private key for --otlp-tls-cert; falls back to EGO_OTLP_TLS_KEY")
 	sessionMemory := fs.Int("session-memory", envIntOrDefault("SESSION_MEMORY", api.DefaultSessionMemory),
 		"completed sessions kept in memory with --session-db; older ones stay in the archive and load on demand (0 = no cap); falls back to EGO_SESSION_MEMORY")
 	sessionRetention := fs.Duration("session-retention", envDurationOrDefault("SESSION_RETENTION", api.DefaultSessionRetention),
@@ -502,7 +506,7 @@ func serveCmd(args []string) error {
 	}
 	return api.Serve(*addr, *otlpAddr, *otlpGRPCAddr, *healthAddr, *sessionDB, *sessionSecret, githubOAuth, adminUsers, *defaultRole,
 		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, ArchiveAlertPercent: *archiveAlertPercent, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens, EvalLimitsFile: *evalLimitsFile,
-			SegmentIdle: *segmentIdle, SegmentMaxSpans: *segmentMaxSpans, SegmentMaxAge: *segmentMaxAge}, *onlineConfig, *otlpToken)
+			SegmentIdle: *segmentIdle, SegmentMaxSpans: *segmentMaxSpans, SegmentMaxAge: *segmentMaxAge}, *onlineConfig, *otlpToken, api.OTLPTLS{CertFile: *otlpTLSCert, KeyFile: *otlpTLSKey})
 }
 
 // envIntOrDefault reads an integer env var, falling back to def when it is
