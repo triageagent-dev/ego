@@ -5,6 +5,11 @@
 # Set it to keep the names of an existing release: the selector is immutable.
 nameOverride: ""
 
+# -- Port the UI/API server listens on in the pod. The Service still exposes 8001. A GKE gateway health-checks the pod
+# port directly, and some VPC firewalls let the checks reach only port 80: set 80 there (the image runs as non-root;
+# the container runtime allows binding low ports).
+listenPort: 8001
+
 # Extra Service names that point at the same pods, for clients still configured with an earlier name.
 serviceAliases: []
 

@@ -48,7 +48,7 @@ spec:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           args:
             - serve
-            - --addr=:8001
+            - --addr=:{{ .Values.listenPort }}
             - --otlp-addr=:4318
             - --otlp-grpc-addr=:4317
             - --health-addr=:9090
@@ -160,7 +160,7 @@ spec:
             {{- end }}
           ports:
             - name: http
-              containerPort: 8001
+              containerPort: {{ .Values.listenPort }}
             - name: otlp-http
               containerPort: 4318
             - name: otlp-grpc
