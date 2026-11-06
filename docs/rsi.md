@@ -56,7 +56,8 @@ Tools (all transports; tenant-scoped unless noted):
 | `explain_regression` | `alert_id`: the alert, its suspect, and its worst sessions each with per-metric scores, the judge rationale, and the per-sentence verdicts (`unsupported`, `contradictory`, `disputed` first) or rubric verdicts. |
 | `explain_session` | `session_id`: the same evidence for one session, so an agent can look at a session it chooses. |
 | `list_threads` | `limit?`, `agent?`, `tenant?`, `since?`, `query?`: the declared threads (`ego.thread`; plain sessions are not threads), the one seen last first, with first and last seen, segment count, tokens and the newest score. A session of an always-on agent is a segment (`<thread>`, `<thread>~2`, …); `list_sessions` with `thread` lists them. |
-| `get_findings` | `kind?`, `state?` (open, corrected, resolved, stale; default open), `since?`: findings newest first. |
+| `get_findings` | `kind?`, `state?` (open, corrected, resolved, stale; default open), `since?`: findings newest first. With `findings.requireApproval` (the default) `suggested_correction` is empty and `suggestion_withheld` is true until a person approves that text; admins always read it. |
+| `review_finding` | `finding_id`, `decision` (approved, rejected): a person's decision on the finding's suggested correction. Admin only, and only as a person (a signed-in session or the admin's own GitHub token), never with an API, delegate or ingest token. `POST /api/online/findings/{id}/review`. |
 | `register_correction` | `finding_id?`, `kind`, `what` (free text, ≤ 2000 chars), `version?` (the `service.version` the change ships as), `by?`: records a correction, marks the finding `corrected`, returns the correction with its verification window. |
 | `list_corrections` | `kind?`, `state?`: corrections with their verification. |
 | `label_session` | `session_id`, `metric`, `verdict` (agree, disagree), `score?`, `note?`: stores a person's or agent-operator's verdict on a score. |
@@ -132,6 +133,7 @@ A finding is written by the **findings pass** (`internal/online/findings.go`, wi
 - A series whose sessions have no stored evidence (pruned) is skipped as `noEvidence`; a diagnosis the model cannot give (no model can be built, the budget has no judge allowance, an error, an unusable answer) is written from the evidence alone, the last two keeping the model's name with `model_error`.
 - `before` is the finding's window mean and n, fixed at registration; a correction with no finding uses the detector baseline span before it, pooled over every metric of the kind. With no baseline sessions at all the bar is `findings.minScore`.
 - `after` is the scores of the correction's series since it was registered, and only those at its `version` when given. `alert resolved` verifies only once `detector.minSamples` sessions exist after the correction. A finding with a second, still pending correction is not reopened by the first one failing.
+- The suggested correction is text a judge model wrote from sessions the agent's users influence, and an agent that applies it rewrites itself. With `findings.requireApproval` (on unless the online config sets it `false`), `get_findings` and `GET /api/online/findings` blank it for every caller but an admin until an admin, signed in as a person, approves it with `review_finding` or the Approve button of the Quality view. The approval binds to the exact text (its SHA-256): a finding rewritten with another suggestion is unapproved again. A rejection keeps it withheld. The diagnosis, the evidence and the history are not withheld. Each review writes an `audit` log line.
 - `register_correction` takes an optional `tenant`, for roles that do not imply one; a finding that is `resolved` or `stale` takes no more corrections (409). `what` is at most 2000 characters and `kind`, `tenant`, `version` and `by` at most 200 (400 beyond). A (tenant, kind) holds at most 20 `pending` corrections (429 beyond; verified and failed ones free their slot), which keeps the verification pass, which reads every pending correction, bounded.
 - A manual sweep (`run_findings`, `POST /api/online/findings/sweep`) is tied to its request and stops after 5 minutes; while another sweep runs it answers 409 `a sweep is already running`.
 
@@ -181,7 +183,7 @@ In the online config file (section 2 of `docs/online-evaluation.md`), all option
 
 ```json
 "findings": {"enabled": true, "every": "6h", "window": "24h", "minSessions": 8, "minScore": 0.7,
-             "maxSessions": 8, "verifyWithin": "48h", "minAgreement": 0.7, "recalibrateEvery": "24h"}
+             "maxSessions": 8, "verifyWithin": "48h", "requireApproval": true, "minAgreement": 0.7, "recalibrateEvery": "24h"}
 ```
 
 `enabled: false` keeps alerts and labels working and writes no findings; corrections can still be registered and

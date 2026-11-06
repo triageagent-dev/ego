@@ -125,6 +125,10 @@ type Detector struct {
 type Findings struct {
 	// Enabled false writes no findings; corrections can still be registered and verified.
 	Enabled bool `json:"enabled"`
+	// RequireApproval keeps a finding's suggested correction from every caller but an admin until a person has
+	// approved that text. The suggestion is written by a judge model from sessions the agent's users influence, and an
+	// agent that applies it rewrites itself; this is the human between the two. On unless the config turns it off.
+	RequireApproval bool `json:"requireApproval"`
 	// Every is the sweep interval over series that have always been bad.
 	Every Duration `json:"every"`
 	// Window is the span of scores a finding is written from (and the time a series must stay healthy to go stale).
@@ -232,7 +236,7 @@ func Load(path string) (*Config, error) {
 func Parse(b []byte) (*Config, error) {
 	// The findings pass is on unless the config turns it off, and a bool cannot tell "absent" from "false" after
 	// decoding.
-	c := Config{Findings: Findings{Enabled: true}}
+	c := Config{Findings: Findings{Enabled: true, RequireApproval: true}}
 	dec := json.NewDecoder(strings.NewReader(string(b)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&c); err != nil {

@@ -355,7 +355,7 @@ func TestFindingsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Findings{Enabled: true, Every: Duration(6 * time.Hour), Window: Duration(24 * time.Hour), MinSessions: 8, MinScore: 0.7,
+	want := Findings{Enabled: true, RequireApproval: true, Every: Duration(6 * time.Hour), Window: Duration(24 * time.Hour), MinSessions: 8, MinScore: 0.7,
 		MaxSessions: 8, VerifyWithin: Duration(48 * time.Hour), MinAgreement: 0.7, RecalibrateEvery: Duration(24 * time.Hour)}
 	if c.Findings != want {
 		t.Errorf("defaults = %+v, want %+v", c.Findings, want)
@@ -421,5 +421,34 @@ func TestBudgetReserveJudgeSharesTheDailyCap(t *testing.T) {
 	// The next estimate is the learned one (7000), which no longer fits next to what is spent.
 	if _, ok := b.ReserveJudge("~findings", now); ok {
 		t.Error("estimate should have learned the 7000 cost")
+	}
+}
+
+func TestSuggestionApprovalBindsToTheText(t *testing.T) {
+	f := Finding{FindingData: FindingData{Diagnosis: Diagnosis{SuggestedCorrection: "add a check"}}}
+	if got := f.ForCaller(true, false); got.Diagnosis.SuggestedCorrection != "" || !got.SuggestionWithheld {
+		t.Fatalf("unapproved suggestion reached an agent: %+v", got.FindingData)
+	}
+	if got := f.ForCaller(true, true); got.Diagnosis.SuggestedCorrection == "" || got.SuggestionWithheld {
+		t.Fatal("an admin must read the suggestion to decide on it")
+	}
+	if got := f.ForCaller(false, false); got.Diagnosis.SuggestedCorrection == "" {
+		t.Fatal("with approval off the suggestion is not withheld")
+	}
+	f.Approval = &Approval{Decision: ApprovalApproved, Hash: SuggestionHash("add a check")}
+	if got := f.ForCaller(true, false); got.Diagnosis.SuggestedCorrection == "" {
+		t.Fatal("an approved suggestion is withheld")
+	}
+	f.Diagnosis.SuggestedCorrection = "something else, written later"
+	if got := f.ForCaller(true, false); got.Diagnosis.SuggestedCorrection != "" {
+		t.Fatal("an approval carried over to a different suggestion")
+	}
+	f.Diagnosis.SuggestedCorrection = "add a check"
+	f.Approval.Decision = ApprovalRejected
+	if got := f.ForCaller(true, false); got.Diagnosis.SuggestedCorrection != "" {
+		t.Fatal("a rejected suggestion reached an agent")
+	}
+	if got := f.ForCaller(true, true); got.Diagnosis.SuggestedCorrection == "" {
+		t.Fatal("the original is unchanged by the copy that ForCaller returns")
 	}
 }

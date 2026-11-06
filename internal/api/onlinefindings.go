@@ -823,7 +823,7 @@ func (e *OnlineEngine) Findings(info RoleInfo, kind, state string, since time.Ti
 	}
 	out := []online.Finding{}
 	for _, f := range filterByTenant(rows, info, func(f *online.Finding) string { return f.Tenant }) {
-		out = append(out, *f)
+		out = append(out, f.ForCaller(e.conf().Findings.RequireApproval, info.IsAdmin))
 	}
 	return out, nil
 }
@@ -842,6 +842,48 @@ func (e *OnlineEngine) Finding(info RoleInfo, id string) (*online.Finding, error
 	}
 	if !ok || !info.AllowsAnyTenant([]string{f.Tenant}) {
 		return nil, notFound("finding")
+	}
+	shown := f.ForCaller(e.conf().Findings.RequireApproval, info.IsAdmin)
+	return &shown, nil
+}
+
+// ReviewFinding records a person's decision on a finding's suggested correction ("approved" or "rejected"). Only an
+// admin may decide, and only as a person: the caller says whether the request came from one (a signed-in session or a
+// member's own GitHub token) as opposed to an API, delegate or ingest token an agent holds, which can read the
+// suggestion once approved but never approve it.
+func (e *OnlineEngine) ReviewFinding(info RoleInfo, by string, person bool, id, decision string) (*online.Finding, error) {
+	if e == nil {
+		return nil, errOnlineUnavailable
+	}
+	if info.Scoped() {
+		return nil, errAgentScopedOnline
+	}
+	if !info.IsAdmin {
+		return nil, &statusError{403, "admin role required to review a suggested correction"}
+	}
+	if !person {
+		return nil, &statusError{403, "a suggested correction is reviewed by a person, not with an API or ingest token"}
+	}
+	if decision != online.ApprovalApproved && decision != online.ApprovalRejected {
+		return nil, &statusError{400, "decision is approved or rejected"}
+	}
+	e.fmu.Lock()
+	defer e.fmu.Unlock()
+	f, ok, err := e.store.OnlineFinding(id)
+	if err != nil {
+		return nil, err
+	}
+	if !ok || !info.AllowsAnyTenant([]string{f.Tenant}) {
+		return nil, notFound("finding")
+	}
+	if f.Diagnosis.SuggestedCorrection == "" {
+		return nil, &statusError{409, "the finding has no suggested correction to review"}
+	}
+	now := e.now().UTC()
+	f.Approval = &online.Approval{Decision: decision, By: by, At: now, Hash: online.SuggestionHash(f.Diagnosis.SuggestedCorrection)}
+	f.UpdatedAt = now
+	if err := e.store.UpsertOnlineFinding(f); err != nil {
+		return nil, err
 	}
 	return f, nil
 }

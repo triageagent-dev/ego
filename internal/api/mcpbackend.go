@@ -358,6 +358,15 @@ func (b *mcpBackend) RegisterCorrection(ctx context.Context, in mcptools.Correct
 	return b.online.RegisterCorrection(roleInfoOrOpen(ctx), in)
 }
 
+func (b *mcpBackend) ReviewFinding(ctx context.Context, id, decision string) (*online.Finding, error) {
+	out, err := b.online.ReviewFinding(roleInfoOrOpen(ctx), callerName(ctx), isPerson(ctx), id, decision)
+	if err != nil {
+		return nil, err
+	}
+	auditLog(ctx, "finding.review", "findingId", out.ID, "decision", decision, "via", "mcp")
+	return out, nil
+}
+
 func (b *mcpBackend) RunFindings(ctx context.Context) (*mcptools.SweepReport, error) {
 	return b.online.SweepNow(ctx, roleInfoOrOpen(ctx))
 }

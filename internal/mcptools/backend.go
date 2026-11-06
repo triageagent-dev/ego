@@ -68,6 +68,8 @@ type Backend interface {
 	Findings(ctx context.Context, kind, state string, since time.Time) ([]online.Finding, error)
 	// RegisterCorrection answers register_correction.
 	RegisterCorrection(ctx context.Context, in CorrectionInput) (*online.Correction, error)
+	// ReviewFinding answers review_finding: a person's approval or rejection of a finding's suggested correction.
+	ReviewFinding(ctx context.Context, id, decision string) (*online.Finding, error)
 	// Corrections answers list_corrections; state "" or "all" is every state.
 	Corrections(ctx context.Context, kind, state string) ([]online.Correction, error)
 	// LabelSession answers label_session: it stores a verdict on a session's online score. The label's author is

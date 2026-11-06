@@ -364,6 +364,19 @@ func Tools(b Backend, o Options) []server.ServerTool {
 				mcp.Description("Only findings updated since this RFC 3339 time or this long ago (e.g. 24h).")),
 		), Handler: getFindingsHandler(b)},
 
+		server.ServerTool{Tool: mcp.NewTool("review_finding",
+			hints(false, false, true, false),
+			mcp.WithDescription("Approve or reject the suggested correction of a finding. For a person to use, after reading "+
+				"the finding's evidence: an admin signed in as themselves (not an API, delegate or ingest token). The "+
+				"suggestion is written by a judge model from sessions the agent's users influence, and an agent that "+
+				"applies it rewrites itself, so until a person approves that exact text get_findings withholds it "+
+				"(suggestion_withheld) from everyone but admins. Never call it to approve a suggestion on your own behalf."),
+			mcp.WithString("finding_id", mcp.Required(),
+				mcp.Description("The finding (from get_findings).")),
+			mcp.WithString("decision", mcp.Required(), mcp.Enum("approved", "rejected"),
+				mcp.Description("approved releases the suggestion to agents; rejected keeps it withheld.")),
+		), Handler: reviewFindingHandler(b)},
+
 		server.ServerTool{Tool: mcp.NewTool("register_correction",
 			hints(false, false, false, false),
 			mcp.WithDescription("Record what you changed in answer to a finding. The finding becomes corrected, the "+
@@ -848,6 +861,24 @@ func registerCorrectionHandler(b Backend) server.ToolHandlerFunc {
 			Version:   req.GetString("version", ""),
 			By:        req.GetString("by", ""),
 		})
+		if err != nil {
+			return toolError(err)
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func reviewFindingHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		id, err := req.RequireString("finding_id")
+		if err != nil {
+			return toolError(err)
+		}
+		decision, err := req.RequireString("decision")
+		if err != nil {
+			return toolError(err)
+		}
+		out, err := b.ReviewFinding(ctx, id, decision)
 		if err != nil {
 			return toolError(err)
 		}

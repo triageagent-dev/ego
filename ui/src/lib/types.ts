@@ -945,6 +945,11 @@ export interface OnlineFinding {
   model_error?: string;
   // How many evidence sessions a person scored or confirmed.
   confirmed?: number;
+  // A judge-written suggestion waits for a person: withheld from agents (and from everyone but admins) until an admin
+  // approves that text.
+  suggestion_needs_approval?: boolean;
+  suggestion_withheld?: boolean;
+  approval?: { decision: 'approved' | 'rejected'; by: string; at: string };
   history: {
     correction_id: string;
     what: string;

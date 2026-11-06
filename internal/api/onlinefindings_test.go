@@ -1024,3 +1024,50 @@ func TestVerification_ReachesEveryTenantsCorrections(t *testing.T) {
 		t.Errorf("globex's correction behind a flood of acme's = %+v", got)
 	}
 }
+
+func TestSuggestedCorrectionWaitsForAPerson(t *testing.T) {
+	f := newFindingsFixture(t, findingsConfig)
+	f.seedBad("acme", 9)
+	f.e.findingsMaintain(context.Background(), f.now)
+	admin := RoleInfo{Role: RoleAdmin, IsAdmin: true}
+	agent := member("acme")
+
+	all, err := f.e.Findings(admin, "", "", time.Time{})
+	if err != nil || len(all) != 1 || all[0].Diagnosis.SuggestedCorrection == "" || all[0].SuggestionWithheld {
+		t.Fatalf("an admin must read the suggestion to decide on it: %v %+v", err, all)
+	}
+	id := all[0].ID
+	seen, _ := f.e.Findings(agent, "", "", time.Time{})
+	if len(seen) != 1 || seen[0].Diagnosis.SuggestedCorrection != "" || !seen[0].SuggestionWithheld || seen[0].Diagnosis.FailureMode == "" {
+		t.Fatalf("an agent read an unapproved suggestion, or lost the diagnosis: %+v", seen)
+	}
+	one, err := f.e.Finding(agent, id)
+	if err != nil || one.Diagnosis.SuggestedCorrection != "" {
+		t.Fatalf("Finding leaked the suggestion: %v %+v", err, one)
+	}
+
+	// Nobody but an admin, and no token an agent holds, can approve.
+	if _, err := f.e.ReviewFinding(agent, "bot", true, id, online.ApprovalApproved); err == nil {
+		t.Error("a member approved a suggestion")
+	}
+	if _, err := f.e.ReviewFinding(admin, "bot", false, id, online.ApprovalApproved); err == nil {
+		t.Error("an API or ingest token approved a suggestion")
+	}
+	if _, err := f.e.ReviewFinding(admin, "alice", true, id, "maybe"); err == nil {
+		t.Error("a decision that is neither approved nor rejected was accepted")
+	}
+	if _, err := f.e.ReviewFinding(admin, "alice", true, id, online.ApprovalRejected); err != nil {
+		t.Fatal(err)
+	}
+	if seen, _ := f.e.Findings(agent, "", "", time.Time{}); seen[0].Diagnosis.SuggestedCorrection != "" {
+		t.Error("a rejected suggestion reached an agent")
+	}
+
+	if _, err := f.e.ReviewFinding(admin, "alice", true, id, online.ApprovalApproved); err != nil {
+		t.Fatal(err)
+	}
+	seen, _ = f.e.Findings(agent, "", "", time.Time{})
+	if seen[0].Diagnosis.SuggestedCorrection == "" || seen[0].SuggestionWithheld || seen[0].Approval == nil || seen[0].Approval.By != "alice" {
+		t.Fatalf("the approved suggestion did not reach the agent: %+v", seen[0])
+	}
+}

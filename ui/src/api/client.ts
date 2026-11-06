@@ -523,6 +523,17 @@ export async function getOnlineFindings(): Promise<OnlineFinding[]> {
   return unwrap<OnlineFinding[]>(response);
 }
 
+/** A person's decision on a finding's suggested correction (admin only); the finding comes back as the caller reads it. */
+export async function reviewOnlineFinding(id: string, decision: 'approved' | 'rejected'): Promise<OnlineFinding> {
+  const response = await fetch(`${config.api.endpoints.onlineFindings}/${encodeURIComponent(id)}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision }),
+  });
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to save the decision'));
+  return unwrap<OnlineFinding>(response);
+}
+
 export async function getOnlineCorrections(): Promise<OnlineCorrection[]> {
   const response = await fetch(withTenant(`${config.api.endpoints.onlineCorrections}?state=all`));
   if (await serverSaysUnavailable(response)) throw new StorageUnavailableError();

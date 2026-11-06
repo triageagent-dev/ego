@@ -74,6 +74,30 @@ func onlineFindingHandler(e *OnlineEngine) http.HandlerFunc {
 	}
 }
 
+// onlineFindingReviewHandler implements POST /api/online/findings/{id}/review {"decision":"approved"|"rejected"}.
+func onlineFindingReviewHandler(e *OnlineEngine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct {
+			Decision string `json:"decision"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxCorrectionBody)).Decode(&in); err != nil {
+			writeEvaluateError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+			return
+		}
+		out, err := e.ReviewFinding(roleInfoOrOpen(r.Context()), callerName(r.Context()), isPerson(r.Context()), r.PathValue("id"), in.Decision)
+		if err != nil {
+			writeStatusError(w, err)
+			return
+		}
+		auditLog(r.Context(), "finding.review", "findingId", out.ID, "decision", in.Decision)
+		writeJSON(w, http.StatusOK, map[string]any{"data": out, "error": nil})
+	}
+}
+
 // onlineCorrectionsHandler implements GET /api/online/corrections?state=&kind=&tenant= and POST (a write: a
 // viewer gets 403, a tenant-limited member may post for its own tenants only).
 func onlineCorrectionsHandler(e *OnlineEngine) http.HandlerFunc {

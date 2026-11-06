@@ -1,6 +1,8 @@
 package online
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -112,6 +114,26 @@ type CorrectionNote struct {
 	Verification *Verification `json:"verification,omitempty"`
 }
 
+// Approval is a person's decision on a finding's suggested correction. It binds to the exact text: Hash is the
+// SHA-256 of the suggestion that was read, so a finding rewritten with another suggestion is unapproved again.
+type Approval struct {
+	Decision string    `json:"decision"` // ApprovalApproved or ApprovalRejected
+	By       string    `json:"by"`
+	At       time.Time `json:"at"`
+	Hash     string    `json:"hash"`
+}
+
+const (
+	ApprovalApproved = "approved"
+	ApprovalRejected = "rejected"
+)
+
+// SuggestionHash identifies a suggested correction's text.
+func SuggestionHash(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
+
 // FindingData is the JSON in online_findings.data.
 type FindingData struct {
 	Diagnosis Diagnosis     `json:"diagnosis"`
@@ -125,6 +147,14 @@ type FindingData struct {
 	// truth rather than on the judge.
 	Confirmed int              `json:"confirmed"`
 	History   []CorrectionNote `json:"history"`
+	// Approval is the decision on the suggested correction, once a person has made one.
+	Approval *Approval `json:"approval,omitempty"`
+	// SuggestionWithheld is set on the copy a caller gets (never stored) when the suggestion is kept back until a
+	// person approves it.
+	SuggestionWithheld bool `json:"suggestion_withheld,omitempty"`
+	// SuggestionNeedsApproval is set, on the same copy, whenever approval is required and the suggestion as it reads
+	// now has not been approved, whether or not the caller may read it: an admin reading it is shown the buttons.
+	SuggestionNeedsApproval bool `json:"suggestion_needs_approval,omitempty"`
 }
 
 // Finding is a diagnosis of one (tenant, kind, metric) series. The wire shape is the MCP tools' snake_case.
@@ -138,6 +168,25 @@ type Finding struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	FindingData
+}
+
+// Approved reports whether a person approved the suggestion as it reads now.
+func (f *Finding) Approved() bool {
+	a := f.Approval
+	return a != nil && a.Decision == ApprovalApproved && a.Hash == SuggestionHash(f.Diagnosis.SuggestedCorrection)
+}
+
+// ForCaller is the finding as a caller may read it: with approval required, an unapproved suggestion is blanked
+// for everyone but seesAll (an admin, who reads it in order to decide).
+func (f Finding) ForCaller(requireApproval, seesAll bool) Finding {
+	if requireApproval && f.Diagnosis.SuggestedCorrection != "" && !f.Approved() {
+		f.SuggestionNeedsApproval = true
+		if !seesAll {
+			f.Diagnosis.SuggestedCorrection = ""
+			f.SuggestionWithheld = true
+		}
+	}
+	return f
 }
 
 // Key is the series the finding is about.

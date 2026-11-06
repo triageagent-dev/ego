@@ -14,7 +14,7 @@ import {
   Legend,
 } from 'chart.js';
 import { useLiveData } from '../../lib/connection';
-import { getOnlineAlerts, getOnlineCorrections, getOnlineFindings, getOnlineSeries, getOnlineStatus, StorageUnavailableError } from '../../api/client';
+import { getOnlineAlerts, getOnlineCorrections, getOnlineFindings, getOnlineSeries, getOnlineStatus, reviewOnlineFinding, StorageUnavailableError } from '../../api/client';
 import { onlineRunsLink } from '../../lib/runLinks';
 import { parseHash, sessionLink } from '../shell/routes';
 import { tenantName, useSelectedTenant, useTenantNames } from '../../lib/tenant';
@@ -110,6 +110,20 @@ export const QualityView: React.FC = () => {
   }, [hours, tenant]);
 
   useLiveData('quality', load);
+
+  // An admin's decision on a suggested correction; the list is read again so the finding shows its new state.
+  const [reviewing, setReviewing] = useState(false);
+  const review = useCallback(async (id: string, decision: 'approved' | 'rejected') => {
+    setReviewing(true);
+    try {
+      await reviewOnlineFinding(id, decision);
+      await load(() => true);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setReviewing(false);
+    }
+  }, [load]);
 
   // A link can name a finding or an alert to look at (#ego?finding=... or #ego?alert=...), as the sidebar's flag does:
   // the page scrolls to its section, and a finding is opened. It runs again when the same page is linked anew.
@@ -485,6 +499,22 @@ export const QualityView: React.FC = () => {
                     {chosenFinding.diagnosis.suggested_correction && (
                       <p><b>Suggested correction.</b> {chosenFinding.diagnosis.suggested_correction}</p>
                     )}
+                    {chosenFinding.suggestion_withheld && (
+                      <p css={dimStyle}>A suggested correction waits for an admin to approve it; agents do not see it until then.</p>
+                    )}
+                    {chosenFinding.suggestion_needs_approval && chosenFinding.diagnosis.suggested_correction && (
+                      <div css={reviewRowStyle}>
+                        <span css={dimStyle}>
+                          {chosenFinding.approval?.decision === 'rejected' ? `Rejected by ${chosenFinding.approval.by}. ` : ''}
+                          Agents read this suggestion only once you approve it.
+                        </span>
+                        <button css={segBtnStyle} disabled={reviewing} onClick={() => review(chosenFinding.finding_id, 'approved')}>Approve</button>
+                        <button css={segBtnStyle} disabled={reviewing} onClick={() => review(chosenFinding.finding_id, 'rejected')}>Reject</button>
+                      </div>
+                    )}
+                    {!chosenFinding.suggestion_needs_approval && chosenFinding.approval?.decision === 'approved' && (
+                      <p css={dimStyle}>Suggestion approved by {chosenFinding.approval.by}.</p>
+                    )}
                     <p css={dimStyle}>
                       window mean {pct(chosenFinding.window.mean)} over {chosenFinding.window.n} sessions
                       {chosenFinding.model ? ` · diagnosed by ${chosenFinding.model}` : ' · written from the evidence alone'}
@@ -737,6 +767,13 @@ const findingModeStyle = css`
   overflow: hidden;
   color: var(--text-secondary);
   line-height: 1.4;
+`;
+
+const reviewRowStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 `;
 
 const findingDetailStyle = css`

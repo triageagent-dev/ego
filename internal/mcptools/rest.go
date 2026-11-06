@@ -520,6 +520,14 @@ func (b *REST) RegisterCorrection(ctx context.Context, in CorrectionInput) (*onl
 	return &out, nil
 }
 
+func (b *REST) ReviewFinding(ctx context.Context, id, decision string) (*online.Finding, error) {
+	var out online.Finding
+	if err := b.post(ctx, "/api/online/findings/"+url.PathEscape(id)+"/review", map[string]string{"decision": decision}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (b *REST) RunFindings(ctx context.Context) (*SweepReport, error) {
 	var out SweepReport
 	if err := b.post(ctx, "/api/online/findings/sweep", nil, &out); err != nil {

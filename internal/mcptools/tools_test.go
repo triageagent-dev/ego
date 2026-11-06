@@ -127,6 +127,7 @@ func TestToolsDeclareTheirBehaviour(t *testing.T) {
 		"list_corrections":    reads,
 		"list_role_bindings":  reads,
 		"register_correction": {false, false, false, false},
+		"review_finding":      {false, false, true, false},
 		"label_session":       {false, false, false, false},
 		"set_role_binding":    {false, true, true, false},
 		"mint_sender_token":   {false, false, false, false},
