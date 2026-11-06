@@ -1,0 +1,52 @@
+name: CI gate
+
+# Reusable: waits for the CI checks of the commit a release tag points at and fails if one of them failed, so nothing is
+# published from a commit that did not pass. Called by release.yml and release-chart.yml.
+on:
+  workflow_call:
+    inputs:
+      enforce:
+        description: Wait for the checks; false skips the wait (a manual run that publishes nothing)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci-gate:
+    name: CI passed on this commit
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      # A tag publishes whatever commit it points at, so the release waits for the CI checks of that commit (build,
+      # vet, gofmt, tests, vulnerability scan) and stops if one failed.
+      - name: Wait for the CI checks of the tagged commit
+        if: inputs.enforce
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          required=("Go build, vet, fmt, test" "Go vulnerability scan")
+          for attempt in $(seq 1 60); do
+            checks="$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" --jq '.check_runs[] | [.name, .status, (.conclusion // "")] | @tsv')"
+            pending=0
+            for name in "${required[@]}"; do
+              line="$(printf '%s\n' "$checks" | awk -F'\t' -v n="$name" '$1 == n' | tail -n1)"
+              status="$(printf '%s' "$line" | cut -f2)"
+              conclusion="$(printf '%s' "$line" | cut -f3)"
+              if [ "$status" = completed ] && [ "$conclusion" != success ]; then
+                echo "::error::CI check '$name' ended $conclusion on $SHA"
+                exit 1
+              fi
+              if [ "$status" != completed ]; then pending=1; fi
+            done
+            if [ "$pending" = 0 ]; then echo "CI passed on $SHA"; exit 0; fi
+            echo "waiting for CI on $SHA (attempt $attempt)"
+            sleep 30
+          done
+          echo "::error::CI did not finish on $SHA in 30 minutes"
+          exit 1

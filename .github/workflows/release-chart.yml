@@ -11,8 +11,16 @@ permissions:
   contents: read
 
 jobs:
+  ci-gate:
+    name: CI passed on this commit
+    permissions:
+      checks: read
+      contents: read
+    uses: ./.github/workflows/ci-gate.yml
+
   chart:
     name: Helm chart
+    needs: ci-gate
     runs-on: ubuntu-latest
     environment: release
     permissions:
