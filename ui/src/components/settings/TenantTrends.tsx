@@ -26,8 +26,9 @@ const RANGES: { label: string; hours: number }[] = [
   { label: '30d', hours: 24 * 30 },
 ];
 
-// Lines drawn by name; the tenants past this many are summed into one grey line, as the usage page does.
-const NAMED_LINES = 7;
+// Lines drawn by name; the tenants past this many are summed into one grey line, as the usage page does. The names are
+// listed under the chart, so a long list takes no room from the plot.
+const NAMED_LINES = 12;
 const OTHER = 'Other';
 
 function short(n: number): string {
@@ -157,7 +158,7 @@ export const TenantTrends: React.FC<{ tenants: AdminTenant[] }> = ({ tenants }) 
               animation: false,
               interaction: { mode: 'index', intersect: false },
               plugins: {
-                legend: { position: 'top', align: 'start', labels: { color: '#a8b2c1', boxWidth: 12, boxHeight: 12, useBorderRadius: true, borderRadius: 2 } },
+                legend: { display: false },
                 tooltip: {
                   filter: (item) => (item.raw as number) > 0,
                   itemSort: (a, b) => (b.raw as number) - (a.raw as number),
@@ -171,6 +172,16 @@ export const TenantTrends: React.FC<{ tenants: AdminTenant[] }> = ({ tenants }) 
             }}
           />
         </ChartBox>
+      )}
+      {chart && chart.datasets.length > 0 && (
+        <ul css={legendStyle}>
+          {chart.datasets.map((d) => (
+            <li key={d.label} css={legendItemStyle} title={d.label}>
+              <span css={swatchStyle} style={{ background: d.borderColor }} />
+              <span css={legendNameStyle}>{d.label}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );
@@ -200,4 +211,38 @@ const noteStyle = css`
   margin: 8px 0;
   color: var(--text-muted);
   font-size: 12px;
+`;
+
+const legendStyle = css`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  max-height: 96px;
+  margin: 8px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+`;
+
+const legendItemStyle = css`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 240px;
+  color: #a8b2c1;
+  font-size: 12px;
+`;
+
+const swatchStyle = css`
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+`;
+
+const legendNameStyle = css`
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
