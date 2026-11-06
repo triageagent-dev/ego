@@ -5,6 +5,7 @@ import { Check, Copy } from 'lucide-react';
 import { createSender, deleteSender, getAdminOverview, mintSenderToken, revokeSenderToken } from '../../api/client';
 import type { AdminOverview, AdminSender, AdminTenant } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
+import { TenantTrends } from './TenantTrends';
 import { pageStyle, subtitleStyle, titleStyle } from '../ui/page';
 
 // 1,234,567 -> 1.2M
@@ -154,6 +155,7 @@ const TenantsTab: React.FC<{ data: AdminOverview }> = ({ data }) => {
           {rows.length === data.tenants.length ? `${rows.length} tenants` : `${rows.length} of ${data.tenants.length}`}
         </span>
       </div>
+      <TenantTrends tenants={rows} />
       <Table<AdminTenant>
         size="small"
         rowKey="key"

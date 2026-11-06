@@ -663,3 +663,11 @@ export async function revokeSenderToken(sender: string, tokenId: string): Promis
   const response = await fetch(`${config.api.endpoints.adminSenders}/${encodeURIComponent(sender)}/tokens/${encodeURIComponent(tokenId)}`, { method: 'DELETE' });
   if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to revoke the token'));
 }
+
+/** The usage series of every tenant (the admin page's trends), not narrowed to the tenant picked in the switcher. */
+export async function getAdminUsage(hours: number): Promise<UsageSeries> {
+  const bucket = hours <= 48 ? 'hour' : 'day';
+  const response = await fetch(`${config.api.endpoints.usage}?hours=${hours}&bucket=${bucket}`);
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to load the usage'));
+  return unwrap<UsageSeries>(response);
+}

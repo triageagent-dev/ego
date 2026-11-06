@@ -53,8 +53,8 @@ const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300',
 // normal-vision 19.3; all seven clear 3:1). The last four sit at least ΔE 9.1
 // from every other slot, above the existing worst pair (7.1). Past fourteen
 // kinds the slots repeat, and the legend, tooltip and table still name each.
-const KIND_SLOTS = [...SLOTS, '#e66767', '#887800', '#a858b8', '#80a010', '#20a0b8', '#7060e0', '#a86048'];
-const OTHER_COLOR = '#6b7586';
+export const KIND_SLOTS = [...SLOTS, '#e66767', '#887800', '#a858b8', '#80a010', '#20a0b8', '#7060e0', '#a86048'];
+export const OTHER_COLOR = '#6b7586';
 const OTHER = 'Other';
 // The part of the input the prompt cache served, drawn under every group's own colour; a light grey-blue that no
 // group slot uses.
