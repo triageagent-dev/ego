@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
-import { Button, Checkbox, Input, Modal, Popconfirm, Table, Tabs } from 'antd';
+import { Button, Checkbox, Input, Modal, Popconfirm, Select, Table, Tabs } from 'antd';
 import { Check, Copy } from 'lucide-react';
 import { createSender, deleteSender, getAdminOverview, mintSenderToken, revokeSenderToken } from '../../api/client';
 import type { AdminOverview, AdminSender, AdminTenant } from '../../lib/types';
@@ -122,40 +122,73 @@ const NewKey: React.FC<{ senders: string[]; initialSender?: string; onDone: (m: 
   );
 };
 
-const TenantsTab: React.FC<{ data: AdminOverview }> = ({ data }) => (
-  <>
-    <p css={hintStyle}>Every tenant the server knows, with its LLM calls since {new Date(data.since).toISOString().slice(0, 10)}.</p>
-    <Table<AdminTenant>
-      size="small"
-      rowKey="key"
-      pagination={false}
-      dataSource={data.tenants}
-      columns={[
-        {
-          title: 'tenant',
-          render: (_, t) => (
-            <div>
-              <div>{t.name || t.label}</div>
-              <div css={monoStyle}>{t.key}</div>
-            </div>
-          ),
-        },
-        { title: 'sessions', dataIndex: 'sessions', align: 'right' },
-        { title: 'calls', dataIndex: 'calls', align: 'right', render: (n: number) => short(n) },
-        { title: 'errors', dataIndex: 'errors', align: 'right', render: (n: number) => (n ? short(n) : '-') },
-        { title: 'tokens in', dataIndex: 'inputTokens', align: 'right', render: (n: number) => short(n) },
-        { title: 'tokens out', dataIndex: 'outputTokens', align: 'right', render: (n: number) => short(n) },
-        { title: 'last call', dataIndex: 'lastCall', align: 'right', render: (n?: number) => ago(n) },
-        { title: 'keys', dataIndex: 'tokens', align: 'right', render: (n: number) => n || '-' },
-      ]}
-    />
-  </>
-);
+const byNumber = (pick: (t: AdminTenant) => number) => (a: AdminTenant, b: AdminTenant) => pick(a) - pick(b);
+const nameOf = (t: AdminTenant) => (t.name || t.label).toLowerCase();
+
+const TenantsTab: React.FC<{ data: AdminOverview }> = ({ data }) => {
+  const [query, setQuery] = useState('');
+  const [sender, setSender] = useState<string | undefined>();
+  const [withTraffic, setWithTraffic] = useState(false);
+
+  const senders = useMemo(() => [...new Set(data.tenants.map((t) => t.sender).filter((x): x is string => !!x))].sort(), [data.tenants]);
+  const rows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return data.tenants.filter(
+      (t) =>
+        (!q || t.key.toLowerCase().includes(q) || (t.name ?? '').toLowerCase().includes(q)) &&
+        (!sender || t.sender === sender) &&
+        (!withTraffic || t.calls > 0),
+    );
+  }, [data.tenants, query, sender, withTraffic]);
+
+  return (
+    <>
+      <p css={hintStyle}>Every tenant the server knows, with its LLM calls since {new Date(data.since).toISOString().slice(0, 10)}. Click a column to sort.</p>
+      <div css={filterBarStyle}>
+        <Input.Search allowClear placeholder="search name, sender or tenant" value={query} onChange={(e) => setQuery(e.target.value)} style={{ maxWidth: 320 }} />
+        <Select allowClear placeholder="all senders" value={sender} onChange={setSender} style={{ minWidth: 170 }} options={senders.map((x) => ({ value: x, label: x }))} />
+        <Checkbox checked={withTraffic} onChange={(e) => setWithTraffic(e.target.checked)}>
+          with calls in the window
+        </Checkbox>
+        <span css={noteStyle}>
+          {rows.length === data.tenants.length ? `${rows.length} tenants` : `${rows.length} of ${data.tenants.length}`}
+        </span>
+      </div>
+      <Table<AdminTenant>
+        size="small"
+        rowKey="key"
+        pagination={false}
+        dataSource={rows}
+        showSorterTooltip={false}
+        columns={[
+          {
+            title: 'tenant',
+            sorter: (a, b) => nameOf(a).localeCompare(nameOf(b)),
+            render: (_, t) => (
+              <div>
+                <div>{t.name || t.label}</div>
+                <div css={monoStyle}>{t.key}</div>
+              </div>
+            ),
+          },
+          { title: 'sessions', dataIndex: 'sessions', align: 'right', sorter: byNumber((t) => t.sessions) },
+          { title: 'calls', dataIndex: 'calls', align: 'right', sorter: byNumber((t) => t.calls), defaultSortOrder: 'descend', render: (n: number) => short(n) },
+          { title: 'errors', dataIndex: 'errors', align: 'right', sorter: byNumber((t) => t.errors), render: (n: number) => (n ? short(n) : '-') },
+          { title: 'tokens in', dataIndex: 'inputTokens', align: 'right', sorter: byNumber((t) => t.inputTokens), render: (n: number) => short(n) },
+          { title: 'tokens out', dataIndex: 'outputTokens', align: 'right', sorter: byNumber((t) => t.outputTokens), render: (n: number) => short(n) },
+          { title: 'last call', dataIndex: 'lastCall', align: 'right', sorter: byNumber((t) => t.lastCall ?? 0), render: (n?: number) => ago(n) },
+          { title: 'keys', dataIndex: 'tokens', align: 'right', sorter: byNumber((t) => t.tokens), render: (n: number) => n || '-' },
+        ]}
+      />
+    </>
+  );
+};
 
 const KeysTab: React.FC<{ data: AdminOverview; reload: () => void }> = ({ data, reload }) => {
   const [newKeyFor, setNewKeyFor] = useState<string | null>(null);
   const [minted, setMinted] = useState<Minted | null>(null);
   const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
 
   const run = async (action: () => Promise<void>) => {
     setError('');
@@ -168,15 +201,24 @@ const KeysTab: React.FC<{ data: AdminOverview; reload: () => void }> = ({ data, 
   };
 
   const ids = data.senders.map((s) => s.id);
+  // A sender shows when its id matches, or with only the keys whose label or tenant match.
+  const q = query.trim().toLowerCase();
+  const shown = data.senders
+    .map((s) => (!q || s.id.toLowerCase().includes(q) ? s : { ...s, tokens: s.tokens.filter((t) => `${t.label ?? ''} ${t.tenant ?? ''}`.toLowerCase().includes(q)) }))
+    .filter((s) => !q || s.id.toLowerCase().includes(q) || s.tokens.length > 0);
   return (
     <>
       <div css={toolbarStyle}>
         <p css={hintStyle}>A key is how a sender's traces are let in. A key bound to a tenant puts everything it sends in that tenant.</p>
         <Button type="primary" size="small" onClick={() => setNewKeyFor('')}>New key</Button>
       </div>
+      <div css={filterBarStyle}>
+        <Input.Search allowClear placeholder="search sender, label or tenant" value={query} onChange={(e) => setQuery(e.target.value)} style={{ maxWidth: 320 }} />
+        <span css={noteStyle}>{shown.length === data.senders.length ? `${shown.length} senders` : `${shown.length} of ${data.senders.length}`}</span>
+      </div>
       {error && <div css={errorStyle}>{error}</div>}
       {data.senders.length === 0 && <div css={noteStyle}>No sender yet.</div>}
-      {data.senders.map((s: AdminSender) => (
+      {shown.map((s: AdminSender) => (
         <section key={s.id} css={senderStyle}>
           <header css={senderHeadStyle}>
             <span css={monoStyle}>{s.id}</span>
@@ -295,6 +337,14 @@ const monoStyle = css`
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 12px;
+`;
+
+const filterBarStyle = css`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
 `;
 
 const toolbarStyle = css`
