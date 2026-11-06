@@ -58,7 +58,7 @@ The design and the as-built notes are in [docs/rsi.md](docs/rsi.md).
 
 Each tagged release (`v*.*.*`) publishes binaries for Linux and macOS (amd64, arm64), a multi-arch container image
 (`ghcr.io/triageagent-dev/ego`) and the Helm chart (`oci://ghcr.io/triageagent-dev/charts/ego`). `ego version`
-prints the installed version. `install.sh` verifies the download against `checksums.txt`.
+prints the installed version. Download a binary from the release page and check it against `checksums.txt` (signed, see Releasing), or run the image.
 
 ## What it does
 
@@ -79,7 +79,7 @@ prints the installed version. `install.sh` verifies the download against `checks
 ### Run it on your machine
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/triageagent-dev/ego/main/install.sh | sh   # installs `ego`
+# download the binary for your platform from the latest GitHub release and put it on your PATH
 
 export EGO_OTLP_TOKEN=$(openssl rand -hex 32)   # the password your agent sends its traces with
 ego serve --session-db ego.db
@@ -626,11 +626,11 @@ binaries and the image only.
 ### Releasing
 
 **Releasing:** push a version tag (`git tag vX.Y.Z && git push origin vX.Y.Z`). The *Release* workflow waits for the CI checks of the
-tagged commit (tests, vet, gofmt, the vulnerability scan) and stops if one failed, builds the four binaries, pushes the multi-arch image and the Helm chart to ghcr.io and creates the GitHub
+tagged commit (tests, vet, gofmt, the vulnerability scan) and stops if one failed, builds the four binaries, pushes the multi-arch image to ghcr.io and creates the GitHub
 release with the binaries and `checksums.txt`. The checksums file and the image are signed keyless with the workflow's
 identity (`cosign verify-blob --bundle checksums.txt.bundle --certificate-identity-regexp
 "https://github.com/triageagent-dev/ego/" --certificate-oidc-issuer https://token.actions.githubusercontent.com
-checksums.txt`, and `cosign verify` on the image and on the chart). `install.sh` checks that signature when `cosign` is installed. The fallback when Actions cannot run is
+checksums.txt`, and `cosign verify` on the image and on the chart). The fallback when Actions cannot run is
 `make release-local RELEASE_TAG=vX.Y.Z` (`scripts/release-local.sh`) from a clean checkout of the commit: the same
 steps on a maintainer's machine, without the signatures; releases v0.1.51 to v0.1.59 were made this way. Use one path
 or the other for a tag, never both. New GHCR packages are private until their visibility is changed under the package
