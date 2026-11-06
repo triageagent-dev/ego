@@ -106,17 +106,29 @@ func TestGitHubTokenValidator_CachesResult(t *testing.T) {
 // TestAuthenticate_GitHubTokenFallback exercises the full path
 // used by requireSession: a bearer value that isn't a valid signed
 // session token but is a valid GitHub token for an org member still
-// authenticates.
+// authenticates on the MCP path, and only there.
 func TestExtractSessionUsername_GitHubTokenFallback(t *testing.T) {
 	githubAPIStub(t, "octocat", true)
 	ghTokens := newGitHubTokenValidator(&GitHubOAuthConfig{Org: "triageagent-dev"})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/runs", nil)
+	req := httptest.NewRequest(http.MethodPost, mcpPath, nil)
 	req.Header.Set("Authorization", "Bearer ghp_validtoken0123456789abcdefghij")
 
 	id, ok := authenticate(req, "session-secret", ghTokens, nil)
 	if !ok || id.Username != "octocat" || id.Kind != identityGitHub {
 		t.Fatalf("authenticate() = (%+v, %v), want octocat via GitHub", id, ok)
+	}
+}
+
+func TestAuthenticate_GitHubTokenIsRefusedOutsideMCP(t *testing.T) {
+	githubAPIStub(t, "octocat", true)
+	ghTokens := newGitHubTokenValidator(&GitHubOAuthConfig{Org: "triageagent-dev"})
+	for _, path := range []string{"/api/runs", "/api/admin/overview", "/stream/ui-updates", "/"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer ghp_validtoken0123456789abcdefghij")
+		if id, ok := authenticate(req, "session-secret", ghTokens, nil); ok {
+			t.Fatalf("authenticate(%s) accepted a raw GitHub token as %+v, want it refused", path, id)
+		}
 	}
 }
 
@@ -131,7 +143,7 @@ func TestRequireSession_AcceptsGitHubTokenBearer(t *testing.T) {
 	})
 	handler := requireSession("session-secret", ghTokens, nil, inner)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/runs", nil)
+	req := httptest.NewRequest(http.MethodPost, mcpPath, nil)
 	req.Header.Set("Authorization", "Bearer ghp_validtoken0123456789abcdefghij")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

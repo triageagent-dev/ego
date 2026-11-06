@@ -67,8 +67,8 @@ func signSessionPayload(secret, payload string) string {
 
 // authenticate identifies the caller. A session cookie is accepted only as the cookie and an API token only as a
 // bearer value, so a copied cookie is not a bearer token; both must be unrevoked. A bearer value that is not one
-// of this service's own tokens gets one more try as a raw GitHub access token (ghTokens is nil when no GitHub
-// OAuth config is set) - see githubtoken.go.
+// of this service's own tokens gets one more try as a raw GitHub access token on the MCP path only (ghTokens is nil
+// when no GitHub OAuth config is set) - see githubtoken.go.
 func authenticate(r *http.Request, secret string, ghTokens *githubTokenValidator, revoked *revocations) (identity, bool) {
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
 		if t, ok := parseToken(cookie.Value, secret); ok && t.Kind == tokenKindSession && !revoked.revoked(t) {
@@ -87,8 +87,12 @@ func authenticate(r *http.Request, secret string, ghTokens *githubTokenValidator
 			}
 			return identity{}, false
 		}
-		if username, ok := ghTokens.validate(token); ok {
-			return identity{Username: username, Kind: identityGitHub}, true
+		// Only the MCP path takes a raw GitHub token: that is where `ego mcp` and other MCP clients sign in with the
+		// output of `gh auth token`. The UI and the REST API take a session, an API token or a delegate token.
+		if r.URL.Path == mcpPath {
+			if username, ok := ghTokens.validate(token); ok {
+				return identity{Username: username, Kind: identityGitHub}, true
+			}
 		}
 	}
 	return identity{}, false
@@ -110,8 +114,8 @@ func isAPIPath(path string) bool {
 // If secret is empty, auth is disabled and handler is returned unwrapped -
 // the default for local/port-forward use. ghTokens (nil unless a GitHub
 // OAuth config is set) additionally accepts a raw GitHub access token as
-// the bearer value - see githubtoken.go/extractSessionUsername - so a
-// non-browser client can authenticate with `gh auth token`'s output
+// the bearer value on the MCP path only - see githubtoken.go - so an MCP
+// client can authenticate with `gh auth token`'s output
 // instead of a separately minted ego bearer token.
 func requireSession(secret string, ghTokens *githubTokenValidator, revoked *revocations, handler http.Handler) http.Handler {
 	if secret == "" {

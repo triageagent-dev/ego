@@ -379,7 +379,7 @@ claude mcp add --transport http ego https://ego.example.com/mcp --header "Author
 An agent can use the OTLP sender token it already sends traces with when that token was minted with `"mcp": true`: on
 `/mcp` it acts as a member limited to that sender's tenants, so one token covers sending traces and reading verdicts. A
 token minted without it only sends, so a leaked exporter credential cannot read sessions back. A session token or a GitHub token
-of an org member works too. `ego mcp` is the same registry on stdio, for a client that cannot reach the server
+of an org member works too (a GitHub token is accepted on `/mcp` only, not on the REST API). `ego mcp` is the same registry on stdio, for a client that cannot reach the server
 over HTTP; it adds `evaluate_traces`, which scores local files.
 
 A client that answers for many tenants with one credential, such as a core serving several workspaces, should hold a
