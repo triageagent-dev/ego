@@ -150,6 +150,7 @@ func (s *SQLiteStore) InsertRunResults(runID string, rows []runResultRowDTO) err
 	if err != nil {
 		return err
 	}
+	defer holdTimer("InsertRunResults")()
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`INSERT INTO run_results (

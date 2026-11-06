@@ -251,8 +251,8 @@ func TestNewSQLiteStore_EveryConnectionWaitsForTheLock(t *testing.T) {
 		if err := c.QueryRowContext(ctx, `PRAGMA synchronous`).Scan(&synchronous); err != nil {
 			t.Fatal(err)
 		}
-		if timeout != 5000 || synchronous != 1 {
-			t.Errorf("connection %d: busy_timeout %d, synchronous %d, want 5000 and 1 (NORMAL)", i, timeout, synchronous)
+		if timeout != 30000 || synchronous != 1 {
+			t.Errorf("connection %d: busy_timeout %d, synchronous %d, want 30000 and 1 (NORMAL)", i, timeout, synchronous)
 		}
 	}
 }

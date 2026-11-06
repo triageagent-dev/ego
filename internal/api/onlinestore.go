@@ -139,6 +139,7 @@ func (s *SQLiteStore) InsertOnlineEval(e onlineEvalRow, version, model string, s
 	if err != nil {
 		return err
 	}
+	defer holdTimer("InsertOnlineEval")()
 	defer tx.Rollback()
 	if _, err := tx.Exec(`INSERT OR REPLACE INTO online_evals
 		(session_id, trace_id, at_ms, tenant, kind, service, profile, lane, reasons, judge_tokens, jev_calls, run_id, invocations)

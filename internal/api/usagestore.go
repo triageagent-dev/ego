@@ -75,6 +75,14 @@ func ensureUsageSchema(db *sql.DB) error {
 			return err
 		}
 	}
+	// The start asks whether any row still lacks its cache split or its kind. Those rows are few or none, so an
+	// index over just them makes both questions instant instead of a scan of the whole ledger on every start.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_llm_calls_cache_unknown ON llm_calls(span_id) WHERE cache_read_tokens IS NULL`); err != nil {
+		return fmt.Errorf("creating llm_calls cache index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_llm_calls_kindless ON llm_calls(session_id) WHERE kind = ''`); err != nil {
+		return fmt.Errorf("creating llm_calls kind index: %w", err)
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_llm_calls_thread ON llm_calls(thread)`); err != nil {
 		return fmt.Errorf("creating llm_calls.thread index: %w", err)
 	}
@@ -160,6 +168,7 @@ func (s *SQLiteStore) FillUsageKinds(roots map[string]string) error {
 	if err != nil {
 		return err
 	}
+	defer holdTimer("FillUsageKinds")()
 	stmt, err := tx.Prepare(`UPDATE llm_calls SET kind = ? WHERE trace_id = ? AND kind = ''`)
 	if err != nil {
 		tx.Rollback()
@@ -214,6 +223,7 @@ func (s *SQLiteStore) FillUsageCache(splits map[string]cacheSplit) error {
 	if err != nil {
 		return err
 	}
+	defer holdTimer("FillUsageCache")()
 	stmt, err := tx.Prepare(`UPDATE llm_calls SET cache_read_tokens = ?, cache_write_tokens = ? WHERE span_id = ? AND cache_read_tokens IS NULL`)
 	if err != nil {
 		tx.Rollback()
@@ -231,6 +241,7 @@ func (s *SQLiteStore) FillUsageCache(splits map[string]cacheSplit) error {
 
 // FinishUsageCache marks the rows no archived span matched as having no cache part, so they are not looked for again.
 func (s *SQLiteStore) FinishUsageCache() error {
+	defer holdTimer("FinishUsageCache")()
 	_, err := s.db.Exec(`UPDATE llm_calls SET cache_read_tokens = 0, cache_write_tokens = 0 WHERE cache_read_tokens IS NULL`)
 	return err
 }
@@ -245,6 +256,7 @@ func (s *SQLiteStore) InsertUsage(rows []usageRow) error {
 	if err != nil {
 		return err
 	}
+	defer holdTimer("InsertUsage")()
 	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO llm_calls
 		(span_id, trace_id, session_id, start_ms, duration_ms, service, tenant, kind, model, name, input_tokens, output_tokens, is_error, thread,
 			cache_read_tokens, cache_write_tokens)

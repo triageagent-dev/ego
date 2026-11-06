@@ -135,6 +135,7 @@ func (s *SQLiteStore) purgeTenantRows(set map[string]bool, doomed map[string]boo
 	if err != nil {
 		return res, err
 	}
+	defer holdTimer("purge")()
 	defer tx.Rollback()
 	if !dryRun {
 		if err := takeWriteLock(tx); err != nil {

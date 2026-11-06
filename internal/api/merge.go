@@ -213,6 +213,7 @@ func (s *SQLiteStore) mergeTenantRows(from, to string, dryRun bool, res *MergeRe
 	if err != nil {
 		return err
 	}
+	defer holdTimer("mergeTenantRows")()
 	defer tx.Rollback()
 	if !dryRun {
 		if err := takeWriteLock(tx); err != nil {

@@ -839,6 +839,7 @@ func (s *SessionStore) LoadPersisted() error {
 	phase("loading the newest sessions")
 
 	s.mu.Lock()
+	defer func() { phase("restoring the newest sessions") }()
 	defer s.mu.Unlock()
 	openThreads := map[string]bool{}
 	for _, snap := range snapshots {
@@ -884,7 +885,7 @@ func (s *SessionStore) LoadPersisted() error {
 
 // restoreBudgetBytes bounds the archived JSON read back into memory at start,
 // newest sessions first, whatever maxMemory allows.
-const restoreBudgetBytes = 16 << 20
+const restoreBudgetBytes = 8 << 20
 
 // restoreSession rebuilds a Session from its archived snapshot, with a
 // fresh extractor (see sessionSnapshot) and, for a completed session, its

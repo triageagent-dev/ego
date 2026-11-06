@@ -42,7 +42,19 @@ func (s *SQLiteStore) announce(topic string, err error) error {
 // that path and not the start of a query, with the pragmas every connection of the pool needs.
 func sqliteDSN(path string) string {
 	escaped := strings.NewReplacer("%", "%25", "?", "%3f", "#", "%23").Replace(path)
-	return "file:" + escaped + "?_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
+	return "file:" + escaped + "?_pragma=busy_timeout(30000)&_pragma=synchronous(NORMAL)"
+}
+
+// holdTimer times a write that holds the archive's write lock: call it right after the transaction begins and
+// defer the function it returns. A hold of a second or more is logged with the name of the write, so a writer that
+// fails with SQLITE_BUSY can be traced to whoever held the lock.
+func holdTimer(name string) func() {
+	began := time.Now()
+	return func() {
+		if d := time.Since(began); d >= time.Second {
+			logx.Warnf("session archive: write %q held the database for %s", name, d.Round(time.Millisecond))
+		}
+	}
 }
 
 // NewSQLiteStore opens (creating if needed) the archive at path, in WAL
@@ -219,6 +231,7 @@ func (s *SQLiteStore) SaveAll(sessions map[string]*Session) error {
 	if err != nil {
 		return err
 	}
+	defer holdTimer("SaveAll")()
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`INSERT INTO sessions (session_id, data, updated_at) VALUES (?, ?, ?)
@@ -383,6 +396,7 @@ func (s *SQLiteStore) PruneSessions(cutoff time.Time) (int64, error) {
 	if _, err := s.db.Exec("DELETE FROM session_index WHERE session_id IN (SELECT session_id FROM sessions WHERE updated_at < ?)", at); err != nil {
 		return 0, err
 	}
+	defer holdTimer("PruneSessions")()
 	res, err := s.db.Exec("DELETE FROM sessions WHERE updated_at < ?", at)
 	if err != nil {
 		return 0, err
@@ -394,6 +408,7 @@ func (s *SQLiteStore) PruneSessions(cutoff time.Time) (int64, error) {
 // the WAL into the main file, then VACUUM. VACUUM rewrites the whole file,
 // so it runs only after rows were actually deleted.
 func (s *SQLiteStore) Compact() error {
+	defer holdTimer("Compact")()
 	if _, err := s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
 		return fmt.Errorf("checkpointing WAL: %w", err)
 	}

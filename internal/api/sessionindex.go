@@ -291,11 +291,15 @@ func (s *SQLiteStore) BackfillSessionIndex(tenantAttr string) (int, error) {
 			if err != nil {
 				return added, err
 			}
+			done := holdTimer("BackfillSessionIndex")
 			if err := writeIndexRows(tx, idx, true); err != nil {
 				tx.Rollback()
+				done()
 				return added, err
 			}
-			if err := tx.Commit(); err != nil {
+			err = tx.Commit()
+			done()
+			if err != nil {
 				return added, err
 			}
 			added += len(idx)

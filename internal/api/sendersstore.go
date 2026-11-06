@@ -70,6 +70,7 @@ func (s *SQLiteStore) deleteSender(id string) error {
 	if err != nil {
 		return err
 	}
+	defer holdTimer("deleteSender")()
 	defer tx.Rollback()
 	if _, err := tx.Exec(`DELETE FROM sender_tokens WHERE sender = ?`, id); err != nil {
 		return err
