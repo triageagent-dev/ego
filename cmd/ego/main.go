@@ -491,6 +491,9 @@ func serveCmd(args []string) error {
 	if githubOAuth != nil {
 		githubOAuth.AuditLog = *auditLog
 	}
+	if githubOAuth != nil && (*defaultRole == "member" || *defaultRole == "admin") {
+		logx.Warnf("every org member gets the %s role without a binding; set --default-role viewer or none and bind roles to users and teams to narrow it", *defaultRole)
+	}
 	var adminUsers []string
 	for _, u := range strings.Split(*adminGitHubUsers, ",") {
 		if u = strings.TrimSpace(u); u != "" {
