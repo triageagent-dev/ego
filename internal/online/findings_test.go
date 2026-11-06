@@ -327,7 +327,16 @@ func TestNotifier_FindingAndCorrectionReachEverySink(t *testing.T) {
 		{Type: "event", URL: srv.URL + "/event"},
 	}}
 	cfg := &Config{}
-	f := &Finding{ID: "f1", Tenant: "acme", Kind: "rca", Metric: "m", FindingData: FindingData{Diagnosis: Diagnosis{FailureMode: "bad"}}}
+	f := &Finding{ID: "f1", Tenant: "acme", Kind: "rca", Metric: "m", FindingData: FindingData{Diagnosis: Diagnosis{FailureMode: "bad", SuggestedCorrection: "loosen the guard"}}}
+	gated := &Config{Findings: Findings{RequireApproval: true}}
+	if p := FindingPayloadOf(EventOpen, f, gated); p.SuggestedCorrection != "" || strings.Contains(FindingEventOf(p).Message, "loosen") {
+		t.Fatalf("a sink got an unapproved suggestion: %+v", p)
+	}
+	f.Approval = &Approval{Decision: ApprovalApproved, Hash: SuggestionHash("loosen the guard")}
+	if p := FindingPayloadOf(EventOpen, f, gated); p.SuggestedCorrection == "" {
+		t.Fatal("an approved suggestion was withheld from the sink")
+	}
+	f.Approval = nil
 	c := &Correction{ID: "c1", Tenant: "acme", Kind: "rca", Metric: "m", CorrectionData: CorrectionData{What: "fixed"}}
 	if err := n.Finding(context.Background(), FindingPayloadOf(EventOpen, f, cfg)); err != nil {
 		t.Fatal(err)

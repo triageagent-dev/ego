@@ -505,7 +505,7 @@ export const QualityView: React.FC = () => {
                     {chosenFinding.suggestion_needs_approval && chosenFinding.diagnosis.suggested_correction && (
                       <div css={reviewRowStyle}>
                         <span css={dimStyle}>
-                          {chosenFinding.approval?.decision === 'rejected' ? `Rejected by ${chosenFinding.approval.by}. ` : ''}
+                          {chosenFinding.approval?.decision === 'rejected' ? `Rejected${chosenFinding.approval.by ? ` by ${chosenFinding.approval.by}` : ''}. ` : ''}
                           Agents read this suggestion only once you approve it.
                         </span>
                         <button css={segBtnStyle} disabled={reviewing} onClick={() => review(chosenFinding.finding_id, 'approved')}>Approve</button>
@@ -513,7 +513,7 @@ export const QualityView: React.FC = () => {
                       </div>
                     )}
                     {!chosenFinding.suggestion_needs_approval && chosenFinding.approval?.decision === 'approved' && (
-                      <p css={dimStyle}>Suggestion approved by {chosenFinding.approval.by}.</p>
+                      <p css={dimStyle}>Suggestion approved{chosenFinding.approval.by ? ` by ${chosenFinding.approval.by}` : ''}.</p>
                     )}
                     <p css={dimStyle}>
                       window mean {pct(chosenFinding.window.mean)} over {chosenFinding.window.n} sessions

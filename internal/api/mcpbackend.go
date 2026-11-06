@@ -351,20 +351,11 @@ func (b *mcpBackend) ExplainSession(ctx context.Context, sessionID string) (*mcp
 }
 
 func (b *mcpBackend) Findings(ctx context.Context, kind, state string, since time.Time) ([]online.Finding, error) {
-	return b.online.Findings(roleInfoOrOpen(ctx), kind, state, since)
+	return b.online.Findings(roleInfoOrOpen(ctx), isPerson(ctx), kind, state, since)
 }
 
 func (b *mcpBackend) RegisterCorrection(ctx context.Context, in mcptools.CorrectionInput) (*online.Correction, error) {
 	return b.online.RegisterCorrection(roleInfoOrOpen(ctx), in)
-}
-
-func (b *mcpBackend) ReviewFinding(ctx context.Context, id, decision string) (*online.Finding, error) {
-	out, err := b.online.ReviewFinding(roleInfoOrOpen(ctx), callerName(ctx), isPerson(ctx), id, decision)
-	if err != nil {
-		return nil, err
-	}
-	auditLog(ctx, "finding.review", "findingId", out.ID, "decision", decision, "via", "mcp")
-	return out, nil
 }
 
 func (b *mcpBackend) RunFindings(ctx context.Context) (*mcptools.SweepReport, error) {

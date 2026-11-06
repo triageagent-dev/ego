@@ -126,8 +126,8 @@ type Detector struct {
 type Findings struct {
 	// Enabled false writes no findings; corrections can still be registered and verified.
 	Enabled bool `json:"enabled"`
-	// RequireApproval keeps a finding's suggested correction from every caller but an admin until a person has
-	// approved that text. The suggestion is written by a judge model from sessions the agent's users influence, and an
+	// RequireApproval keeps a finding's suggested correction from every caller but an admin who is a person (not an
+	// admin's API token in an agent's hands) until a person has approved that text. The suggestion is written by a judge model from sessions the agent's users influence, and an
 	// agent that applies it rewrites itself; this is the human between the two. On unless the config turns it off.
 	RequireApproval bool `json:"requireApproval"`
 	// Every is the sweep interval over series that have always been bad.

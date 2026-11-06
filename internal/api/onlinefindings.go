@@ -292,6 +292,9 @@ func (e *OnlineEngine) writeFinding(ctx context.Context, now time.Time, key onli
 		sessions[i] = ev.SessionID
 	}
 	apply := func(f *online.Finding) {
+		if f.Approval != nil && f.Approval.Hash != online.SuggestionHash(res.d.SuggestedCorrection) {
+			f.Approval = nil // a decision on a suggestion that is gone says nothing about the new text
+		}
 		f.Diagnosis = res.d
 		f.Sessions = sessions
 		f.Window = online.FindingWindow{From: from.UTC(), To: now.UTC(), N: stats.Sessions, Mean: stats.Mean, Below: stats.Below}
@@ -802,8 +805,10 @@ func allStates(s string) string {
 	return s
 }
 
-// Findings lists the findings of the tenants info may see, last updated first.
-func (e *OnlineEngine) Findings(info RoleInfo, kind, state string, since time.Time) ([]online.Finding, error) {
+// Findings lists the findings of the tenants info may see, last updated first. person says whether the caller is a
+// person (see isPerson): an unapproved suggestion is shown only to an admin who is one, since an admin's API token in
+// an agent's hands is still an agent.
+func (e *OnlineEngine) Findings(info RoleInfo, person bool, kind, state string, since time.Time) ([]online.Finding, error) {
 	if e == nil {
 		return nil, errOnlineUnavailable
 	}
@@ -823,13 +828,13 @@ func (e *OnlineEngine) Findings(info RoleInfo, kind, state string, since time.Ti
 	}
 	out := []online.Finding{}
 	for _, f := range filterByTenant(rows, info, func(f *online.Finding) string { return f.Tenant }) {
-		out = append(out, f.ForCaller(e.conf().Findings.RequireApproval, info.IsAdmin))
+		out = append(out, f.ForCaller(e.conf().Findings.RequireApproval, info.IsAdmin && person))
 	}
 	return out, nil
 }
 
 // Finding returns one finding, for a caller who may see its tenant.
-func (e *OnlineEngine) Finding(info RoleInfo, id string) (*online.Finding, error) {
+func (e *OnlineEngine) Finding(info RoleInfo, person bool, id string) (*online.Finding, error) {
 	if e == nil {
 		return nil, errOnlineUnavailable
 	}
@@ -843,14 +848,15 @@ func (e *OnlineEngine) Finding(info RoleInfo, id string) (*online.Finding, error
 	if !ok || !info.AllowsAnyTenant([]string{f.Tenant}) {
 		return nil, notFound("finding")
 	}
-	shown := f.ForCaller(e.conf().Findings.RequireApproval, info.IsAdmin)
+	shown := f.ForCaller(e.conf().Findings.RequireApproval, info.IsAdmin && person)
 	return &shown, nil
 }
 
 // ReviewFinding records a person's decision on a finding's suggested correction ("approved" or "rejected"). Only an
-// admin may decide, and only as a person: the caller says whether the request came from one (a signed-in session or a
-// member's own GitHub token) as opposed to an API, delegate or ingest token an agent holds, which can read the
-// suggestion once approved but never approve it.
+// admin may decide, and only as a person: the caller says whether the request came from one (a signed-in session at
+// the UI; see isPerson) as opposed to a bearer token an agent holds, which can read the suggestion once approved but
+// never approve it. There is no MCP tool for it on purpose: the approval is the human between a judge-written text
+// and an agent that would apply it.
 func (e *OnlineEngine) ReviewFinding(info RoleInfo, by string, person bool, id, decision string) (*online.Finding, error) {
 	if e == nil {
 		return nil, errOnlineUnavailable

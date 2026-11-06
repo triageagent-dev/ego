@@ -271,14 +271,15 @@ func (e *OnlineEngine) Labels(info RoleInfo, metric, sessionID string, since tim
 }
 
 // callerName is who the request authenticated as, "" in the no-login mode.
-// isPerson reports whether the request came from a person: a signed-in session, a member's own GitHub token, or an
-// open server with no sign-in at all. An API, delegate or ingest token is what an agent holds, so it is not.
+// isPerson reports whether the request came from a person at the UI: a signed-in session cookie, or an open server
+// with no sign-in at all. Every bearer value is what an agent or a script holds (an API, delegate or ingest token, and
+// a GitHub token on /mcp, where the caller is an MCP client by definition), so it is not.
 func isPerson(ctx context.Context) bool {
 	id, ok := identityFromContext(ctx)
 	if !ok {
 		return true
 	}
-	return id.Kind == tokenKindSession || id.Kind == identityGitHub
+	return id.Kind == tokenKindSession
 }
 
 func callerName(ctx context.Context) string {

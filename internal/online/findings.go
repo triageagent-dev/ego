@@ -177,7 +177,7 @@ func (f *Finding) Approved() bool {
 }
 
 // ForCaller is the finding as a caller may read it: with approval required, an unapproved suggestion is blanked
-// for everyone but seesAll (an admin, who reads it in order to decide).
+// for everyone but seesAll (an admin who is a person, who reads it in order to decide).
 func (f Finding) ForCaller(requireApproval, seesAll bool) Finding {
 	if requireApproval && f.Diagnosis.SuggestedCorrection != "" && !f.Approved() {
 		f.SuggestionNeedsApproval = true

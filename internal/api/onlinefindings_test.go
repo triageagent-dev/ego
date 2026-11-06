@@ -180,7 +180,7 @@ func (f *findingsFixture) seedBad(tenant string, n int) []string {
 
 func (f *findingsFixture) findings(t *testing.T, state string) []online.Finding {
 	t.Helper()
-	out, err := f.e.Findings(RoleInfo{Role: RoleAdmin, IsAdmin: true}, "", state, time.Time{})
+	out, err := f.e.Findings(RoleInfo{Role: RoleAdmin, IsAdmin: true}, true, "", state, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1032,18 +1032,25 @@ func TestSuggestedCorrectionWaitsForAPerson(t *testing.T) {
 	admin := RoleInfo{Role: RoleAdmin, IsAdmin: true}
 	agent := member("acme")
 
-	all, err := f.e.Findings(admin, "", "", time.Time{})
+	all, err := f.e.Findings(admin, true, "", "", time.Time{})
 	if err != nil || len(all) != 1 || all[0].Diagnosis.SuggestedCorrection == "" || all[0].SuggestionWithheld {
 		t.Fatalf("an admin must read the suggestion to decide on it: %v %+v", err, all)
 	}
 	id := all[0].ID
-	seen, _ := f.e.Findings(agent, "", "", time.Time{})
+	seen, _ := f.e.Findings(agent, false, "", "", time.Time{})
 	if len(seen) != 1 || seen[0].Diagnosis.SuggestedCorrection != "" || !seen[0].SuggestionWithheld || seen[0].Diagnosis.FailureMode == "" {
 		t.Fatalf("an agent read an unapproved suggestion, or lost the diagnosis: %+v", seen)
 	}
-	one, err := f.e.Finding(agent, id)
+	one, err := f.e.Finding(agent, false, id)
 	if err != nil || one.Diagnosis.SuggestedCorrection != "" {
 		t.Fatalf("Finding leaked the suggestion: %v %+v", err, one)
+	}
+	// An admin's API token in an agent's hands is still an agent.
+	if bot, _ := f.e.Findings(admin, false, "", "", time.Time{}); len(bot) != 1 || bot[0].Diagnosis.SuggestedCorrection != "" || !bot[0].SuggestionWithheld {
+		t.Fatalf("an admin API token read an unapproved suggestion: %+v", bot)
+	}
+	if bot, err := f.e.Finding(admin, false, id); err != nil || bot.Diagnosis.SuggestedCorrection != "" {
+		t.Fatalf("Finding leaked the suggestion to an admin API token: %v %+v", err, bot)
 	}
 
 	// Nobody but an admin, and no token an agent holds, can approve.
@@ -1059,14 +1066,14 @@ func TestSuggestedCorrectionWaitsForAPerson(t *testing.T) {
 	if _, err := f.e.ReviewFinding(admin, "alice", true, id, online.ApprovalRejected); err != nil {
 		t.Fatal(err)
 	}
-	if seen, _ := f.e.Findings(agent, "", "", time.Time{}); seen[0].Diagnosis.SuggestedCorrection != "" {
+	if seen, _ := f.e.Findings(agent, false, "", "", time.Time{}); seen[0].Diagnosis.SuggestedCorrection != "" {
 		t.Error("a rejected suggestion reached an agent")
 	}
 
 	if _, err := f.e.ReviewFinding(admin, "alice", true, id, online.ApprovalApproved); err != nil {
 		t.Fatal(err)
 	}
-	seen, _ = f.e.Findings(agent, "", "", time.Time{})
+	seen, _ = f.e.Findings(agent, false, "", "", time.Time{})
 	if seen[0].Diagnosis.SuggestedCorrection == "" || seen[0].SuggestionWithheld || seen[0].Approval == nil || seen[0].Approval.By != "alice" {
 		t.Fatalf("the approved suggestion did not reach the agent: %+v", seen[0])
 	}

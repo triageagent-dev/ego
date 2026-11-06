@@ -52,10 +52,12 @@ func FindingPayloadOf(event string, f *Finding, cfg *Config) FindingPayload {
 	if sessions == nil {
 		sessions = []string{}
 	}
+	// A sink is a channel an agent may read too, so an unapproved suggestion is withheld here as from get_findings.
+	shown := f.ForCaller(cfg.Findings.RequireApproval, false)
 	return FindingPayload{
 		Type: FindingWebhookType, Event: event, FindingID: f.ID, Tenant: f.Tenant, Kind: f.Kind, Metric: f.Metric,
 		FailureMode: f.Diagnosis.FailureMode, Summary: f.Diagnosis.Summary,
-		SuggestedCorrection: f.Diagnosis.SuggestedCorrection, Confidence: f.Diagnosis.Confidence,
+		SuggestedCorrection: shown.Diagnosis.SuggestedCorrection, Confidence: f.Diagnosis.Confidence,
 		Sessions: sessions, Scored: f.Window.N, Mean: f.Window.Mean, Below: f.Window.Below, Confirmed: f.Confirmed,
 		Link: cfg.PublicURL,
 	}

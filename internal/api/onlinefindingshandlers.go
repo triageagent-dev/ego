@@ -33,7 +33,7 @@ func onlineFindingsHandler(e *OnlineEngine) http.HandlerFunc {
 			writeEvaluateError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		out, err := e.Findings(narrowedInfo(r), q.Get("kind"), q.Get("state"), since)
+		out, err := e.Findings(narrowedInfo(r), isPerson(r.Context()), q.Get("kind"), q.Get("state"), since)
 		if err != nil {
 			writeStatusError(w, err)
 			return
@@ -65,7 +65,7 @@ func onlineFindingHandler(e *OnlineEngine) http.HandlerFunc {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		out, err := e.Finding(roleInfoOrOpen(r.Context()), r.PathValue("id"))
+		out, err := e.Finding(roleInfoOrOpen(r.Context()), isPerson(r.Context()), r.PathValue("id"))
 		if err != nil {
 			writeStatusError(w, err)
 			return
