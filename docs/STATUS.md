@@ -56,7 +56,10 @@ What ego supports today, and what it does not.
 
 **Access**
 - GitHub OAuth restricted to an org, signed session cookies, bearer tokens from `ego auth mint-token`, or, on `/mcp` only, a raw
-  GitHub token validated against org membership.
+  GitHub token validated against org membership. A source whose GitHub tokens or ingest tokens keep being refused (30 in a
+  minute) gets no more lookups for the rest of the minute; behind a gateway, `--trusted-proxies` (chart `trustedProxies`)
+  names the gateways whose `X-Forwarded-For` tells the client apart, otherwise every client behind it shares one count.
+  A GitHub lookup that got no answer is neither cached nor counted.
 - Archive trouble is announced (`storagewatch.go`): a failed snapshot write, and a volume with under `--archive-alert-percent` (default 10, Helm `persistence.alertPercent`) or 256 MiB free, go to the Discord sinks (a failure every hour while it lasts, a low volume every 6 hours, and a notice when writes recover); `GET /api/health` carries `data.archive` (`status` ok, low or failing, free percent, `failingSince`; the failed write's error text stays in the log and the notice, because the endpoint needs no login). Its top-level `status` stays `ok`, so a full volume never restarts the pod. The UI polls it every minute and shows a banner at the top while the archive is low or failing (`ArchiveBanner.tsx`). A start logs the step that took more than 2 s and the total (`LoadPersisted`); it reads only the sessions of ledger rows that still lack a kind, not the whole archive.
 - Delegate tokens (`ego auth mint-token --delegate --tenants …`, `delegate.go`): `/mcp` only; each `tools/call` names its
   tenant and is narrowed to it. A `<sender>/=` grant also lets a call for `<a>/<label>` read `<sender>/<label>` (and

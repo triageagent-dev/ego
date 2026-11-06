@@ -77,6 +77,16 @@ type githubTokenValidator struct {
 	// fails counts, per source address, the tokens GitHub refused: a source over its limit gets no more lookups for
 	// the rest of the window, so it cannot fill the lookup slots that other callers need.
 	fails failCounter
+	// proxies names the gateways whose X-Forwarded-For is believed, so the counter sees the client, not the gateway.
+	proxies *trustedProxies
+}
+
+// sourceFor is the address a request's refusals count against; "" from a nil validator, which refuses anyway.
+func (v *githubTokenValidator) sourceFor(r *http.Request) string {
+	if v == nil {
+		return ""
+	}
+	return v.proxies.source(r)
 }
 
 func newGitHubTokenValidator(cfg *GitHubOAuthConfig) *githubTokenValidator {

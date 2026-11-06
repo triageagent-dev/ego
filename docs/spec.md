@@ -249,6 +249,7 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`. The s
 | EGO_EVAL_LIMITS_FILE | `--eval-limits-file` | JSON file with the per-member and per-model limits of interactive evaluation (the chart sets it; the settings page is then read only) |
 | EGO_SEGMENT_* | `--segment-idle`, `--segment-max-spans`, `--segment-max-age` | When a thread's segment closes |
 | EGO_ONLINE_CONFIG | `--online-config` | Online evaluation profiles, budget, detector and sinks |
+| EGO_TRUSTED_PROXIES | `--trusted-proxies` | Gateways whose `X-Forwarded-For` names the client for the per-source limits on refused tokens |
 | EGO_LOG_LEVEL, EGO_AUDIT_LOG | `--log-level`, `--audit-log` | Log threshold; log the user name of every sign-in, off by default (changes of access are always logged with the actor) |
 | EGO_SERVER_URL, EGO_SESSION_TOKEN | `--server-url`, `--session-token` | For `ego mcp`, which talks to a running server |
 

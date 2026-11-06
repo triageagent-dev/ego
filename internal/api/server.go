@@ -56,8 +56,12 @@ const persistInterval = 10 * time.Second
 // The UI is baked into the binary via the ui package's go:embed (see Makefile's build-ui - embedding reads
 // whatever was on disk in ui/dist at `go build` time). Blocks until any listener returns an error or the
 // process receives SIGINT/SIGTERM, in which case it flushes a final snapshot before returning.
-func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits, onlineConfigPath, otlpToken string, otlpTLS OTLPTLS) error {
+func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits, onlineConfigPath, otlpToken string, otlpTLS OTLPTLS, trustedProxyList string) error {
 	if err := otlpTLS.check(); err != nil {
+		return err
+	}
+	proxies, err := parseTrustedProxies(trustedProxyList)
+	if err != nil {
 		return err
 	}
 	otlpTLSConfig, err := otlpTLS.config()
@@ -157,6 +161,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	}
 
 	ghTokens := newGitHubTokenValidator(githubOAuth)
+	ghTokens.proxies = proxies
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/streaming/sessions", sessionsHandler(store))
 	mux.HandleFunc("/api/streaming/get-trace", getTraceHandler(store))
@@ -236,7 +241,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	}
 
 	otlpMux := http.NewServeMux()
-	ingest := &ingestAuth{globalToken: normalizeIngestToken(otlpToken), senders: senderStore}
+	ingest := &ingestAuth{globalToken: normalizeIngestToken(otlpToken), senders: senderStore, proxies: proxies}
 	otlpMux.Handle("/v1/traces", ingest.middleware(otlpTracesHandler(store)))
 	if ingest.configured() {
 		logx.Infof("OTLP ingest requires a bearer token (Authorization header / gRPC metadata)")

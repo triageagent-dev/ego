@@ -445,6 +445,8 @@ func serveCmd(args []string) error {
 		"PEM certificate that turns on TLS for the OTLP receivers (4317 and 4318), so sender tokens do not cross the network in clear text; needs --otlp-tls-key; the pair is re-read when the files change; falls back to EGO_OTLP_TLS_CERT")
 	otlpTLSKey := fs.String("otlp-tls-key", env("OTLP_TLS_KEY"),
 		"PEM private key for --otlp-tls-cert; falls back to EGO_OTLP_TLS_KEY")
+	trustedProxies := fs.String("trusted-proxies", env("TRUSTED_PROXIES"),
+		"comma-separated addresses or CIDRs of the gateways in front of ego; a request from one of them is counted, for the per-source limits on refused tokens, against the client named in its X-Forwarded-For instead of the gateway that every client shares; falls back to EGO_TRUSTED_PROXIES")
 	sessionMemory := fs.Int("session-memory", envIntOrDefault("SESSION_MEMORY", api.DefaultSessionMemory),
 		"completed sessions kept in memory with --session-db; older ones stay in the archive and load on demand (0 = no cap); falls back to EGO_SESSION_MEMORY")
 	sessionRetention := fs.Duration("session-retention", envDurationOrDefault("SESSION_RETENTION", api.DefaultSessionRetention),
@@ -506,7 +508,7 @@ func serveCmd(args []string) error {
 	}
 	return api.Serve(*addr, *otlpAddr, *otlpGRPCAddr, *healthAddr, *sessionDB, *sessionSecret, githubOAuth, adminUsers, *defaultRole,
 		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, ArchiveAlertPercent: *archiveAlertPercent, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens, EvalLimitsFile: *evalLimitsFile,
-			SegmentIdle: *segmentIdle, SegmentMaxSpans: *segmentMaxSpans, SegmentMaxAge: *segmentMaxAge}, *onlineConfig, *otlpToken, api.OTLPTLS{CertFile: *otlpTLSCert, KeyFile: *otlpTLSKey})
+			SegmentIdle: *segmentIdle, SegmentMaxSpans: *segmentMaxSpans, SegmentMaxAge: *segmentMaxAge}, *onlineConfig, *otlpToken, api.OTLPTLS{CertFile: *otlpTLSCert, KeyFile: *otlpTLSKey}, *trustedProxies)
 }
 
 // envIntOrDefault reads an integer env var, falling back to def when it is

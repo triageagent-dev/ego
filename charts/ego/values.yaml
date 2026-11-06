@@ -173,6 +173,11 @@ otlpAuth:
 otlpTLS:
   secretName: ""
 
+# -- Addresses or CIDRs of the gateways in front of ego (the GKE Gateway proxy range, an ingress controller's pod
+# range), comma-separated. A request from one of them is counted, for the per-source limits on refused tokens, against
+# the client in its X-Forwarded-For instead of the gateway that every client shares. Empty believes no header.
+trustedProxies: ""
+
 # -- NetworkPolicy for the pods. When enabled, only the ingress rules listed here are allowed (an empty list
 # denies all ingress, so list the UI/gateway on 8001 and every telemetry producer on 4317/4318). Rules are
 # standard NetworkPolicy ingress rules, for example:

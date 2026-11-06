@@ -56,6 +56,9 @@ spec:
             - --otlp-tls-key=/etc/ego/otlp-tls/tls.key
             {{- end }}
             - --health-addr=:9090
+            {{- with .Values.trustedProxies }}
+            - --trusted-proxies={{ . }}
+            {{- end }}
             {{- with .Values.auth.defaultRole }}
             - --default-role={{ . }}
             {{- end }}

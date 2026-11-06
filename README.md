@@ -557,6 +557,7 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`:
 | `EGO_ADMIN_GITHUB_USERS`, `EGO_DEFAULT_ROLE` | `--admin-github-users`, `--default-role` | Roles |
 | `EGO_OTLP_TOKEN` | `--otlp-token` | Shared bearer token for the OTLP receivers (sender tokens work too; with neither, pushes are refused) |
 | `EGO_OTLP_TLS_CERT`, `EGO_OTLP_TLS_KEY` | `--otlp-tls-cert`, `--otlp-tls-key` | PEM pair that turns on TLS for the OTLP receivers (both or neither; re-read when the files change) |
+| `EGO_TRUSTED_PROXIES` | `--trusted-proxies` | Addresses or CIDRs of the gateways in front of ego; a request from one counts, for the per-source limits on refused tokens, against the client in its `X-Forwarded-For`, not the gateway every client shares |
 | `EGO_EVAL_DAILY_TOKENS` | `--eval-daily-tokens` | Judge tokens interactive evaluation may use per UTC day (default 5000000, 0: unlimited) |
 | `EGO_EVAL_LIMITS_FILE` | `--eval-limits-file` | JSON file with the limits per signed-in member and per judge model (`userConcurrent`, `userPerMinute`, `models`: name or `*` to `{weight, dailyTokens}`). Set, the settings page shows them read only; unset (a local run), an admin edits them on the settings page |
 | `EGO_SEGMENT_IDLE`, `EGO_SEGMENT_MAX_SPANS`, `EGO_SEGMENT_MAX_AGE` | `--segment-idle`, `--segment-max-spans`, `--segment-max-age` | When a thread's segment closes: quiet for this long (default 30m), this many spans (2000), or this old (6h) |

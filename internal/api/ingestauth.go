@@ -34,6 +34,8 @@ type ingestAuth struct {
 	rejected   int
 
 	fails failCounter
+	// proxies names the gateways whose X-Forwarded-For is believed, so the counter sees the client, not the gateway.
+	proxies *trustedProxies
 }
 
 // recordFailure counts a refused push from source and reports that the source is over its limit.
@@ -136,7 +138,7 @@ func (a *ingestAuth) middleware(next http.Handler) http.Handler {
 		sender, tenant, ok := a.resolve(r.Header.Get("Authorization"))
 		if !ok {
 			a.logRejected("http", r.Header.Get("Authorization"))
-			if a.recordFailure(sourceOf(r.RemoteAddr)) {
+			if a.recordFailure(a.proxies.source(r)) {
 				w.Header().Set("Retry-After", "60")
 				http.Error(w, "too many refused pushes: slow down", http.StatusTooManyRequests)
 				return
