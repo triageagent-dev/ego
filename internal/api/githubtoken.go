@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,6 +19,20 @@ import (
 // long-lived mint-token tokens are (those are trusted until EGO_
 // SESSION_SECRET itself is rotated).
 const githubTokenCacheTTL = 5 * time.Minute
+
+// forgetUser drops what was remembered of the user's GitHub tokens, so the next request with one asks GitHub again.
+func (v *githubTokenValidator) forgetUser(username string) {
+	if v == nil {
+		return
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	for k, e := range v.cache {
+		if strings.EqualFold(e.username, username) {
+			delete(v.cache, k)
+		}
+	}
+}
 
 // githubTeamRetryTTL is how long a failed team lookup is remembered before the next request tries again.
 const githubTeamRetryTTL = 30 * time.Second

@@ -347,6 +347,16 @@ func (s *RoleStore) getTeams(username string) ([]string, bool) {
 	return entry.teams, true
 }
 
+// dropTeams forgets a user's cached team memberships.
+func (s *RoleStore) dropTeams(username string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.teamCache, strings.ToLower(username))
+}
+
 func (s *RoleStore) setTeams(username string, teams []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

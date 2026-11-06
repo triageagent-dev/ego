@@ -42,7 +42,7 @@ func (c *GitHubOAuthConfig) auditf(format string, args ...any) {
 }
 
 const (
-	sessionTTL = 12 * time.Hour
+	sessionTTL = 8 * time.Hour
 	stateTTL   = 10 * time.Minute
 
 	stateCookieName = "ego_oauth_state"

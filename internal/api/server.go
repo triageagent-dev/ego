@@ -156,6 +156,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		roleStore.SetOnChange(hub.kickAll)
 	}
 
+	ghTokens := newGitHubTokenValidator(githubOAuth)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/streaming/sessions", sessionsHandler(store))
 	mux.HandleFunc("/api/streaming/get-trace", getTraceHandler(store))
@@ -201,7 +202,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/online/labels", onlineLabelsHandler(onlineEngine))
 	mux.HandleFunc("/api/admin/roles", adminRolesHandler(roleStore))
 	mux.HandleFunc("/api/admin/roles/{id}", adminRoleByIDHandler(roleStore))
-	mux.HandleFunc("/api/admin/revocations", adminRevocationsHandler(revoked))
+	mux.HandleFunc("/api/admin/revocations", adminRevocationsHandler(revoked, ghTokens, roleStore))
 	mux.HandleFunc("/api/admin/tenant-names", adminTenantNamesHandler(tenantNames))
 	var purgeGuarded purgeGuard
 	if onlineEngine != nil {
@@ -291,7 +292,6 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	// without a session straight back to itself. Everything else on addr
 	// goes through requireSession.
 	topMux := http.NewServeMux()
-	ghTokens := newGitHubTokenValidator(githubOAuth)
 	roleOrg := ""
 	if githubOAuth != nil {
 		roleOrg = githubOAuth.Org

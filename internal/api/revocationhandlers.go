@@ -16,7 +16,7 @@ type revokeRequest struct {
 }
 
 // adminRevocationsHandler implements GET (list) and POST (revoke) on /api/admin/revocations. Admin only.
-func adminRevocationsHandler(revoked *revocations) http.HandlerFunc {
+func adminRevocationsHandler(revoked *revocations, ghTokens *githubTokenValidator, roleStore *RoleStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !roleInfoOrOpen(r.Context()).IsAdmin {
 			writeRoleForbidden(w)
@@ -48,6 +48,11 @@ func adminRevocationsHandler(revoked *revocations) http.HandlerFunc {
 				err = revoked.RevokeToken(req.TokenID, expiry)
 			} else {
 				err = revoked.RevokeSubject(req.Subject, time.Now())
+				// What was remembered of the user from GitHub goes too: the next request of a token holder asks GitHub
+				// again (so a removal from the org takes hold now, not within the cache's minutes), and the team
+				// memberships of a browser session are known again only after its next sign-in.
+				ghTokens.forgetUser(req.Subject)
+				roleStore.dropTeams(req.Subject)
 			}
 			if err != nil {
 				writeEvaluateError(w, http.StatusInternalServerError, "failed to record the revocation: "+err.Error())

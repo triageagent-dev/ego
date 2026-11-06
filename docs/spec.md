@@ -273,7 +273,7 @@ Each tagged release publishes through CI: binaries for Linux and macOS on amd64 
 | Response evaluation score | Out of scope. There is no Vertex predefined metric to call |
 | Several replicas | Out of scope while the archive is one SQLite file |
 
-Two simplifications are known. The ROUGE-1 tokenizer does not stem and does not split unspaced scripts, so response match runs lower on inflected English and means nothing for those scripts. A GitHub organisation member who is removed from the organisation keeps a cookie for up to 12 hours.
+Two simplifications are known. The ROUGE-1 tokenizer does not stem and does not split unspaced scripts, so response match runs lower on inflected English and means nothing for those scripts. A GitHub organisation member who is removed from the organisation keeps a cookie for up to 8 hours; revoking the subject ends it at once.
 
 ## FAQ
 
