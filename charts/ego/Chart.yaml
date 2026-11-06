@@ -2,5 +2,8 @@ apiVersion: v2
 name: ego
 description: "Reality testing for AI agents: scores their behaviour from OpenTelemetry traces (REST API, UI, OTLP receivers)"
 type: application
-version: 0.1.2
-appVersion: "0.1.0"
+# The chart is versioned and released on its own (tag chart-vX.Y.Z, see .github/workflows/release-chart.yml): `version`
+# is the chart's, and `appVersion` is the image tag it installs by default. An app release does not touch either; bump
+# `appVersion` here when a chart should default to a newer image.
+version: 0.6.4
+appVersion: "0.6.4"

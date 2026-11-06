@@ -1,0 +1,43 @@
+name: Release chart
+
+# Publishes the Helm chart as an OCI artifact on a chart-vX.Y.Z tag, with a keyless cosign signature from the workflow's
+# OIDC identity. The chart has its own version in charts/ego/Chart.yaml and is released apart from the app (release.yml):
+# a change to the chart needs no new image, and an app release needs no new chart.
+on:
+  push:
+    tags: ["chart-v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  chart:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+      - name: Package and push
+        env:
+          OWNER: ${{ github.repository_owner }}
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          chart_version="$(sed -n 's/^version: *//p' charts/ego/Chart.yaml)"
+          [ "$TAG" = "chart-v${chart_version}" ] || { echo "::error::tag $TAG does not match charts/ego/Chart.yaml version ${chart_version}"; exit 1; }
+          helm lint charts/ego
+          helm package charts/ego --destination dist
+          echo "$TOKEN" | helm registry login ghcr.io --username "$ACTOR" --password-stdin
+          pushed="$(helm push "dist/ego-${chart_version}.tgz" "oci://ghcr.io/${OWNER,,}/charts" 2>&1)"
+          printf '%s\n' "$pushed"
+          digest="$(printf '%s\n' "$pushed" | sed -n 's/^Digest: //p')"
+          [ -n "$digest" ] || { echo "::error::helm push printed no digest"; exit 1; }
+          echo "$TOKEN" | cosign login ghcr.io --username "$ACTOR" --password-stdin
+          cosign sign --yes "ghcr.io/${OWNER,,}/charts/ego@${digest}"

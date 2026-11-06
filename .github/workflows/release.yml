@@ -1,7 +1,7 @@
 name: Release
 
-# Publishes on a version tag push: binaries with checksums on a GitHub release, the multi-arch image on ghcr.io and
-# the Helm chart as an OCI artifact, with keyless cosign signatures from the workflow's OIDC identity.
+# Publishes on a version tag push: binaries with checksums on a GitHub release and the multi-arch image on ghcr.io, with
+# keyless cosign signatures from the workflow's OIDC identity. The Helm chart has its own release (release-chart.yml).
 # scripts/release-local.sh (`make release-local`) does the same from a maintainer's machine, minus the signatures;
 # use one or the other for a tag, never both. Run by hand this workflow builds the binaries without publishing.
 on:
@@ -201,33 +201,3 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE: ghcr.io/${{ github.repository }}
         run: cosign sign --yes "${IMAGE,,}@${DIGEST}"
-
-  chart:
-    name: Helm chart
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    environment: release
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
-      - name: Package and push
-        env:
-          OWNER: ${{ github.repository_owner }}
-          ACTOR: ${{ github.actor }}
-          TOKEN: ${{ github.token }}
-        run: |
-          helm lint charts/ego
-          helm package charts/ego --version "${VERSION#v}" --app-version "${VERSION#v}" --destination dist
-          echo "$TOKEN" | helm registry login ghcr.io --username "$ACTOR" --password-stdin
-          pushed="$(helm push "dist/ego-${VERSION#v}.tgz" "oci://ghcr.io/${OWNER,,}/charts" 2>&1)"
-          printf '%s\n' "$pushed"
-          digest="$(printf '%s\n' "$pushed" | sed -n 's/^Digest: //p')"
-          [ -n "$digest" ] || { echo "::error::helm push printed no digest"; exit 1; }
-          # Keyless, like the image: the signature is bound to this workflow's identity.
-          echo "$TOKEN" | cosign login ghcr.io --username "$ACTOR" --password-stdin
-          cosign sign --yes "ghcr.io/${OWNER,,}/charts/ego@${digest}"

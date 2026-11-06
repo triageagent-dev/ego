@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Publish a release from this machine, without GitHub Actions: the four binaries with checksums on a GitHub
-# release, the multi-arch image on ghcr.io, and the Helm chart as an OCI artifact. It does what
+# release and the multi-arch image on ghcr.io. It does what
 # .github/workflows/release.yml does, minus the keyless signatures (they need the workflow's OIDC identity).
 #
 #   scripts/release-local.sh v0.1.51
@@ -69,13 +69,7 @@ echo "== image"
 VERSION="$version" KO_DOCKER_REPO="ghcr.io/$repo" ko build --platform=linux/amd64,linux/arm64 --bare \
   --tags="$version,$minor,latest" ./cmd/ego
 
-echo "== chart"
-helm lint charts/ego
-helm package charts/ego --version "$version" --app-version "$version" --destination dist
-printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GH_USER" --password-stdin
-helm push "dist/ego-${version}.tgz" "oci://ghcr.io/${owner}/charts"
-
 echo "== release"
 gh release create "$tag" dist/*.tar.gz dist/checksums.txt --title "$tag" --generate-notes --verify-tag
 
-echo "released $tag: ghcr.io/$repo:$version, oci://ghcr.io/${owner}/charts/ego:$version"
+echo "released $tag: ghcr.io/$repo:$version"

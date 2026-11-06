@@ -614,6 +614,11 @@ Registry and cluster go in `deploy/local.mk` (gitignored): `KO_DOCKER_REPO`, `KU
 keeps the names of an existing release. The image is a single static binary on a distroless base. A new
 root-level `/api/...` endpoint needs an entry in `httpRoute.rootPaths`, or the gateway answers 404.
 
+The chart is released on its own, not with the app. Set `version` (and `appVersion`, the default image tag) in
+`charts/ego/Chart.yaml`, commit, and push a `chart-vX.Y.Z` tag with the same version: the Release chart workflow
+lints, packages and signs it as `oci://ghcr.io/triageagent-dev/charts/ego`. An app tag (`vX.Y.Z`) publishes the
+binaries and the image only.
+
 ### Releasing
 
 **Releasing:** push a version tag (`git tag vX.Y.Z && git push origin vX.Y.Z`). The *Release* workflow waits for the CI checks of the
