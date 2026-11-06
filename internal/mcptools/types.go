@@ -350,6 +350,8 @@ type SenderTokenInput struct {
 	Tenant     string
 	TenantName string
 	MCP        bool
+	// CreateSender registers the sender first when it does not exist yet, for a new source of traces.
+	CreateSender bool
 }
 
 // SenderToken is the result of mint_sender_token. Token is the credential itself: it is shown here once and ego

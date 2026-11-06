@@ -46,6 +46,17 @@ func TestMintSenderTokenTool(t *testing.T) {
 	if _, err := b.MintSenderToken(admin, mcptools.SenderTokenInput{Sender: "triage", TenantName: "x"}); err == nil {
 		t.Error("a tenant name without a tenant was accepted")
 	}
+	// A new source registers its sender with its first token, once; a bad id registers nothing.
+	fresh, err := b.MintSenderToken(admin, mcptools.SenderTokenInput{Sender: "symbio-rag", Tenant: "symbio-rag", CreateSender: true})
+	if err != nil || fresh.Sender != "symbio-rag" || !senders.Exists("symbio-rag") {
+		t.Fatalf("create_sender: %+v %v", fresh, err)
+	}
+	if _, err := b.MintSenderToken(admin, mcptools.SenderTokenInput{Sender: "symbio-rag", CreateSender: true}); err != nil {
+		t.Errorf("a second token for a sender that exists: %v", err)
+	}
+	if _, err := b.MintSenderToken(admin, mcptools.SenderTokenInput{Sender: "Bad Id", CreateSender: true}); err == nil || senders.Exists("Bad Id") {
+		t.Error("an invalid sender id was registered")
+	}
 	if n := len(senders.Tokens("triage")); n != 1 {
 		t.Errorf("%d tokens after the refused calls, want 1", n)
 	}

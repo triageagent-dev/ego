@@ -457,7 +457,9 @@ func Tools(b Backend, o Options) []server.ServerTool {
 					"again, so hand it to its owner through a secret store, never into a chat or a log. Bind it to one "+
 					"tenant with tenant, and let it read back over /mcp only with mcp. Requires the caller to be an admin."),
 				mcp.WithString("sender", mcp.Required(),
-					mcp.Description("ID of the sender the token belongs to; it must already exist.")),
+					mcp.Description("ID of the sender the token belongs to: lowercase letters, digits and dashes. It must already exist, unless create_sender is true.")),
+				mcp.WithBoolean("create_sender",
+					mcp.Description("Register the sender first when it does not exist yet, for a new source of traces. A sender that exists is left as it is.")),
 				mcp.WithString("label",
 					mcp.Description("Free text naming what the token is for, shown in the sender's token list.")),
 				mcp.WithString("tenant",
@@ -969,6 +971,8 @@ func mintSenderTokenHandler(b Backend) server.ToolHandlerFunc {
 			Tenant:     req.GetString("tenant", ""),
 			TenantName: req.GetString("tenant_name", ""),
 			MCP:        req.GetBool("mcp", false),
+
+			CreateSender: req.GetBool("create_sender", false),
 		})
 		if err != nil {
 			return toolError(err)

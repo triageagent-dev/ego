@@ -367,6 +367,23 @@ func (b *REST) DeleteRoleBinding(ctx context.Context, id string) (map[string]boo
 }
 
 func (b *REST) MintSenderToken(ctx context.Context, in SenderTokenInput) (*SenderToken, error) {
+	if in.CreateSender {
+		var senders []struct {
+			ID string `json:"id"`
+		}
+		if err := b.get(ctx, "/api/admin/senders", &senders); err != nil {
+			return nil, err
+		}
+		found := false
+		for _, s := range senders {
+			found = found || s.ID == in.Sender
+		}
+		if !found {
+			if err := b.post(ctx, "/api/admin/senders", map[string]any{"id": in.Sender}, nil); err != nil {
+				return nil, err
+			}
+		}
+	}
 	body := map[string]any{"mcp": in.MCP}
 	if in.Label != "" {
 		body["label"] = in.Label

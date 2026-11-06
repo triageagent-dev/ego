@@ -286,7 +286,12 @@ func (b *mcpBackend) MintSenderToken(ctx context.Context, in mcptools.SenderToke
 		return nil, errors.New("ingest tokens are not available on this server")
 	}
 	if !b.senders.Exists(in.Sender) {
-		return nil, errors.New("sender not found")
+		if !in.CreateSender {
+			return nil, errors.New("sender not found (pass create_sender to register it)")
+		}
+		if _, err := b.senders.Create(in.Sender, ""); err != nil {
+			return nil, err
+		}
 	}
 	token, meta, _, err := mintSenderToken(b.senders, b.names, in.Sender, senderTokenRequest{
 		Label: in.Label, Tenant: in.Tenant, TenantName: in.TenantName, MCP: in.MCP,
