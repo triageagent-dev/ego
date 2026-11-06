@@ -98,6 +98,13 @@ a ConfigMap rendered from Helm values):
 - Production traffic has no golden answers, so profiles use reference-free
   metrics.
 
+**Redaction.** Trace text goes to a judge model, the decision service (`jev_*`) and Vertex's managed evaluation, and it
+holds whatever the agent's users typed and its tools returned. Before it leaves, credentials (GitHub, ego and common
+provider keys, JWTs, `Authorization` values, PEM private keys, `password=` style values) and email addresses are
+replaced with `[REDACTED]`. It is on unless the config says `"redact": {"enabled": false}`; `"emails": false` keeps
+addresses, and `"patterns": ["ACME-[0-9]{6}"]` adds expressions of your own (Go syntax). The stored traces are not
+changed, only what is sent out.
+
 Each score is a row of `online_scores` (session, trace, time, tenant, kind,
 service, version, model, metric, score, status, evaluator kind, judge model,
 sample reason). The results also go into Run History: one run per (kind, UTC

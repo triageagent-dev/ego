@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/triageagent-dev/ego/internal/redact"
 	"google.golang.org/genai"
 )
 
@@ -74,7 +75,7 @@ func NewGenAIModel(ctx context.Context, apiKey, model string) (*GenAIModel, erro
 // Generate sends prompt as a single user-role turn and returns the response's concatenated text..
 func (m *GenAIModel) Generate(ctx context.Context, prompt string) (string, error) {
 	resp, err := m.client.Models.GenerateContent(ctx, m.model,
-		[]*genai.Content{genai.NewContentFromText(untrustedNotice+prompt, genai.RoleUser)},
+		[]*genai.Content{genai.NewContentFromText(untrustedNotice+redact.Text(prompt), genai.RoleUser)},
 		&genai.GenerateContentConfig{MaxOutputTokens: maxJudgeOutputTokens},
 	)
 	if err != nil {

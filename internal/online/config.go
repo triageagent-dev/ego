@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/decision"
+	"github.com/triageagent-dev/ego/internal/redact"
 )
 
 // Evaluator is one evaluator of a profile, in the POST /api/evaluate
@@ -179,6 +180,9 @@ type Config struct {
 	Detector Detector  `json:"detector"`
 	Findings Findings  `json:"findings"`
 	Sinks    []Sink    `json:"sinks"`
+	// Redact masks credentials and email addresses in trace text before it goes to a judge, the decision service or
+	// Vertex's managed evaluation. On unless the config turns it off.
+	Redact redact.Config `json:"redact"`
 	// PublicURL prefixes session links in notifications.
 	PublicURL string `json:"publicUrl,omitempty"`
 	// DigestHourUTC is the hour of the daily digest (default 8; -1 = off).
@@ -236,7 +240,7 @@ func Load(path string) (*Config, error) {
 func Parse(b []byte) (*Config, error) {
 	// The findings pass is on unless the config turns it off, and a bool cannot tell "absent" from "false" after
 	// decoding.
-	c := Config{Findings: Findings{Enabled: true, RequireApproval: true}}
+	c := Config{Findings: Findings{Enabled: true, RequireApproval: true}, Redact: redact.Defaults()}
 	dec := json.NewDecoder(strings.NewReader(string(b)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&c); err != nil {
@@ -341,6 +345,9 @@ func (c *Config) validate() error {
 	}
 	if err := c.Findings.validate(); err != nil {
 		return err
+	}
+	if _, err := redact.New(c.Redact); err != nil {
+		return fmt.Errorf("online config: redact: %w", err)
 	}
 	if len(c.Profiles) > maxProfiles {
 		return fmt.Errorf("online config: %d profiles, at most %d", len(c.Profiles), maxProfiles)

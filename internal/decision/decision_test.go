@@ -526,3 +526,26 @@ func TestClientTokenFileGuards(t *testing.T) {
 		t.Error("bearer() followed a link into the pod's own credentials")
 	}
 }
+
+// What the decision service receives has had credentials and email addresses masked.
+func TestClientMasksCredentialsInTheRequest(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got = string(b)
+		w.Write([]byte(`{"answers":{"q":{"type":"noul","noul":0.5}}}`))
+	}))
+	defer srv.Close()
+	t.Setenv("JEV_API_URL", srv.URL)
+	c, err := NewClient("secret", "", "jev-1.13")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := map[string]any{"user": "write to bob@example.com", "tool": "token ghp_0123456789abcdefghijklmnopqrstuvwxyz"}
+	if _, err := c.Decide(context.Background(), state, map[string]Question{"q": {Type: "noul"}}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "bob@example.com") || strings.Contains(got, "ghp_0123") || !strings.Contains(got, "[REDACTED]") {
+		t.Errorf("request body = %s", got)
+	}
+}

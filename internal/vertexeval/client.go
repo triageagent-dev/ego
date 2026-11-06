@@ -16,6 +16,7 @@ import (
 	"cloud.google.com/go/auth/credentials"
 
 	"github.com/triageagent-dev/ego/internal/logx"
+	"github.com/triageagent-dev/ego/internal/redact"
 )
 
 // cloudPlatformScope is the OAuth scope needed for the aiplatform REST API,
@@ -96,6 +97,7 @@ func (c *Client) evaluateInstances(ctx context.Context, body any) (*metricResult
 	if err != nil {
 		return nil, fmt.Errorf("encoding evaluateInstances request: %w", err)
 	}
+	payload = redact.Bytes(payload)
 
 	url := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1beta1/projects/%s/locations/%s/:evaluateInstances",
 		c.location, c.project, c.location)

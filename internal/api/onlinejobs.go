@@ -52,6 +52,7 @@ func (e *OnlineEngine) loadJobs() {
 
 func (e *OnlineEngine) apply(c *online.Config) {
 	e.cfgp.Store(c)
+	useRedaction(c)
 	e.sampler.SetConfig(c.Sampling)
 }
 

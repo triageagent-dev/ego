@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/triageagent-dev/ego/internal/redact"
 )
 
 // DefaultModel is the model the jev_* metrics use unless EGO_DECISION_MODEL
@@ -268,6 +270,7 @@ func (c *Client) Decide(ctx context.Context, state map[string]any, questions map
 	if err != nil {
 		return nil, fmt.Errorf("encoding decision request: %w", err)
 	}
+	body = redact.Bytes(body)
 
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {

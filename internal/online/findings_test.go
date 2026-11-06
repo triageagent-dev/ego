@@ -452,3 +452,20 @@ func TestSuggestionApprovalBindsToTheText(t *testing.T) {
 		t.Fatal("the original is unchanged by the copy that ForCaller returns")
 	}
 }
+
+func TestRedactionIsOnByDefaultAndConfigurable(t *testing.T) {
+	c, err := Parse([]byte(`{"budget":{"judgeTokensPerDay":100000},"profiles":[{"kind":"rca","evaluators":[{"name":"hallucinations_v1"}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Redact.Enabled || !c.Redact.Emails {
+		t.Errorf("redaction is not on by default: %+v", c.Redact)
+	}
+	c, err = Parse([]byte(`{"budget":{"judgeTokensPerDay":100000},"profiles":[{"kind":"rca","evaluators":[{"name":"hallucinations_v1"}]}],"redact":{"enabled":false}}`))
+	if err != nil || c.Redact.Enabled {
+		t.Errorf("redaction cannot be turned off: %v %+v", err, c.Redact)
+	}
+	if _, err := Parse([]byte(`{"budget":{"judgeTokensPerDay":100000},"profiles":[{"kind":"rca","evaluators":[{"name":"hallucinations_v1"}]}],"redact":{"enabled":true,"patterns":["("]}}`)); err == nil {
+		t.Error("an invalid redaction pattern was accepted")
+	}
+}

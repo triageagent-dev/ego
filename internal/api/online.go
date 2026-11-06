@@ -115,6 +115,7 @@ func NewOnlineEngine(cfg *online.Config, store *SQLiteStore, sessions *SessionSt
 		rjudges:    map[string]judge.Model{},
 	}
 	e.cfgp.Store(cfg)
+	useRedaction(cfg)
 	e.base = cfg
 	e.unscored = map[string]int64{}
 	e.newJudge = func(ctx context.Context, model string, onUsage func(int64)) (judge.Model, error) {
