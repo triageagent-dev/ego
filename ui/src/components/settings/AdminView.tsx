@@ -137,7 +137,16 @@ const swatchStyle = css`
   border-radius: 2px;
 `;
 
-const byNumber = (pick: (t: AdminTenant) => number) => (a: AdminTenant, b: AdminTenant) => pick(a) - pick(b);
+const pickableRowsStyle = css`
+  tbody tr {
+    cursor: pointer;
+  }
+  tbody tr.picked > td {
+    background: var(--bg-selected);
+  }
+`;
+
+const byNumber =(pick: (t: AdminTenant) => number) => (a: AdminTenant, b: AdminTenant) => pick(a) - pick(b);
 const nameOf = (t: AdminTenant) => (t.name || t.label).toLowerCase();
 
 const TenantsTab: React.FC<{ data: AdminOverview }> = ({ data }) => {
@@ -157,6 +166,9 @@ const TenantsTab: React.FC<{ data: AdminOverview }> = ({ data }) => {
         (!withTraffic || t.calls > 0),
     );
   }, [data.tenants, query, sender, withTraffic]);
+  // The row picked as the chart's highlighted line; a filter that hides the row drops the pick.
+  const [picked, setPicked] = useState<string | null>(null);
+  const selected = rows.some((t) => t.key === picked) ? picked : null;
 
   return (
     <>
@@ -171,13 +183,16 @@ const TenantsTab: React.FC<{ data: AdminOverview }> = ({ data }) => {
           {rows.length === data.tenants.length ? `${rows.length} tenants` : `${rows.length} of ${data.tenants.length}`}
         </span>
       </div>
-      <TenantTrends tenants={rows} onColors={setColors} />
+      <TenantTrends tenants={rows} onColors={setColors} selected={selected} />
       <Table<AdminTenant>
         size="small"
         rowKey="key"
         pagination={false}
         dataSource={rows}
         showSorterTooltip={false}
+        css={pickableRowsStyle}
+        rowClassName={(t) => (t.key === selected ? 'picked' : '')}
+        onRow={(t) => ({ onClick: () => setPicked(t.key === selected ? null : t.key), title: colors.has(t.key) ? 'click to pick its line in the chart' : undefined })}
         columns={[
           {
             title: 'tenant',

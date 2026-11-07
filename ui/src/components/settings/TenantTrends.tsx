@@ -41,7 +41,7 @@ function short(n: number): string {
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /** How the tenants trend: one line per tenant over the window, for the figure picked. It follows the table's filters. */
-export const TenantTrends: React.FC<{ tenants: AdminTenant[]; onColors?: (colors: Map<string, string>) => void }> = ({ tenants, onColors }) => {
+export const TenantTrends: React.FC<{ tenants: AdminTenant[]; onColors?: (colors: Map<string, string>) => void; selected?: string | null }> = ({ tenants, onColors, selected }) => {
   // The figure and the range stay as they were left in this browser; the first visit shows the last 24 hours.
   const [metric, setMetricState] = useState<Metric>(() => {
     const saved = stored('ego.admin.trend.metric');
@@ -125,8 +125,24 @@ export const TenantTrends: React.FC<{ tenants: AdminTenant[]; onColors?: (colors
       const d = new Date(t);
       return width >= 24 * 3600 * 1000 ? `${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : `${pad(d.getHours())}:00`;
     });
-    return { labels, datasets, colors, hourly: width < 24 * 3600 * 1000 };
+    // Which line draws each tenant: the tenants past the named ones all sit on the grey Other line.
+    const lineOf = new Map<string, number>();
+    named.forEach((r, i) => lineOf.set(r.key, i));
+    rest.forEach((r) => lineOf.set(r.key, named.length));
+    return { labels, datasets, colors, lineOf, hourly: width < 24 * 3600 * 1000 };
   }, [series, shown, metric]);
+
+  // A tenant picked in the table below stands out: its line is thick and on top, the others fade. Kept apart from
+  // `chart` so a pick restyles the lines without rebuilding the series.
+  const datasets = useMemo(() => {
+    if (!chart) return [];
+    const line = selected ? chart.lineOf.get(selected) : undefined;
+    if (line === undefined) return chart.datasets;
+    return chart.datasets.map((d, i) => {
+      const on = i === line;
+      return { ...d, borderColor: on ? d.borderColor : `${d.borderColor}33`, borderWidth: on ? 3.5 : 1.5, order: on ? 0 : 1 };
+    });
+  }, [chart, selected]);
 
   // The table under the chart is the legend: it paints each tenant's swatch in the colour of its line.
   useEffect(() => {
@@ -161,7 +177,7 @@ export const TenantTrends: React.FC<{ tenants: AdminTenant[]; onColors?: (colors
       {chart && chart.datasets.length > 0 && (
         <ChartBox css={boxStyle}>
           <Line
-            data={{ labels: chart.labels, datasets: chart.datasets }}
+            data={{ labels: chart.labels, datasets }}
             options={{
               animation: false,
               interaction: { mode: 'index', intersect: false },
