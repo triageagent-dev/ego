@@ -55,7 +55,7 @@ func TestAdminOverviewJoinsTenantsWithUsageAndTokens(t *testing.T) {
 		}
 	}
 
-	got, err := buildAdminOverview(store, archive, names, senders, now)
+	got, err := buildAdminOverview(store, archive, names, senders, now, adminOverviewWindow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +90,23 @@ func TestAdminOverviewJoinsTenantsWithUsageAndTokens(t *testing.T) {
 		}
 		if role == "admin" && strings.Contains(rec.Body.String(), "egs_") {
 			t.Errorf("the overview carries a token value: %s", rec.Body.String())
+		}
+	}
+}
+
+func TestAdminWindowReadsHours(t *testing.T) {
+	for query, want := range map[string]time.Duration{
+		"":            adminOverviewWindow,
+		"?hours=24":   24 * time.Hour,
+		"?hours=720":  720 * time.Hour,
+		"?hours=9999": adminOverviewMaxWindow,
+		"?hours=0":    adminOverviewWindow,
+		"?hours=-5":   adminOverviewWindow,
+		"?hours=abc":  adminOverviewWindow,
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/api/admin/overview"+query, nil)
+		if got := adminWindow(req); got != want {
+			t.Errorf("%q: window %v, want %v", query, got, want)
 		}
 	}
 }

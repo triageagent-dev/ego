@@ -3,12 +3,27 @@ package api
 import (
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// adminOverviewWindow is how far back the overview counts LLM calls.
-const adminOverviewWindow = 7 * 24 * time.Hour
+// adminOverviewWindow is how far back the overview counts LLM calls when the request names no window; the longest
+// it will count is adminOverviewMaxWindow, the longest range the admin page offers.
+const (
+	adminOverviewWindow    = 7 * 24 * time.Hour
+	adminOverviewMaxWindow = 30 * 24 * time.Hour
+)
+
+// adminWindow reads ?hours= as the window the figures cover: the default when absent or not a positive number, at
+// most the longest the page offers.
+func adminWindow(r *http.Request) time.Duration {
+	h, err := strconv.Atoi(r.URL.Query().Get("hours"))
+	if err != nil || h <= 0 {
+		return adminOverviewWindow
+	}
+	return min(time.Duration(h)*time.Hour, adminOverviewMaxWindow)
+}
 
 // tenantUsage is what the usage ledger holds for one tenant in a window.
 type tenantUsage struct {
@@ -70,8 +85,8 @@ type adminOverview struct {
 
 // buildAdminOverview joins every tenant the server knows of (from sessions, from the ledger, from tokens bound to
 // one) with its name, its call figures of the window and its bound tokens, and lists the senders with their tokens.
-func buildAdminOverview(store *SessionStore, archive *SQLiteStore, names *TenantNames, senders *SenderStore, now time.Time) (adminOverview, error) {
-	since := now.Add(-adminOverviewWindow)
+func buildAdminOverview(store *SessionStore, archive *SQLiteStore, names *TenantNames, senders *SenderStore, now time.Time, window time.Duration) (adminOverview, error) {
+	since := now.Add(-window)
 	out := adminOverview{Since: since.UnixMilli(), Tenants: []adminTenantRow{}, Senders: []adminSenderRow{}}
 	rows := map[string]*adminTenantRow{}
 	row := func(key string) *adminTenantRow {
@@ -132,7 +147,7 @@ func adminOverviewHandler(store *SessionStore, archive *SQLiteStore, names *Tena
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		out, err := buildAdminOverview(store, archive, names, senders, time.Now())
+		out, err := buildAdminOverview(store, archive, names, senders, time.Now(), adminWindow(r))
 		if err != nil {
 			writeEvaluateError(w, http.StatusInternalServerError, "failed to read the overview: "+err.Error())
 			return

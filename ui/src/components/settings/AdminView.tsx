@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/react';
 import { Button, Checkbox, Input, Modal, Popconfirm, Select, Table, Tabs } from 'antd';
 import { Check, Copy } from 'lucide-react';
 import { createSender, deleteSender, getAdminOverview, mintSenderToken, revokeSenderToken } from '../../api/client';
 import type { AdminOverview, AdminSender, AdminTenant } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
-import { TenantTrends } from './TenantTrends';
+import { RANGES, storedHours, storeHours, TenantTrends } from './TenantTrends';
 import { pageStyle, subtitleStyle, titleStyle } from '../ui/page';
 
 // 1,234,567 -> 1.2M
@@ -149,7 +149,7 @@ const pickableRowsStyle = css`
 const byNumber =(pick: (t: AdminTenant) => number) => (a: AdminTenant, b: AdminTenant) => pick(a) - pick(b);
 const nameOf = (t: AdminTenant) => (t.name || t.label).toLowerCase();
 
-const TenantsTab: React.FC<{ data: AdminOverview }> = ({ data }) => {
+const TenantsTab: React.FC<{ data: AdminOverview; hours: number; onHours: (hours: number) => void }> = ({ data, hours, onHours }) => {
   const [query, setQuery] = useState('');
   const [sender, setSender] = useState<string | undefined>();
   const [withTraffic, setWithTraffic] = useState(false);
@@ -172,7 +172,7 @@ const TenantsTab: React.FC<{ data: AdminOverview }> = ({ data }) => {
 
   return (
     <>
-      <p css={hintStyle}>Every tenant the server knows, with its LLM calls since {new Date(data.since).toISOString().slice(0, 10)}. Click a column to sort.</p>
+      <p css={hintStyle}>Every tenant the server knows, with its LLM calls in the last {RANGES.find((r) => r.hours === hours)?.label ?? `${hours}h`}, the range of the chart. Click a column to sort, a row to pick its line.</p>
       <div css={filterBarStyle}>
         <Input.Search allowClear placeholder="search name, sender or tenant" value={query} onChange={(e) => setQuery(e.target.value)} style={{ maxWidth: 320 }} />
         <Select allowClear placeholder="all senders" value={sender} onChange={setSender} style={{ minWidth: 170 }} options={senders.map((x) => ({ value: x, label: x }))} />
@@ -183,7 +183,7 @@ const TenantsTab: React.FC<{ data: AdminOverview }> = ({ data }) => {
           {rows.length === data.tenants.length ? `${rows.length} tenants` : `${rows.length} of ${data.tenants.length}`}
         </span>
       </div>
-      <TenantTrends tenants={rows} onColors={setColors} selected={selected} />
+      <TenantTrends tenants={rows} hours={hours} onHours={onHours} onColors={setColors} selected={selected} />
       <Table<AdminTenant>
         size="small"
         rowKey="key"
@@ -314,14 +314,26 @@ export const AdminView: React.FC = () => {
   const [data, setData] = useState<AdminOverview | null>(null);
   const [error, setError] = useState('');
 
+  // One range for the chart and the table's figures; the old rows stay on screen while the new ones load.
+  const [hours, setHoursState] = useState(storedHours);
+  const setHours = (h: number) => {
+    setHoursState(h);
+    storeHours(h);
+  };
+  // Only the newest request lands, so a quick change of range cannot be overwritten by a slower, older answer.
+  const latest = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++latest.current;
     try {
-      setData(await getAdminOverview());
-      setError('');
+      const next = await getAdminOverview(hours);
+      if (mine === latest.current) {
+        setData(next);
+        setError('');
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (mine === latest.current) setError(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [hours]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -338,7 +350,7 @@ export const AdminView: React.FC = () => {
         {data && (
           <Tabs
             items={[
-              { key: 'tenants', label: `tenants (${data.tenants.length})`, children: <TenantsTab data={data} /> },
+              { key: 'tenants', label: `tenants (${data.tenants.length})`, children: <TenantsTab data={data} hours={hours} onHours={setHours} /> },
               { key: 'keys', label: `keys (${data.senders.reduce((n, s) => n + s.tokens.length, 0)})`, children: <KeysTab data={data} reload={() => void load()} /> },
             ]}
           />

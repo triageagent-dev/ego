@@ -150,8 +150,10 @@ export const UsageView: React.FC = () => {
     setHoursState(h);
     store('ego.usage.hours', String(h));
   };
+  const [picked, setPicked] = useState<string | null>(null);
   const setDim = (d: Dimension) => {
     setDimState(d);
+    setPicked(null);
     store('ego.usage.dim', d);
   };
   const [series, setSeries] = useState<UsageSeries | null>(null);
@@ -250,8 +252,23 @@ export const UsageView: React.FC = () => {
     const rows = ranked.map(([g, t]) => ({ group: g, colour: colour.get(g) ?? OTHER_COLOR, ...t }));
     // Index of the Other dataset (always last), or -1 when nothing folds.
     const otherIndex = otherMembers.length ? datasets.length - 1 : -1;
-    return { totals, rows, labels: starts.map(t => bucketLabel(t, series.bucketMs)), datasets, otherIndex, otherParts };
+    // Which dataset draws each group: the groups folded into Other all sit on its layer.
+    const layerOf = new Map<string, number>();
+    layers.forEach((l, i) => {
+      if (l.label !== CACHED && !l.label.startsWith(`${OTHER} (`)) layerOf.set(l.label, i);
+    });
+    otherMembers.forEach(g => layerOf.set(g, otherIndex));
+    return { totals, rows, labels: starts.map(t => bucketLabel(t, series.bucketMs)), datasets, otherIndex, otherParts, layerOf };
   }, [series, dim]);
+
+  // A group picked in the breakdown table stands out in the chart: its bars keep their colour, the others fade.
+  const selected = picked && view?.layerOf.has(picked) ? picked : null;
+  const chartDatasets = useMemo(() => {
+    if (!view) return [];
+    const layer = selected ? view.layerOf.get(selected) : undefined;
+    if (layer === undefined) return view.datasets;
+    return view.datasets.map((d, i) => (i === layer ? d : { ...d, backgroundColor: `${d.backgroundColor}33` }));
+  }, [view, selected]);
 
   const total = view ? view.totals.input + view.totals.output : 0;
   const bursts = useMemo(() => sessions.filter(isBurst), [sessions]);
@@ -324,7 +341,7 @@ export const UsageView: React.FC = () => {
             ) : (
               <ChartBox css={chartBoxStyle}>
                 <Bar
-                  data={{ labels: view.labels, datasets: view.datasets }}
+                  data={{ labels: view.labels, datasets: chartDatasets }}
                   options={{
                     responsive: true,
                     maintainAspectRatio: false,
@@ -397,7 +414,12 @@ export const UsageView: React.FC = () => {
                     const t = r.input + r.output;
                     const share = total ? t / total : 0;
                     return (
-                      <tr key={r.group}>
+                      <tr
+                        key={r.group}
+                        className={r.group === selected ? 'picked' : undefined}
+                        onClick={() => setPicked(r.group === selected ? null : r.group)}
+                        title="click to pick it in the chart"
+                      >
                         <td><span css={swatchStyle} style={{ background: r.colour }} />{r.group}</td>
                         <td css={numStyle}>{r.calls.toLocaleString()}</td>
                         <td css={numStyle}>{formatTokens(r.input)}</td>
@@ -533,6 +555,8 @@ const tableStyle = css`
   }
   tbody tr:hover { background: var(--bg-elevated); }
   tbody tr:last-child td { border-bottom: none; }
+  tbody tr[title] { cursor: pointer; }
+  tbody tr.picked, tbody tr.picked:hover { background: var(--bg-selected); }
 `;
 
 const numStyle = css`

@@ -20,7 +20,7 @@ const METRICS: { key: Metric; label: string }[] = [
   { key: 'errors', label: 'errors' },
 ];
 
-const RANGES: { label: string; hours: number }[] = [
+export const RANGES: { label: string; hours: number }[] = [
   { label: '24h', hours: 24 },
   { label: '7d', hours: 24 * 7 },
   { label: '30d', hours: 24 * 30 },
@@ -40,24 +40,32 @@ function short(n: number): string {
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/** How the tenants trend: one line per tenant over the window, for the figure picked. It follows the table's filters. */
-export const TenantTrends: React.FC<{ tenants: AdminTenant[]; onColors?: (colors: Map<string, string>) => void; selected?: string | null }> = ({ tenants, onColors, selected }) => {
+/** The range the admin page last showed, as left in this browser; the first visit shows the last 24 hours. */
+export function storedHours(): number {
+  const saved = Number(stored('ego.admin.trend.hours'));
+  return RANGES.find((r) => r.hours === saved)?.hours ?? 24;
+}
+
+export function storeHours(h: number) {
+  store('ego.admin.trend.hours', String(h));
+}
+
+/** How the tenants trend: one line per tenant over the window, for the figure picked. It follows the table's filters. The range is the page's: the table under the chart counts the same hours. */
+export const TenantTrends: React.FC<{
+  tenants: AdminTenant[];
+  hours: number;
+  onHours: (hours: number) => void;
+  onColors?: (colors: Map<string, string>) => void;
+  selected?: string | null;
+}> = ({ tenants, hours, onHours, onColors, selected }) => {
   // The figure and the range stay as they were left in this browser; the first visit shows the last 24 hours.
   const [metric, setMetricState] = useState<Metric>(() => {
     const saved = stored('ego.admin.trend.metric');
     return METRICS.find((m) => m.key === saved)?.key ?? 'calls';
   });
-  const [hours, setHoursState] = useState(() => {
-    const saved = Number(stored('ego.admin.trend.hours'));
-    return RANGES.find((r) => r.hours === saved)?.hours ?? 24;
-  });
   const setMetric = (m: Metric) => {
     setMetricState(m);
     store('ego.admin.trend.metric', m);
-  };
-  const setHours = (h: number) => {
-    setHoursState(h);
-    store('ego.admin.trend.hours', String(h));
   };
   const [series, setSeries] = useState<UsageSeries | null>(null);
   const [error, setError] = useState('');
@@ -164,7 +172,7 @@ export const TenantTrends: React.FC<{ tenants: AdminTenant[]; onColors?: (colors
           </div>
           <div css={segmentStyle} role="group" aria-label="Time range">
             {RANGES.map((r) => (
-              <button key={r.hours} css={[segBtnStyle, hours === r.hours && segActiveStyle]} onClick={() => setHours(r.hours)}>
+              <button key={r.hours} css={[segBtnStyle, hours === r.hours && segActiveStyle]} onClick={() => onHours(r.hours)}>
                 {r.label}
               </button>
             ))}

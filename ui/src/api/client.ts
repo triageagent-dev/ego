@@ -639,8 +639,9 @@ export async function resetOnlineJobs(): Promise<OnlineJobs> {
   return unwrap<OnlineJobs>(response);
 }
 
-export async function getAdminOverview(): Promise<AdminOverview> {
-  const response = await fetch(config.api.endpoints.adminOverview);
+/** The tenants with their call figures over the last `hours`. */
+export async function getAdminOverview(hours: number): Promise<AdminOverview> {
+  const response = await fetch(`${config.api.endpoints.adminOverview}?hours=${hours}`);
   if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to load the overview'));
   return unwrap<AdminOverview>(response);
 }
