@@ -14,7 +14,7 @@ import {
 } from 'chart.js';
 import { useLiveData } from '../../lib/connection';
 import { getUsage, getUsageSessions, StorageUnavailableError } from '../../api/client';
-import { tenantNames, useSelectedTenant, useTenantNames } from '../../lib/tenant';
+import { tenantName, tenantNames, tenantNamesVersion, useSelectedTenant, useTenantNames } from '../../lib/tenant';
 import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
 import type { UsageBucket, UsageSeries, UsageSession } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
@@ -161,6 +161,7 @@ export const UsageView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const tenant = useSelectedTenant();
   useTenantNames();
+  const namesVersion = tenantNamesVersion();
 
   const load = useCallback(async (current: () => boolean) => {
     try {
@@ -202,6 +203,15 @@ export const UsageView: React.FC = () => {
     const colour = new Map<string, string>();
     colourOrder.forEach((g, i) => colour.set(g, slots[i % slots.length]));
     const folded = (g: string) => (kept.has(g) ? g : OTHER);
+    // What a group is called where it is drawn. A tenant shows its admin-given name; two tenants of one name (the same
+    // workspace under two senders) keep their sender, so the legend never lists the same words twice.
+    const names = new Map<string, number>();
+    if (dim === 'tenant') for (const [g] of ranked) names.set(tenantName(g), (names.get(tenantName(g)) ?? 0) + 1);
+    const display = (g: string) => {
+      if (dim !== 'tenant') return g;
+      const n = tenantName(g);
+      return (names.get(n) ?? 0) > 1 && g.includes('/') ? `${n} (${g.slice(0, g.indexOf('/'))})` : n;
+    };
     const otherMembers = ranked.slice(kept.size).map(([g]) => g);
 
     // Time axis: every bucket in the window, empty ones included, so gaps read as gaps.
@@ -226,14 +236,15 @@ export const UsageView: React.FC = () => {
       const tokens = b.inputTokens + b.outputTokens - cachedHere;
       cached[i] += cachedHere;
       stacks.get(folded(g))![i] += tokens;
-      if (!kept.has(g)) otherParts[i].set(g, (otherParts[i].get(g) ?? 0) + tokens);
+      if (!kept.has(g)) otherParts[i].set(display(g), (otherParts[i].get(display(g)) ?? 0) + tokens);
     }
 
-    const layers: Array<{ label: string; data: number[]; color: string }> = [];
-    if (cached.some(n => n > 0)) layers.push({ label: CACHED, data: cached, color: CACHED_COLOR });
+    const layers: Array<{ group: string; label: string; data: number[]; color: string }> = [];
+    if (cached.some(n => n > 0)) layers.push({ group: CACHED, label: CACHED, data: cached, color: CACHED_COLOR });
     for (const g of stacks.keys()) {
       layers.push({
-        label: g === OTHER ? `${OTHER} (${memberList(otherMembers)})` : g,
+        group: g,
+        label: g === OTHER ? `${OTHER} (${memberList(otherMembers.map(display))})` : display(g),
         data: stacks.get(g)!,
         color: colour.get(g) ?? OTHER_COLOR,
       });
@@ -249,17 +260,17 @@ export const UsageView: React.FC = () => {
       maxBarThickness: 28,
     }));
 
-    const rows = ranked.map(([g, t]) => ({ group: g, colour: colour.get(g) ?? OTHER_COLOR, ...t }));
+    const rows = ranked.map(([g, t]) => ({ group: g, label: display(g), colour: colour.get(g) ?? OTHER_COLOR, ...t }));
     // Index of the Other dataset (always last), or -1 when nothing folds.
     const otherIndex = otherMembers.length ? datasets.length - 1 : -1;
     // Which dataset draws each group: the groups folded into Other all sit on its layer.
     const layerOf = new Map<string, number>();
     layers.forEach((l, i) => {
-      if (l.label !== CACHED && !l.label.startsWith(`${OTHER} (`)) layerOf.set(l.label, i);
+      if (l.group !== CACHED && l.group !== OTHER) layerOf.set(l.group, i);
     });
     otherMembers.forEach(g => layerOf.set(g, otherIndex));
     return { totals, rows, labels: starts.map(t => bucketLabel(t, series.bucketMs)), datasets, otherIndex, otherParts, layerOf };
-  }, [series, dim]);
+  }, [series, dim, namesVersion]);
 
   // A group picked in the breakdown table stands out in the chart: its bars keep their colour, the others fade.
   const selected = picked && view?.layerOf.has(picked) ? picked : null;
@@ -420,7 +431,7 @@ export const UsageView: React.FC = () => {
                         onClick={() => setPicked(r.group === selected ? null : r.group)}
                         title="click to pick it in the chart"
                       >
-                        <td><span css={swatchStyle} style={{ background: r.colour }} />{r.group}</td>
+                        <td title={r.label === r.group ? undefined : r.group}><span css={swatchStyle} style={{ background: r.colour }} />{r.label}</td>
                         <td css={numStyle}>{r.calls.toLocaleString()}</td>
                         <td css={numStyle}>{formatTokens(r.input)}</td>
                         <td css={numStyle}>{r.cached ? formatTokens(r.cached) : '–'}</td>
