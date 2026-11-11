@@ -35,6 +35,8 @@ const RATES: Record<string, ModelRate> = {
   'gemini-3.1-pro-preview': { inputPerMillion: 2.0, outputPerMillion: 12.0 },
   // The decision model, priced from its billed per-call costs; it reports no output tokens.
   'typesafe/jev-1.13': { inputPerMillion: 0.042, outputPerMillion: 0 },
+  // Gemini Decision 1: $0.10 per 1M input tokens, no charge for output (no thinking-token or per-question billing).
+  'gemini-decision-1': { inputPerMillion: 0.1, outputPerMillion: 0 },
   // Anthropic list prices. The input rate is the plain one: an agent that reads most of its prompt from the cache
   // (Claude Code does) is priced high, as the note above says. claude-haiku-5-5 is left out on purpose: its rate
   // changes above 100K prompt tokens and the ledger holds no per-call prompt size.
