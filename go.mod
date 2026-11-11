@@ -2,7 +2,7 @@ module github.com/triageagent-dev/ego
 
 go 1.26.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 // CVE-2026-98432: a listener never asks the kernel for Multipath TCP.
 // Go 1.24+ enables MPTCP by default on Linux; the kernel bug it exposes
