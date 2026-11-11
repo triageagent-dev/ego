@@ -13,6 +13,9 @@
  * match risks a confidently wrong number. An unmapped model renders no
  * cost rather than a fabricated one - add an entry here instead.
  */
+import { useEffect, useSyncExternalStore } from 'react';
+import { config } from '../config';
+
 interface ModelRate {
   inputPerMillion: number;
   outputPerMillion: number;
@@ -65,6 +68,53 @@ const RATES: Record<string, ModelRate> = {
   'gemini-3.8-live': { inputPerMillion: 3.0, outputPerMillion: 12.0 },
 };
 
+// Prices the operator set on the server (`pricing` in the chart, `--pricing-file`): they win over the list above, so
+// a price changes without a release. Loaded by the views that show a cost; until then the built-in list prices.
+let overrides: Record<string, ModelRate> = {};
+let version = 0;
+const listeners = new Set<() => void>();
+
+const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+
+async function loadOverrides(): Promise<void> {
+  try {
+    const response = await fetch(`${config.api.endpoints.usage}/pricing`);
+    if (!response.ok) return;
+    const rates = ((await response.json()) as { data?: { rates?: Record<string, Partial<ModelRate>> } }).data?.rates ?? {};
+    const next: Record<string, ModelRate> = {};
+    for (const [id, r] of Object.entries(rates)) {
+      if (!num(r.inputPerMillion) || !num(r.outputPerMillion)) continue;
+      next[normalize(id)] = {
+        inputPerMillion: r.inputPerMillion,
+        outputPerMillion: r.outputPerMillion,
+        ...(num(r.cacheReadFactor) ? { cacheReadFactor: r.cacheReadFactor } : {}),
+        ...(num(r.cacheWriteFactor) ? { cacheWriteFactor: r.cacheWriteFactor } : {}),
+      };
+    }
+    if (JSON.stringify(next) === JSON.stringify(overrides)) return;
+    overrides = next;
+    version++;
+    listeners.forEach((l) => l());
+  } catch {
+    // The built-in list stands when the server cannot say.
+  }
+}
+
+/** Loads the server's prices on each visit of a view that shows a cost, and re-renders it when they differ. Returns a number that changes with them, for a memo that prices things. */
+export function usePricing(): number {
+  useEffect(() => {
+    void loadOverrides();
+  }, []);
+  return useSyncExternalStore(
+    (onChange) => {
+      listeners.add(onChange);
+      return () => listeners.delete(onChange);
+    },
+    () => version,
+    () => 0,
+  );
+}
+
 function normalize(model: string): string {
   return model.trim().toLowerCase();
 }
@@ -77,7 +127,8 @@ export function estimateCostUsd(
   cacheWriteTokens = 0,
 ): number | null {
   if (!model) return null;
-  const rate = RATES[normalize(model)];
+  const key = normalize(model);
+  const rate = overrides[key] ?? RATES[key];
   if (!rate) return null;
   // The cache parts are inside inputTokens; they are priced apart only where the model's cache factors are known.
   const read = rate.cacheReadFactor != null ? Math.min(cacheReadTokens, inputTokens) : 0;

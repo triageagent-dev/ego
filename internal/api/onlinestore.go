@@ -101,6 +101,15 @@ func ensureOnlineSchema(db *sql.DB) error {
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
 		)`,
+		// The prices an admin set for models (usage views apply them over the built-in list); one row a model, so a
+		// price is one UPDATE.
+		`CREATE TABLE IF NOT EXISTS model_prices (
+			model TEXT PRIMARY KEY,
+			input_per_million REAL NOT NULL,
+			output_per_million REAL NOT NULL,
+			cache_read_factor REAL,
+			cache_write_factor REAL
+		)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("creating online evaluation schema: %w", err)

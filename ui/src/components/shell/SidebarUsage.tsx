@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { css } from '@emotion/react';
 import { getOnlineSeries, getOnlineStatus, getUsage } from '../../api/client';
 import type { OnlineSeriesPoint, UsageSeries } from '../../lib/types';
-import { estimateCostUsd } from '../../lib/pricing';
+import { estimateCostUsd, usePricing } from '../../lib/pricing';
 import { useLiveData } from '../../lib/connection';
 import { useSelectedTenant } from '../../lib/tenant';
 import { useTraceContext } from '../../context/TraceContext';
@@ -76,6 +76,7 @@ type Row = [label: string, value: string, title: string];
 export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) => {
   const { actions } = useTraceContext();
   const tenant = useSelectedTenant();
+  const pricing = usePricing();
   const [figures, setFigures] = useState<Figures>({});
   // An agent that works in turns has no judge score until online evaluation scores it: its turns stand in.
   const turnQuality = useTurnQuality();
@@ -91,7 +92,7 @@ export const SidebarUsage: React.FC<{ collapsed: boolean }> = ({ collapsed }) =>
       scored: o.status === 'fulfilled' ? o.value.sessionsScored24h : undefined,
       ego: e.status === 'fulfilled' ? egoScore(e.value) : undefined,
     });
-  }, [tenant, hours]);
+  }, [tenant, hours, pricing]);
 
   useLiveData(['usage', 'quality'], load);
 

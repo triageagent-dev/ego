@@ -15,7 +15,7 @@ import {
 import { useLiveData } from '../../lib/connection';
 import { getUsage, getUsageSessions, StorageUnavailableError } from '../../api/client';
 import { tenantName, tenantNames, tenantNamesVersion, useSelectedTenant, useTenantNames } from '../../lib/tenant';
-import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
+import { estimateCostUsd, formatCostUsd, usePricing } from '../../lib/pricing';
 import type { UsageBucket, UsageSeries, UsageSession } from '../../lib/types';
 import { PageTitle } from '../shell/PageTitle';
 import { isBurst } from '../../lib/usageAlerts';
@@ -161,6 +161,7 @@ export const UsageView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const tenant = useSelectedTenant();
   useTenantNames();
+  const pricing = usePricing();
   const namesVersion = tenantNamesVersion();
 
   const load = useCallback(async (current: () => boolean) => {
@@ -270,7 +271,7 @@ export const UsageView: React.FC = () => {
     });
     otherMembers.forEach(g => layerOf.set(g, otherIndex));
     return { totals, rows, labels: starts.map(t => bucketLabel(t, series.bucketMs)), datasets, otherIndex, otherParts, layerOf };
-  }, [series, dim, namesVersion]);
+  }, [series, dim, namesVersion, pricing]);
 
   // A group picked in the breakdown table stands out in the chart: its bars keep their colour, the others fade.
   const selected = picked && view?.layerOf.has(picked) ? picked : null;
