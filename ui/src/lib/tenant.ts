@@ -105,6 +105,11 @@ export function tenantNames(keys: string): string {
   return keys.split(',').map((k) => tenantName(k.trim())).join(', ');
 }
 
+// Changes whenever the names do, for a memo that draws them.
+export function tenantNamesVersion(): number {
+  return namesVersion;
+}
+
 function setNames(options: TenantOption[]): void {
   const next: Record<string, string> = {};
   for (const o of options) if (o.name) next[o.key] = o.name;

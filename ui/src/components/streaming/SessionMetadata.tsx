@@ -1,4 +1,4 @@
-import { estimateCostUsd, formatCostUsd } from '../../lib/pricing';
+import { estimateCostUsd, formatCostUsd, usePricing } from '../../lib/pricing';
 
 interface SessionMetadataProps {
   session: {
@@ -68,6 +68,7 @@ function formatElapsed(startedAt: string, completedAt: string | null | undefined
 }
 
 export function SessionMetadata({ session, liveStats, modelName }: SessionMetadataProps) {
+  usePricing();
   const totalTokens = liveStats.totalInputTokens + liveStats.totalOutputTokens;
   const provider = session.invocations?.[0]?.modelInfo?.provider;
   const totalCacheCreation = session.invocations?.reduce((sum, inv) => sum + (inv.modelInfo?.cacheCreationTokens || 0), 0) || 0;
