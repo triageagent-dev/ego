@@ -105,8 +105,10 @@ vertex:
 jevSecret: ego-jev
 
 # -- The decision model behind the jev_* metrics. Any server that speaks the decisions API
-# (`{model, state, questions}` in, `answers` out) works, for example a model served by Ollama at /v1/systemone.
-# Empty: the default hosted endpoint and model.
+# (`{model, state, questions}` in, `answers` out) works, for example a model served by Ollama at /v1/systemone, and so
+# does Google's Gemini Decisions API (url https://generativelanguage.googleapis.com/v1beta/decisions, model
+# gemini-decision-1, its API key in jevSecret), whose request ego shapes by the host. Empty: the default hosted
+# endpoint and model.
 decision:
   # -- Endpoint, e.g. http://ollama:11434/v1/systemone.
   url: ""

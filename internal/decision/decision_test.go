@@ -549,3 +549,128 @@ func TestClientMasksCredentialsInTheRequest(t *testing.T) {
 		t.Errorf("request body = %s", got)
 	}
 }
+
+// toServer sends every request to srv, keeping the path, so a client built for a public host can be tested locally.
+type toServer struct{ srv *httptest.Server }
+
+func (t toServer) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.URL.Scheme, r.URL.Host = "http", strings.TrimPrefix(t.srv.URL, "http://")
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+const geminiDecisionsURL = "https://generativelanguage.googleapis.com/v1beta/decisions"
+
+func geminiClient(t *testing.T, srv *httptest.Server) *Client {
+	t.Helper()
+	t.Setenv("JEV_API_URL", "")
+	t.Setenv("EGO_DECISION_URL", geminiDecisionsURL)
+	c, err := NewClient("gkey", "", "gemini-decision-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.httpClient.Transport = toServer{srv}
+	return c
+}
+
+// Google takes the state as text in `input`, noul criteria renamed, the key in x-goog-api-key; answers keep their shape.
+func TestClientGeminiRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model     string
+			Input     string
+			State     any
+			Questions map[string]Question
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		qs := body.Questions
+		var state map[string]any
+		err := json.Unmarshal([]byte(body.Input), &state)
+		if r.URL.Path != "/v1beta/decisions" || r.Header.Get("x-goog-api-key") != "gkey" || r.Header.Get("Authorization") != "" ||
+			body.State != nil || body.Model != "gemini-decision-1" || err != nil || state["user_input"] != "Is the node synced?" {
+			t.Errorf("path %q, headers %v, body %+v", r.URL.Path, r.Header, body)
+		}
+		if c := qs["ok"].Criteria; c["true_description"] != "Answered" || c["false_description"] != "Not answered" || len(c) != 2 {
+			t.Errorf("noul criteria = %v", c)
+		}
+		if c := qs["kind"].Criteria; c["answer"] != "An answer" || c["refusal"] != "A refusal" || len(c) != 2 {
+			t.Errorf("choice criteria = %v, want them unchanged", c)
+		}
+		w.Write([]byte(`{"answers":{"ok":{"type":"noul","noul":0.97,"confidence":0.97},` +
+			`"kind":{"type":"choice","choice":"answer","probabilities":{"answer":0.9,"refusal":0.1},"confidence":0.9}}}`))
+	}))
+	defer srv.Close()
+
+	answers, err := geminiClient(t, srv).Decide(context.Background(), map[string]any{"user_input": "Is the node synced?"}, map[string]Question{
+		"ok":   {Type: "noul", Criteria: map[string]string{"true": "Answered", "false": "Not answered"}},
+		"kind": {Type: "choice", Criteria: map[string]string{"answer": "An answer", "refusal": "A refusal"}},
+	})
+	ok, kind := answers["ok"], answers["kind"]
+	if err != nil || ok.Noul == nil || *ok.Noul != 0.97 || kind.Choice != "answer" || kind.Probabilities["answer"] != 0.9 {
+		t.Errorf("err = %v, answers = %+v", err, answers)
+	}
+}
+
+// The state travels as escaped JSON text inside input, so it is masked before it is put there.
+func TestClientGeminiMasksCredentialsInTheInput(t *testing.T) {
+	var body struct{ Input string }
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&body)
+		w.Write([]byte(`{"answers":{"q":{"type":"noul","noul":0.5,"confidence":0.5}}}`))
+	}))
+	defer srv.Close()
+
+	state := map[string]any{"user": "write to bob@example.com", "tool": `{"password": "hunter2-x9"}`, "t": "token ghp_0123456789abcdefghijklmnopqrstuvwxyz"}
+	if _, err := geminiClient(t, srv).Decide(context.Background(), state, map[string]Question{"q": {Type: "noul"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, leak := range []string{"bob@example.com", "hunter2-x9", "ghp_0123"} {
+		if strings.Contains(body.Input, leak) {
+			t.Errorf("input carries %q: %s", leak, body.Input)
+		}
+	}
+	if !strings.Contains(body.Input, "[REDACTED]") {
+		t.Errorf("input = %s", body.Input)
+	}
+}
+
+// The key rides in a header nothing else guards: no key, a token file or plain http is refused when the client is built.
+func TestClientGeminiRefusals(t *testing.T) {
+	t.Setenv("JEV_API_URL", "")
+	t.Setenv("EGO_DECISION_TOKEN_FILE", "")
+	tok := filepath.Join(t.TempDir(), "token")
+	os.WriteFile(tok, []byte("jwt"), 0o600)
+	for _, tc := range []struct{ url, key, tokenFile, want string }{
+		{geminiDecisionsURL, "", "", "API key"},
+		{geminiDecisionsURL, "", tok, "API key"},
+		{"http://generativelanguage.googleapis.com/v1beta/decisions", "gkey", "", "https"},
+	} {
+		t.Setenv("EGO_DECISION_URL", tc.url)
+		if _, err := NewClient(tc.key, tc.tokenFile, "gemini-decision-1"); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%q key %q token %q: err = %v, want %q", tc.url, tc.key, tc.tokenFile, err, tc.want)
+		}
+	}
+	if !geminiURL("https://GENERATIVELANGUAGE.googleapis.com.:443/v1beta/decisions") {
+		t.Error("the real host in upper case with a trailing dot and port is not recognised")
+	}
+	if geminiURL("https://generativelanguage.googleapis.com.example.org/v1beta/decisions") {
+		t.Error("a look-alike host is recognised as Google's")
+	}
+}
+
+// Go drops Authorization on a cross-host redirect but forwards x-goog-api-key, so the Gemini client follows none.
+func TestClientGeminiFollowsNoRedirect(t *testing.T) {
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Redirect(w, r, "https://elsewhere.example/collect", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := geminiClient(t, srv)
+	c.backoff = 0
+	_, err := c.Decide(context.Background(), map[string]any{}, map[string]Question{"q": {Type: "noul"}})
+	if err == nil || !strings.Contains(err.Error(), "302") || requests != 1 {
+		t.Errorf("err = %v, requests = %d; want the redirect refused and not retried", err, requests)
+	}
+}
