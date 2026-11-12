@@ -9,6 +9,7 @@ import { CursorPager } from '../ui/Pager';
 import { useSelectedService, useSelectedTenant } from '../../lib/tenant';
 import { store, stored } from '../../lib/stored';
 import { SessionEvalSetFile, SessionTraceFile } from '../../lib/sessionFiles';
+import { responseFor } from '../../lib/toolPairing';
 import type { ConversationElement, LiveSession, SessionFailure, StreamingInvocation } from '../../lib/types';
 import { ActivityPanel } from './ActivityPanel';
 import { PageTitle } from '../shell/PageTitle';
@@ -42,14 +43,15 @@ function invocationsToElements(invocations: StreamingInvocation[]): Conversation
         data: { text: inv.userText },
       });
     }
-    for (const tc of inv.toolCalls || []) {
+    const toolCalls = inv.toolCalls || [];
+    toolCalls.forEach((tc, i) => {
       elements.push({
         type: 'tool_call',
         timestamp: base + seq++,
         invocationId: inv.invocationId,
         data: { toolCall: tc },
       });
-      const tr = inv.toolResponses?.find(r => r.id === tc.id || r.name === tc.name);
+      const tr = responseFor(toolCalls, inv.toolResponses, i);
       if (tr) {
         elements.push({
           type: 'tool_result',
@@ -58,7 +60,7 @@ function invocationsToElements(invocations: StreamingInvocation[]): Conversation
           data: { response: tr.response, isError: !!tr.response?.isError },
         });
       }
-    }
+    });
     if (inv.agentText) {
       elements.push({
         type: 'agent_response',
