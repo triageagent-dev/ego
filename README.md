@@ -209,6 +209,10 @@ export EGO_DECISION_MODEL=gemini-decision-1
 export EGO_DECISION_API_KEY=...                                # a Gemini API key
 ```
 
+A gateway that forwards to Google and holds the key is not recognised by its host: set `EGO_DECISION_PROTOCOL=gemini`
+(chart `decision.protocol`) to shape the request the same way. The credential then stays what it is for any gateway,
+the key or `EGO_DECISION_TOKEN_FILE` as the bearer.
+
 `score` questions are not sent yet. A decision model that runs on a small context needs `EGO_DECISION_MAX_STATE_BYTES`;
 check its scores against labelled sessions before relying on them. Ollama serves these models from version 0.35.
 

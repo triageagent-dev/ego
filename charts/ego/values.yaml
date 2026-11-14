@@ -112,6 +112,10 @@ jevSecret: ego-jev
 decision:
   # -- Endpoint, e.g. http://ollama:11434/v1/systemone.
   url: ""
+  # -- Request shape. Empty: the decisions API as Jev and Ollama serve it, except that Google's own host
+  # (generativelanguage.googleapis.com) is recognised and shaped for Gemini. `gemini` shapes the request for the Gemini
+  # Decisions API whatever the url, for a gateway that forwards to Google and holds the key (token.audience).
+  protocol: ""
   # -- Model name, sent as given to an endpoint of your own.
   model: ""
   # -- Shorten a state larger than this many bytes before it is sent (the longest texts first); 0 sends it whole.

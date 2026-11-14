@@ -674,3 +674,44 @@ func TestClientGeminiFollowsNoRedirect(t *testing.T) {
 		t.Errorf("err = %v, requests = %d; want the redirect refused and not retried", err, requests)
 	}
 }
+
+// Behind a gateway that holds Google's key the request is shaped for Gemini by the protocol setting, and the credential
+// stays what it is for any gateway: the token file as the bearer, no x-goog-api-key.
+func TestClientGeminiProtocolBehindAGateway(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model     string
+			Input     string
+			State     any
+			Questions map[string]Question
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		if r.Header.Get("Authorization") != "Bearer jwt" || r.Header.Get("x-goog-api-key") != "" || body.State != nil ||
+			body.Model != "gemini-decision-1" || !strings.Contains(body.Input, "Is the node synced?") ||
+			body.Questions["ok"].Criteria["true_description"] != "Answered" {
+			t.Errorf("headers %v, body %+v", r.Header, body)
+		}
+		w.Write([]byte(`{"answers":{"ok":{"type":"noul","noul":0.9,"confidence":0.9}}}`))
+	}))
+	defer srv.Close()
+	tok := filepath.Join(t.TempDir(), "token")
+	os.WriteFile(tok, []byte("jwt"), 0o600)
+	t.Setenv("JEV_API_URL", "")
+	t.Setenv("EGO_DECISION_URL", srv.URL+"/v1beta/decisions")
+	t.Setenv("EGO_DECISION_PROTOCOL", "gemini")
+	c, err := NewClient("", tok, "gemini-decision-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	answers, err := c.Decide(context.Background(), map[string]any{"user_input": "Is the node synced?"}, map[string]Question{
+		"ok": {Type: "noul", Criteria: map[string]string{"true": "Answered", "false": "Not answered"}},
+	})
+	if err != nil || answers["ok"].Noul == nil || *answers["ok"].Noul != 0.9 {
+		t.Errorf("err = %v, answers = %+v", err, answers)
+	}
+
+	t.Setenv("EGO_DECISION_PROTOCOL", "openai")
+	if _, err := NewClient("", tok, "gemini-decision-1"); err == nil || !strings.Contains(err.Error(), "EGO_DECISION_PROTOCOL") {
+		t.Errorf("an unknown protocol: err = %v", err)
+	}
+}

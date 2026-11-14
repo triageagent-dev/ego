@@ -4,7 +4,7 @@
 // answers directly. Any server that speaks that API works (Jev through the
 // default endpoint, or a model served by Ollama at /v1/systemone), and so does
 // Google's Gemini Decisions API, whose request differs a little and which is
-// known by its host; the endpoint, model and key are configuration. The ADK
+// known by its host (or by EGO_DECISION_PROTOCOL=gemini behind a gateway); the endpoint, model and key are configuration. The ADK
 // metrics in internal/judge stay Gemini-only.
 package decision
 
@@ -84,8 +84,11 @@ type Client struct {
 	// ServiceAccount token is rotated by the kubelet, and a restart to pick the new one up is not wanted.
 	tokenFile string
 	model     string
-	// gemini is set when url is Google's Gemini Decisions API, which wants its own request shape.
+	// gemini is set when the request is shaped for the Gemini Decisions API: url is Google's host, or the protocol is
+	// set to gemini for a gateway that forwards to it.
 	gemini bool
+	// googleKey is set when url is Google's own host: the key travels in x-goog-api-key.
+	googleKey bool
 	// maxState, when above 0, is the size in bytes a state is shortened to before it is sent.
 	maxState int
 	// backoff is the delay before retry n (doubling); a field so tests
@@ -139,11 +142,16 @@ func NewClient(apiKey, tokenFile, model string) (*Client, error) {
 	if apiKey == "" && tokenFile == "" && url == DefaultURL {
 		return nil, fmt.Errorf("jev_* metrics need an API key for the default endpoint: set EGO_DECISION_API_KEY (or JEV_API_KEY, or pass --jev-api-key), or point EGO_DECISION_URL at your own decision model")
 	}
-	gemini := geminiURL(url)
-	if gemini && (apiKey == "" || tokenFile != "") {
+	protocol := setting("EGO_DECISION_PROTOCOL")
+	if protocol != "" && protocol != "gemini" {
+		return nil, fmt.Errorf("EGO_DECISION_PROTOCOL must be empty or gemini, got %q", protocol)
+	}
+	googleKey := geminiURL(url)
+	gemini := googleKey || protocol == "gemini"
+	if googleKey && (apiKey == "" || tokenFile != "") {
 		return nil, errors.New("the Gemini Decisions API (" + geminiHost + ") takes an API key only: set EGO_DECISION_API_KEY (or JEV_API_KEY, or pass --jev-api-key), and no token file")
 	}
-	if gemini && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(url)), "https://") {
+	if googleKey && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(url)), "https://") {
 		return nil, errors.New("EGO_DECISION_URL: the Gemini Decisions API key is sent over https only")
 	}
 	if tokenFile != "" {
@@ -166,7 +174,7 @@ func NewClient(apiKey, tokenFile, model string) (*Client, error) {
 		maxState = n
 	}
 	httpClient := &http.Client{Timeout: 60 * time.Second}
-	if gemini {
+	if googleKey {
 		// Go drops Authorization on a cross-host redirect but forwards x-goog-api-key, so follow none: a 3xx is an error.
 		httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	}
@@ -177,6 +185,7 @@ func NewClient(apiKey, tokenFile, model string) (*Client, error) {
 		tokenFile:  tokenFile,
 		model:      model,
 		gemini:     gemini,
+		googleKey:  googleKey,
 		maxState:   maxState,
 		backoff:    time.Second,
 	}, nil
@@ -354,7 +363,7 @@ func (c *Client) decideOnce(ctx context.Context, body []byte) (answers map[strin
 		return nil, false, err
 	}
 	switch {
-	case c.gemini:
+	case c.googleKey:
 		req.Header.Set("x-goog-api-key", bearer)
 	case bearer != "":
 		req.Header.Set("Authorization", "Bearer "+bearer)
