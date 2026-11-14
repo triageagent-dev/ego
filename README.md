@@ -201,6 +201,14 @@ export EGO_DECISION_MAX_STATE_BYTES=6000                       # for a small con
 ego run trace.json -m jev_task_resolved
 ```
 
+Google's Gemini Decisions API is recognised by its host and gets its own request shape; it takes an API key only, over https:
+
+```bash
+export EGO_DECISION_URL=https://generativelanguage.googleapis.com/v1beta/decisions
+export EGO_DECISION_MODEL=gemini-decision-1
+export EGO_DECISION_API_KEY=...                                # a Gemini API key
+```
+
 `score` questions are not sent yet. A decision model that runs on a small context needs `EGO_DECISION_MAX_STATE_BYTES`;
 check its scores against labelled sessions before relying on them. Ollama serves these models from version 0.35.
 

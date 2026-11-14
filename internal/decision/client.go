@@ -2,9 +2,10 @@
 // a text judge and parsing its reply, it sends each invocation to a decision
 // model as a structured state plus typed questions and scores the typed
 // answers directly. Any server that speaks that API works (Jev through the
-// default endpoint, or a model served by Ollama at /v1/systemone); the
-// endpoint, model and key are configuration. The ADK metrics in
-// internal/judge stay Gemini-only.
+// default endpoint, or a model served by Ollama at /v1/systemone), and so does
+// Google's Gemini Decisions API, whose request differs a little and which is
+// known by its host; the endpoint, model and key are configuration. The ADK
+// metrics in internal/judge stay Gemini-only.
 package decision
 
 import (
@@ -14,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -38,6 +40,10 @@ const apiNamespace = "typesafe/"
 
 // DefaultURL is the Decisions API endpoint used when no other is configured.
 const DefaultURL = "https://openrouter.ai/api/alpha/decisions"
+
+// geminiHost serves Google's Gemini Decisions API, which wants the state as text in `input`, renamed noul criteria
+// and the key in x-goog-api-key.
+const geminiHost = "generativelanguage.googleapis.com"
 
 // Question is one typed question in a Decisions API request. Type is
 // "noul" (a probability that the answer is true, criteria keyed "true" and
@@ -78,6 +84,8 @@ type Client struct {
 	// ServiceAccount token is rotated by the kubelet, and a restart to pick the new one up is not wanted.
 	tokenFile string
 	model     string
+	// gemini is set when url is Google's Gemini Decisions API, which wants its own request shape.
+	gemini bool
 	// maxState, when above 0, is the size in bytes a state is shortened to before it is sent.
 	maxState int
 	// backoff is the delay before retry n (doubling); a field so tests
@@ -131,6 +139,13 @@ func NewClient(apiKey, tokenFile, model string) (*Client, error) {
 	if apiKey == "" && tokenFile == "" && url == DefaultURL {
 		return nil, fmt.Errorf("jev_* metrics need an API key for the default endpoint: set EGO_DECISION_API_KEY (or JEV_API_KEY, or pass --jev-api-key), or point EGO_DECISION_URL at your own decision model")
 	}
+	gemini := geminiURL(url)
+	if gemini && (apiKey == "" || tokenFile != "") {
+		return nil, errors.New("the Gemini Decisions API (" + geminiHost + ") takes an API key only: set EGO_DECISION_API_KEY (or JEV_API_KEY, or pass --jev-api-key), and no token file")
+	}
+	if gemini && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(url)), "https://") {
+		return nil, errors.New("EGO_DECISION_URL: the Gemini Decisions API key is sent over https only")
+	}
 	if tokenFile != "" {
 		if apiKey != "" {
 			return nil, errors.New("EGO_DECISION_TOKEN_FILE cannot be set together with an API key: both fill the Authorization header")
@@ -150,15 +165,27 @@ func NewClient(apiKey, tokenFile, model string) (*Client, error) {
 		}
 		maxState = n
 	}
+	httpClient := &http.Client{Timeout: 60 * time.Second}
+	if gemini {
+		// Go drops Authorization on a cross-host redirect but forwards x-goog-api-key, so follow none: a 3xx is an error.
+		httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	return &Client{
-		httpClient: &http.Client{Timeout: 60 * time.Second},
+		httpClient: httpClient,
 		url:        url,
 		apiKey:     apiKey,
 		tokenFile:  tokenFile,
 		model:      model,
+		gemini:     gemini,
 		maxState:   maxState,
 		backoff:    time.Second,
 	}, nil
+}
+
+// geminiURL reports whether raw is an endpoint of Google's Gemini Decisions API.
+func geminiURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	return err == nil && strings.EqualFold(strings.TrimSuffix(u.Hostname(), "."), geminiHost)
 }
 
 // checkTokenFile accepts a token file path by its name: absolute, and not the pod's own ServiceAccount token.
@@ -262,11 +289,16 @@ func (c *Client) Decide(ctx context.Context, state map[string]any, questions map
 	if c.maxState > 0 {
 		state = fitState(state, c.maxState)
 	}
-	body, err := json.Marshal(map[string]any{
-		"model":     c.wireModel(),
-		"state":     state,
-		"questions": questions,
-	})
+	request := map[string]any{"model": c.wireModel(), "state": state, "questions": questions}
+	if c.gemini {
+		// Escaped JSON text hides the key-value pairs from the masking of the whole body, so mask before embedding.
+		text, err := json.Marshal(state)
+		if err != nil {
+			return nil, fmt.Errorf("encoding decision request: %w", err)
+		}
+		request = map[string]any{"model": c.model, "input": string(redact.Bytes(text)), "questions": geminiQuestions(questions)}
+	}
+	body, err := json.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("encoding decision request: %w", err)
 	}
@@ -293,6 +325,25 @@ func (c *Client) Decide(ctx context.Context, state map[string]any, questions map
 	return nil, lastErr
 }
 
+// geminiQuestions renames the noul criteria keys Google names differently; other keys pass on as written so
+// Google's validation answers for them.
+func geminiQuestions(questions map[string]Question) map[string]Question {
+	out := make(map[string]Question, len(questions))
+	for k, q := range questions {
+		if q.Type == "noul" && q.Criteria != nil {
+			q.Criteria = maps.Clone(q.Criteria)
+			for _, key := range []string{"true", "false"} {
+				if v, ok := q.Criteria[key]; ok {
+					q.Criteria[key+"_description"] = v
+					delete(q.Criteria, key)
+				}
+			}
+		}
+		out[k] = q
+	}
+	return out
+}
+
 func (c *Client) decideOnce(ctx context.Context, body []byte) (answers map[string]Answer, retry bool, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(body))
 	if err != nil {
@@ -302,7 +353,10 @@ func (c *Client) decideOnce(ctx context.Context, body []byte) (answers map[strin
 	if err != nil {
 		return nil, false, err
 	}
-	if bearer != "" {
+	switch {
+	case c.gemini:
+		req.Header.Set("x-goog-api-key", bearer)
+	case bearer != "":
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	req.Header.Set("Content-Type", "application/json")
