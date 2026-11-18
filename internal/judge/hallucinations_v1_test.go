@@ -309,3 +309,29 @@ func TestHallucinationPromptTemplates_HaveExactlyOneSubstitutionSite(t *testing.
 		t.Errorf("validator prompt has %d %%s placeholders, want 2", n)
 	}
 }
+
+// A turn that reads several files holds more than the default budget: the later results are marked as left out,
+// and the limits raise the budget so they are shown.
+func TestBuildHallucinationContext_ToolOutputLimits(t *testing.T) {
+	inv := invocation("q", "a")
+	var uses []adk.FunctionCall
+	var responses []adk.FunctionResponse
+	for i := 0; i < 8; i++ {
+		uses = append(uses, adk.FunctionCall{Name: "read_file", ID: fmt.Sprint(i)})
+		responses = append(responses, adk.FunctionResponse{Name: "read_file", ID: fmt.Sprint(i), Response: map[string]any{"text": fmt.Sprintf("file%d:", i) + strings.Repeat("x", 4000)}})
+	}
+	inv.IntermediateData = &adk.IntermediateData{ToolUses: uses, ToolResponses: responses}
+
+	got := buildHallucinationContext(inv, nil)
+	if !strings.Contains(got, "file0:") || strings.Contains(got, "file7:") {
+		t.Errorf("by default the first result is shown and the last is not:\n%.300s", got)
+	}
+	if n := strings.Count(got, outputOmitted); n == 0 {
+		t.Error("a result left out for the budget is not marked as left out")
+	}
+
+	got = buildHallucinationContextWith(inv, nil, ToolOutputLimits{PerOutput: 5000, Total: 60000})
+	if !strings.Contains(got, "file7:") || strings.Contains(got, outputOmitted) {
+		t.Error("with a larger budget every result is shown")
+	}
+}
