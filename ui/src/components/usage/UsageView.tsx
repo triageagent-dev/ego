@@ -348,6 +348,9 @@ export const UsageView: React.FC = () => {
 
           <section css={cardStyle}>
             <h2 css={cardTitleStyle}>Tokens per {series!.bucketMs >= 24 * 3600 * 1000 ? 'day' : 'hour'}, by {DIMENSIONS.find(d => d.key === dim)!.label.toLowerCase()}</h2>
+            {chartDatasets.some(d => d.label === CACHED) && (
+              <p css={cachedKeyStyle}><span css={swatchStyle} style={{ background: CACHED_COLOR }} />{CACHED}: input read from the provider's cache, shown as its own segment</p>
+            )}
             {view.totals.calls === 0 ? (
               <p css={emptyStyle}>No LLM calls with token counts in this window.</p>
             ) : (
@@ -360,11 +363,8 @@ export const UsageView: React.FC = () => {
                     animation: false,
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
-                      legend: {
-                        position: 'top',
-                        align: 'start',
-                        labels: { color: '#a8b2c1', boxWidth: 12, boxHeight: 12, useBorderRadius: true, borderRadius: 2 },
-                      },
+                      // The breakdown table below is the key: each row carries its segment's colour.
+                      legend: { display: false },
                       tooltip: {
                         filter: item => (item.raw as number) > 0,
                         itemSort: (a, b) => (b.raw as number) - (a.raw as number),
@@ -584,6 +584,12 @@ const monoStyle = css`
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
+`;
+
+const cachedKeyStyle = css`
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
 `;
 
 const swatchStyle = css`

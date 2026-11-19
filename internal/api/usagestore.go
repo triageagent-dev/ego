@@ -276,6 +276,25 @@ func (s *SQLiteStore) InsertUsage(rows []usageRow) error {
 	return s.announce(topicUsage, tx.Commit())
 }
 
+// DeleteUsageSpans removes the rows of spans whose tokens are counted by a span inside them (adk.TokenCover). A span
+// that has no row is no error.
+func (s *SQLiteStore) DeleteUsageSpans(spanIDs []string) error {
+	const chunk = 500
+	for len(spanIDs) > 0 {
+		n := min(chunk, len(spanIDs))
+		args := make([]any, n)
+		for i, id := range spanIDs[:n] {
+			args[i] = id
+		}
+		q := `DELETE FROM llm_calls WHERE span_id IN (?` + strings.Repeat(`,?`, n-1) + `)`
+		if _, err := s.db.Exec(q, args...); err != nil {
+			return err
+		}
+		spanIDs = spanIDs[n:]
+	}
+	return s.announce(topicUsage, nil)
+}
+
 // PruneUsage deletes rows that started before cutoff.
 func (s *SQLiteStore) PruneUsage(cutoff time.Time) (int64, error) {
 	res, err := s.db.Exec(`DELETE FROM llm_calls WHERE start_ms < ?`, cutoff.UnixMilli())

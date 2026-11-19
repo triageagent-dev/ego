@@ -358,6 +358,8 @@ func profileEvaluators(p online.Profile) []evaluatorConfigDTO {
 			Rubrics:             ev.Rubrics,
 			Questions:           ev.Questions,
 			NumSamples:          ev.NumSamples,
+			MaxToolOutputChars:  ev.MaxToolOutputChars,
+			MaxToolOutputsTotal: ev.MaxToolOutputsTotal,
 		})
 	}
 	return out

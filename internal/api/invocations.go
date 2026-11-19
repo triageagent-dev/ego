@@ -228,8 +228,12 @@ func extractModelInfoFromSpans(spans []*tracepkg.Span) *ModelInfoDTO {
 	var totalIn, totalOut int64
 	provider := ""
 
+	counted := adk.CountedTokenSpans(llmSpans)
 	for _, s := range llmSpans {
 		in, out, model := adk.ExtractTokenUsageFromAttrs(s.Tags)
+		if adk.IsLLMSpan(s) && !counted[s] {
+			in, out = 0, 0 // inside another call's span, which reports the same usage
+		}
 		if model != "" && model != "unknown" {
 			modelsUsed[model] = true
 		} else if m := s.TagString(adk.GenAIRequestModel); m != "" {

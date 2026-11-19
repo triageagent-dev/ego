@@ -406,3 +406,15 @@ func TestEvalLimitsFileErrors(t *testing.T) {
 		t.Error("an empty file is not the built-in limits")
 	}
 }
+
+func TestValidateEvalConfigToolOutputLimits(t *testing.T) {
+	for _, tc := range []struct {
+		per, total int
+		ok         bool
+	}{{0, 0, true}, {20000, 100000, true}, {-1, 0, false}, {0, maxToolOutputsTotalLimit + 1, false}, {maxToolOutputCharsLimit + 1, 0, false}} {
+		msg := validateEvalConfig(evalConfigDTO{Evaluators: []evaluatorConfigDTO{{Name: "hallucinations_v1", MaxToolOutputChars: tc.per, MaxToolOutputsTotal: tc.total}}}, 1)
+		if (msg == "") != tc.ok {
+			t.Errorf("per %d total %d: %q", tc.per, tc.total, msg)
+		}
+	}
+}

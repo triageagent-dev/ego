@@ -213,3 +213,17 @@ func TestSessionSummaryListsTheFailedSpans(t *testing.T) {
 		t.Errorf("a clean session has %v", none)
 	}
 }
+
+// The program's llm.chat span and the SDK's span inside it report the same usage: the session has it once.
+func TestSessionSummaryCountsACallTracedTwiceOnce(t *testing.T) {
+	call := func(id, parent string) *tracepkg.Span {
+		return &tracepkg.Span{TraceID: "t", SpanID: id, ParentSpanID: parent, OperationName: "chat", Tags: map[string]any{
+			"gen_ai.request.model": "m", "gen_ai.usage.input_tokens": int64(20000), "gen_ai.usage.output_tokens": int64(2428),
+			"gen_ai.usage.cache_read.input_tokens": int64(500),
+		}}
+	}
+	sum := summarize(&Session{ID: "s", Spans: []*tracepkg.Span{call("outer", ""), call("inner", "outer")}})
+	if sum.InputTokens != 20000 || sum.OutputTokens != 2428 || sum.TotalTokens != 22428 {
+		t.Fatalf("tokens = in %d out %d total %d, want one call's 22428", sum.InputTokens, sum.OutputTokens, sum.TotalTokens)
+	}
+}

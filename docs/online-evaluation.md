@@ -84,7 +84,9 @@ a ConfigMap rendered from Helm values):
   `rubric_based_tool_use_quality_v1` (both need `rubrics`), and Jev: the `jev_*` questions and `jev_custom` (needs
   `questions`). A name that is none of these, a metric that needs a reference, and a Vertex-managed metric, which
   the budget cannot meter, are refused when the profile is loaded or saved. `numSamples` is new and defaults to 1
-  here, since one judge sample per invocation is the cost lever (the upload path keeps 5).
+  here, since one judge sample per invocation is the cost lever (the upload path keeps 5). For `hallucinations_v1`, `maxToolOutputChars` (default 6000) and `maxToolOutputsTotal`
+  (default 24000) set how many bytes of one tool result, and of all a turn's results, the judge is shown; raise them for
+  agents that read files, or the later results are marked omitted and claims resting on them read as unsupported.
 - `maxInvocations` scores only the last N invocations of a long session.
 - A profile may also match `service` or `tenant`; the most specific match wins. Its `kind` may be a glob
   (`*-spot` covers every spot, whatever it is called); a profile that names the kind exactly beats a glob.
