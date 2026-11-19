@@ -265,9 +265,23 @@ func turnOf(session string, part int, root *tracepkg.Span) (TurnRow, bool) {
 	}
 	var toolUs, approvalUs int64
 	var steps []flowStep
+	// A model call traced twice, the program's span with the SDK's inside it, is one request: the outer span is left
+	// out of the counts and the flow.
+	var all []*tracepkg.Span
+	var collect func(sp *tracepkg.Span)
+	collect = func(sp *tracepkg.Span) {
+		all = append(all, sp)
+		for _, c := range sp.Children {
+			collect(c)
+		}
+	}
+	collect(root)
+	counted := adk.CountedTokenSpans(all)
 	var walk func(sp *tracepkg.Span)
 	walk = func(sp *tracepkg.Span) {
 		switch {
+		case adk.IsLLMSpan(sp) && !counted[sp] && adk.HasTokenUsage(sp):
+			// counted by the span inside it
 		case adk.IsLLMSpan(sp):
 			row.Requests++
 			row.ModelMs += sp.Duration / 1000
