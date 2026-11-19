@@ -11,6 +11,7 @@ import (
 	"net/http"
 	neturl "net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -355,7 +356,18 @@ func (n *Notifier) post(ctx context.Context, s Sink, body any) error {
 		if !bearerMayTravel(req.URL) {
 			return fmt.Errorf("a bearer token file is sent over https, or over http only to a loopback host or an in-cluster Service")
 		}
-		tok, err := os.ReadFile(s.BearerTokenFile)
+		// The pod's own ServiceAccount token is not a sink credential, by name or through a link: the decision client's rule.
+		real, err := filepath.EvalSymlinks(s.BearerTokenFile)
+		if err != nil {
+			return fmt.Errorf("reading bearer token: %w", err)
+		}
+		if underDir(real, podCredentialDir) {
+			return fmt.Errorf("reading bearer token: the pod's own ServiceAccount token may not be sent to a sink")
+		}
+		if cred, err := filepath.EvalSymlinks(podCredentialDir); err == nil && underDir(real, cred) {
+			return fmt.Errorf("reading bearer token: the pod's own ServiceAccount token may not be sent to a sink")
+		}
+		tok, err := os.ReadFile(real)
 		if err != nil {
 			return fmt.Errorf("reading bearer token: %w", err)
 		}
@@ -363,7 +375,11 @@ func (n *Notifier) post(ctx context.Context, s Sink, body any) error {
 	}
 	client := n.Client
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
+		// No redirect is followed: Go keeps Authorization on a redirect to the same host, https to http included.
+		client = &http.Client{
+			Timeout:       15 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -385,6 +401,15 @@ func withoutURL(err error) error {
 		return fmt.Errorf("%s: %w", ue.Op, ue.Err)
 	}
 	return err
+}
+
+// podCredentialDir is where Kubernetes mounts the pod's own ServiceAccount token.
+const podCredentialDir = "/var/run/secrets/kubernetes.io/serviceaccount"
+
+// underDir reports whether path is root or below it, by the names alone.
+func underDir(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
 // bearerMayTravel reports whether a bearer token may be sent to u: https anywhere, http only to a loopback host or

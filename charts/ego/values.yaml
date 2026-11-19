@@ -86,6 +86,9 @@ auth:
   # -- Log the GitHub user name of every sign-in and refused sign-in (--audit-log). Off: the sign-in trail carries no
   # user names. Changes of access (role bindings, senders, ingest tokens, revocations) are always logged with the actor.
   auditLog: false
+  # -- Accept a raw GitHub access token (the output of `gh auth token`) as a bearer on /mcp. Such a token is accepted
+  # whichever application it was issued to. false (--no-github-tokens): MCP clients need an API, delegate or sender token.
+  githubTokens: true
   githubOrg: ""
   publicUrl: ""
   # -- Secret holding GITHUB_CLIENT_SECRET.

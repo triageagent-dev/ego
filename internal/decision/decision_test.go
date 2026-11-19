@@ -1,6 +1,7 @@
 package decision
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -713,5 +714,62 @@ func TestClientGeminiProtocolBehindAGateway(t *testing.T) {
 	t.Setenv("EGO_DECISION_PROTOCOL", "openai")
 	if _, err := NewClient("", tok, "gemini-decision-1"); err == nil || !strings.Contains(err.Error(), "EGO_DECISION_PROTOCOL") {
 		t.Errorf("an unknown protocol: err = %v", err)
+	}
+}
+
+// A key leaves in the clear only for a loopback host or an in-cluster Service, the rule a token file already had.
+func TestClientKeyTravelsOverHTTPSOnly(t *testing.T) {
+	for url, ok := range map[string]bool{
+		"http://gw.example/api":                      false,
+		"ftp://gw.example/api":                       false,
+		"https://gw.example/api":                     true,
+		"http://127.0.0.1:8080/api":                  true,
+		"http://gateway.gateway-system.svc/api":      true,
+		"http://gw.ns.svc.cluster.local:8080/api/v1": true,
+	} {
+		t.Setenv("EGO_DECISION_URL", url)
+		_, err := NewClient("key", "", "")
+		if (err == nil) != ok {
+			t.Errorf("%s: err = %v, want accepted = %v", url, err, ok)
+		}
+	}
+}
+
+// Go keeps Authorization on a redirect to the same host, so no client follows one, whatever the endpoint.
+func TestClientFollowsNoRedirect(t *testing.T) {
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Redirect(w, r, "/elsewhere", http.StatusFound)
+	}))
+	defer srv.Close()
+	t.Setenv("EGO_DECISION_URL", srv.URL)
+	c, err := NewClient("key", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.backoff = 0
+	_, err = c.Decide(context.Background(), map[string]any{}, map[string]Question{"q": {Type: "noul"}})
+	if err == nil || !strings.Contains(err.Error(), "302") || requests != 1 {
+		t.Errorf("err = %v, requests = %d; want the redirect refused and not retried", err, requests)
+	}
+}
+
+// An answer past the size bound is refused, not read to the end.
+func TestClientBoundsTheResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"answers":{"q":{"pad":"`))
+		w.Write(bytes.Repeat([]byte("a"), maxResponseBytes))
+		w.Write([]byte(`"}}}`))
+	}))
+	defer srv.Close()
+	t.Setenv("EGO_DECISION_URL", srv.URL)
+	c, err := NewClient("key", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.Decide(context.Background(), map[string]any{}, map[string]Question{"q": {Type: "noul"}})
+	if err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Errorf("err = %v, want the oversized response refused", err)
 	}
 }

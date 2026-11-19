@@ -112,7 +112,7 @@ func (v *githubTokenValidator) validate(token string) (username string, ok bool)
 // answered from the cache for any source. A new one costs GitHub lookups, which a source whose recent tokens were
 // refused no longer gets.
 func (v *githubTokenValidator) validateFrom(source, token string) (username string, ok bool) {
-	if v == nil || v.cfg == nil || !plausibleGitHubToken(token) {
+	if v == nil || v.cfg == nil || v.cfg.NoGitHubTokens || !plausibleGitHubToken(token) {
 		return "", false
 	}
 

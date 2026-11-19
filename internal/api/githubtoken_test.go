@@ -293,3 +293,12 @@ func TestGitHubOutageIsNeitherCachedNorCounted(t *testing.T) {
 		t.Fatalf("%d outage answers were cached", len(v.cache))
 	}
 }
+
+// With raw GitHub tokens turned off a member's valid token is refused.
+func TestGitHubTokenValidator_RefusesWhenTurnedOff(t *testing.T) {
+	githubAPIStub(t, "octocat", true)
+	v := newGitHubTokenValidator(&GitHubOAuthConfig{Org: "triageagent-dev", NoGitHubTokens: true})
+	if _, ok := v.validate("ghp_validtoken0123456789abcdefghij"); ok {
+		t.Error("a raw GitHub token was accepted with NoGitHubTokens set")
+	}
+}

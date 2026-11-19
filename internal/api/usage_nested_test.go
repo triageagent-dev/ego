@@ -129,3 +129,38 @@ func TestUsageLedger_RowsWrittenTwiceAreCleanedOnce(t *testing.T) {
 		t.Errorf("after the load: calls=%d in=%d out=%d, want the one inner call", calls, in, out)
 	}
 }
+
+// Span ids are the sender's choice: a row goes only for the session that ledgered it, so one sender naming another's
+// span id removes nothing of theirs.
+func TestUsageLedger_ADropIsScopedToItsSession(t *testing.T) {
+	archive, err := NewSQLiteStore(filepath.Join(t.TempDir(), "usage.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	if err := archive.InsertUsage([]usageRow{
+		{SpanID: "same", TraceID: "t1", SessionID: "victim:a:s1", Kind: "k"},
+		{SpanID: "mine", TraceID: "t2", SessionID: "other:b:s2", Kind: "k"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.DeleteUsageSpans([]usageDrop{{SessionID: "other:b:s2", SpanID: "same"}, {SessionID: "other:b:s2", SpanID: "mine"}}); err != nil {
+		t.Fatal(err)
+	}
+	var left []string
+	rows, err := archive.db.Query(`SELECT span_id FROM llm_calls`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		left = append(left, id)
+	}
+	if len(left) != 1 || left[0] != "same" {
+		t.Errorf("rows left = %v, want only the other session's row kept", left)
+	}
+}

@@ -519,7 +519,7 @@ type SessionStore struct {
 	pendingUsage []usageRow
 	// pendingUsageDrops are the spans whose ledger rows are to go: a span that reported usage and then turned out to
 	// have the call's own span inside it, which reports the same.
-	pendingUsageDrops []string
+	pendingUsageDrops []usageDrop
 	// pendingRoots maps a trace ID to its root span's name, for
 	// FillUsageKinds at the next flush. Touched with mu held.
 	pendingRoots map[string]string
@@ -840,7 +840,7 @@ func (s *SessionStore) LoadPersisted() error {
 	if done, err := s.store.OnlineState(usageOnceKey); err != nil {
 		return fmt.Errorf("checking the usage ledger for calls counted twice: %w", err)
 	} else if done == "" {
-		var drops []string
+		var drops []usageDrop
 		var werr error
 		flush := func() {
 			if werr == nil && len(drops) > 0 {
@@ -858,7 +858,7 @@ func (s *SessionStore) LoadPersisted() error {
 			for _, span := range snap.Spans {
 				// A span delivered twice is in the session twice; its row stays.
 				if adk.HasTokenUsage(span) && !counted[span] && !keep[span.SpanID] {
-					drops = append(drops, span.SpanID)
+					drops = append(drops, usageDrop{SessionID: snap.SessionID, SpanID: span.SpanID})
 				}
 			}
 			if sessions++; len(drops) >= migrationBatch {
@@ -1242,15 +1242,15 @@ func (s *SessionStore) requeueRootsLocked(roots map[string]string) {
 
 // dropUsageRowLocked takes a span's row out of the ledger: out of the buffer if it has not been written, and from the
 // table at the next flush if it has.
-func (s *SessionStore) dropUsageRowLocked(spanID string) {
+func (s *SessionStore) dropUsageRowLocked(sessionID, spanID string) {
 	kept := s.pendingUsage[:0]
 	for _, r := range s.pendingUsage {
-		if r.SpanID != spanID {
+		if r.SpanID != spanID || r.SessionID != sessionID {
 			kept = append(kept, r)
 		}
 	}
 	s.pendingUsage = kept
-	s.pendingUsageDrops = append(s.pendingUsageDrops, spanID)
+	s.pendingUsageDrops = append(s.pendingUsageDrops, usageDrop{SessionID: sessionID, SpanID: spanID})
 }
 
 // flushUsage writes buffered usage rows and, at most once a day, prunes
@@ -1488,7 +1488,7 @@ func (s *SessionStore) IngestBound(sender, tenant string, body map[string]any) i
 				if s.store != nil {
 					counts, dropped := session.cover.Add(span)
 					for _, d := range dropped {
-						s.dropUsageRowLocked(d.SpanID)
+						s.dropUsageRowLocked(session.ID, d.SpanID)
 					}
 					if row, ok := usageRowFromSpan(span, session.ID, s.usageTenantAttr, session.Sender, traceTenantLabel(tr.AllSpans, s.usageTenantAttr)); ok && counts {
 						row.Thread = session.threadKey()

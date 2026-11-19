@@ -503,8 +503,7 @@ ego separates what people see by **tenant**, and gives access by **GitHub team**
   **services** under its row in the switcher, by the `service.name` their sender declares. Picking one narrows the
   session list to the sessions that service reported (`service` on `list_sessions`, `services` on `list_tenants`). It is a
   filter on what the role already sees, not a grant: the name is whatever the sender says, and access stays with the tenant.
-- A signed-in user that **no grant covers sees nothing** (`--default-role none`, the chart default; the binary
-  defaults to `member`, which sees every tenant). Teams are read at sign-in. The shared `--otlp-token` is a sender with no name: its tenants keep
+- A signed-in user that **no grant covers sees nothing** (`--default-role none`, the default; `member` sees every tenant). Teams are read at sign-in. The shared `--otlp-token` is a sender with no name: its tenants keep
   their bare label as the key.
 - A sender that labels tenants with ids can have each one **named**, and the switcher, session badges and usage table
   show the name. The key stays the identity for grants and filters. The sender says the name itself: the span or
@@ -576,6 +575,7 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`:
 | `EGO_USAGE_TENANT_ATTR` | `--usage-tenant-attr` | Span attribute the Usage view reads the tenant from |
 | `EGO_LOG_LEVEL` | `--log-level` | Log threshold: `debug`, `info` (default), `warn` or `error`. Lines are `time=… level=… msg=…` on stderr |
 | `EGO_AUDIT_LOG` | `--audit-log` | Log the GitHub user name of every sign-in and refused sign-in (off by default). Changes of access (role bindings, senders, ingest tokens, revocations, finding reviews) are always logged with the acting identity |
+| `EGO_NO_GITHUB_TOKENS` | `--no-github-tokens` | Refuse a raw GitHub access token on `/mcp` (accepted by default, whichever application it was issued to); MCP clients then need an API, delegate or sender token |
 | `EGO_ONLINE_CONFIG` | `--online-config` | Online evaluation config file |
 | `EGO_DECISION_URL`, `EGO_DECISION_MODEL`, `EGO_DECISION_MAX_STATE_BYTES` | (`ego run`: `--jev-model`) | The decision model behind the `jev_*` metrics; empty: the hosted default |
 | `EGO_DECISION_API_KEY` or `EGO_DECISION_TOKEN_FILE` | (`ego run`: `--jev-api-key`, `--jev-token-file`) | Its credential: a key, or a file read on every call and sent as the bearer (a projected ServiceAccount token for a gateway that checks a JWT); never both |

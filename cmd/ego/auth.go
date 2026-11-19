@@ -10,6 +10,9 @@ import (
 	"github.com/triageagent-dev/ego/internal/api"
 )
 
+// maxTokenTTLDays is the longest lifetime mint-token gives a token: ten years.
+const maxTokenTTLDays = 3650
+
 // authCmd dispatches `ego auth <subcommand>`.
 func authCmd(args []string) error {
 	if len(args) == 0 {
@@ -51,8 +54,9 @@ func authMintTokenCmd(args []string) error {
 	if err := checkSessionSecret(*secret); err != nil {
 		return err
 	}
-	if *ttlDays < 1 {
-		return fmt.Errorf("--ttl-days must be at least 1")
+	// The ceiling also keeps the lifetime inside a time.Duration, which wraps past about 292 years.
+	if *ttlDays < 1 || *ttlDays > maxTokenTTLDays {
+		return fmt.Errorf("--ttl-days must be between 1 and %d", maxTokenTTLDays)
 	}
 
 	tokenRole, err := api.ParseRole(*role)

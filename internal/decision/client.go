@@ -122,6 +122,7 @@ func Configured() bool {
 // needs a key; another one gets the key only if there is one. A key and a token file together are refused, both fill
 // the Authorization header. A token file must be an absolute path outside the pod's own ServiceAccount token
 // directory, and its token travels only over https, or over http to a loopback host or an in-cluster Service name.
+// The same rule holds for a key. No redirect is followed.
 func NewClient(apiKey, tokenFile, model string) (*Client, error) {
 	if apiKey == "" {
 		apiKey = setting("EGO_DECISION_API_KEY", "JEV_API_KEY")
@@ -165,6 +166,11 @@ func NewClient(apiKey, tokenFile, model string) (*Client, error) {
 			return nil, err
 		}
 	}
+	if apiKey != "" && !googleKey {
+		if err := checkKeyURL(url); err != nil {
+			return nil, err
+		}
+	}
 	maxState := 0
 	if v := setting("EGO_DECISION_MAX_STATE_BYTES"); v != "" {
 		n, err := strconv.Atoi(v)
@@ -173,10 +179,11 @@ func NewClient(apiKey, tokenFile, model string) (*Client, error) {
 		}
 		maxState = n
 	}
-	httpClient := &http.Client{Timeout: 60 * time.Second}
-	if googleKey {
-		// Go drops Authorization on a cross-host redirect but forwards x-goog-api-key, so follow none: a 3xx is an error.
-		httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	// Follow no redirect, a 3xx is an error: Go keeps Authorization on a redirect to the same host (so https to http
+	// there carries the credential in the clear) and forwards x-goog-api-key to any host.
+	httpClient := &http.Client{
+		Timeout:       60 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	return &Client{
 		httpClient: httpClient,
@@ -227,6 +234,22 @@ func checkTokenURL(raw string) error {
 	}
 	return errors.New("EGO_DECISION_URL: the scheme must be https (or http to a loopback host or an in-cluster Service) when a token file is set")
 }
+
+// checkKeyURL is checkTokenURL for an API key: the key leaves in the clear only for a loopback host or an in-cluster
+// Service name.
+func checkKeyURL(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Hostname() == "" {
+		return errors.New("EGO_DECISION_URL must be an absolute URL when an API key is set")
+	}
+	if u.Scheme == "https" || u.Scheme == "http" && plainHTTPHost(u.Hostname()) {
+		return nil
+	}
+	return errors.New("EGO_DECISION_URL: an API key travels over https, or over plain http only to a loopback host or an in-cluster Service (.svc, .svc.cluster.local)")
+}
+
+// maxResponseBytes bounds what is read of one answer; a decision answer is a few kilobytes.
+const maxResponseBytes = 4 << 20
 
 // plainHTTPHost reports whether a bearer may travel over http to host.
 func plainHTTPHost(host string) bool {
@@ -376,9 +399,12 @@ func (c *Client) decideOnce(ctx context.Context, body []byte) (answers map[strin
 		return nil, ctx.Err() == nil, fmt.Errorf("calling the decision model: %w", err)
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return nil, true, fmt.Errorf("reading the decision model response: %w", err)
+	}
+	if len(raw) > maxResponseBytes {
+		return nil, false, fmt.Errorf("the decision model response is larger than %d bytes", maxResponseBytes)
 	}
 	if resp.StatusCode != http.StatusOK {
 		retry := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500

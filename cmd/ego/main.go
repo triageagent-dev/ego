@@ -128,7 +128,7 @@ func usage() {
 
 Usage:
   ego run <trace-file>... --eval-set <path> -m <metric> [-m <metric>...] [flags]
-  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--archive-alert-percent 10] [--segment-idle 30m] [--segment-max-spans n] [--segment-max-age 6h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth] [--audit-log] [--log-level info]
+  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--archive-alert-percent 10] [--segment-idle 30m] [--segment-max-spans n] [--segment-max-age 6h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth] [--audit-log] [--no-github-tokens] [--log-level info]
                    [--admin-github-users user1,user2] [--default-role member]
   ego auth mint-token --name <label> [--ttl-days 90] [--secret ...]
   ego mcp [--server-url http://localhost:8001] [--session-token ...] [--trace-dir dir] [--admin-tools]
@@ -439,8 +439,8 @@ func serveCmd(args []string) error {
 		"this service's own externally-reachable base URL, e.g. https://your-app.example.com, used to build an exact OAuth redirect_uri (PublicURL+\"/auth/callback\"); falls back to EGO_PUBLIC_URL. Required whenever --github-client-id/--github-client-secret are set (no fallback is derived from the incoming request - see internal/api/oauth.go's package doc).")
 	adminGitHubUsers := fs.String("admin-github-users", env("ADMIN_GITHUB_USERS"),
 		"comma-separated GitHub logins idempotently granted the admin role at startup (see internal/api/roles.go); falls back to EGO_ADMIN_GITHUB_USERS. Only takes effect when --session-secret is set. The only way to get a first admin into an otherwise-empty role store - after that, admins manage every role (including further admins) via GET/POST /api/admin/roles.")
-	defaultRole := fs.String("default-role", envOrDefault("DEFAULT_ROLE", "member"),
-		"role (admin | member | viewer | none) granted to any authenticated user with no matching role binding; falls back to EGO_DEFAULT_ROLE. \"member\" (the default) gives full read/write access to a deployment that never configures a role binding; \"none\" gives no access, so only teams and users with a binding see anything.")
+	defaultRole := fs.String("default-role", envOrDefault("DEFAULT_ROLE", "none"),
+		"role (admin | member | viewer | none) granted to any authenticated user with no matching role binding; falls back to EGO_DEFAULT_ROLE. \"none\" (the default) gives no access, so only teams and users with a binding see anything; \"member\" gives every org member read and write on every tenant.")
 	otlpTLSCert := fs.String("otlp-tls-cert", env("OTLP_TLS_CERT"),
 		"PEM certificate that turns on TLS for the OTLP receivers (4317 and 4318), so sender tokens do not cross the network in clear text; needs --otlp-tls-key; the pair is re-read when the files change; falls back to EGO_OTLP_TLS_CERT")
 	otlpTLSKey := fs.String("otlp-tls-key", env("OTLP_TLS_KEY"),
@@ -471,6 +471,8 @@ func serveCmd(args []string) error {
 		"bearer token the OTLP/HTTP and OTLP/gRPC receivers require from senders (Authorization: Bearer ...); without it (and without a sender token) every push is refused; at least 32 bytes; falls back to EGO_OTLP_TOKEN")
 	logLevel := fs.String("log-level", env("LOG_LEVEL"),
 		"log threshold: debug, info, warn or error (default info); falls back to EGO_LOG_LEVEL")
+	noGitHubTokens := fs.Bool("no-github-tokens", envBool("NO_GITHUB_TOKENS"),
+		"refuse a raw GitHub access token (the output of `gh auth token`) as a bearer on /mcp; such a token is accepted whichever application it was issued to, so turn this on when every MCP client holds an API, delegate or sender token; falls back to EGO_NO_GITHUB_TOKENS=true")
 	auditLog := fs.Bool("audit-log", envBool("AUDIT_LOG"),
 		"log the GitHub user name of every sign-in and refused sign-in; off by default so the log carries no user names; falls back to EGO_AUDIT_LOG=true")
 	onlineConfig := fs.String("online-config", env("ONLINE_CONFIG"),
@@ -496,6 +498,7 @@ func serveCmd(args []string) error {
 	}
 	if githubOAuth != nil {
 		githubOAuth.AuditLog = *auditLog
+		githubOAuth.NoGitHubTokens = *noGitHubTokens
 	}
 	if githubOAuth != nil && (*defaultRole == "member" || *defaultRole == "admin") {
 		logx.Warnf("every org member gets the %s role without a binding; set --default-role viewer or none and bind roles to users and teams to narrow it", *defaultRole)

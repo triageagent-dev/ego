@@ -34,6 +34,9 @@ type GitHubOAuthConfig struct {
 	// user names unless an operator asks for it. A change of access (auditLog in audit.go) is logged with the acting
 	// identity regardless: who changed who may do what is the record an operator must always have.
 	AuditLog bool
+	// NoGitHubTokens refuses a raw GitHub access token as a bearer on /mcp: such a token is accepted whichever application
+	// it was issued to, so a deployment whose MCP clients all hold API, delegate or sender tokens turns it off.
+	NoGitHubTokens bool
 }
 
 // auditf logs a sign-in event that names a user, only when the audit log is on.
@@ -120,7 +123,7 @@ func setCookie(w http.ResponseWriter, name, value string, maxAge time.Duration) 
 }
 
 func deleteCookie(w http.ResponseWriter, name string) {
-	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 }
 
 // Redirects to GitHub's OAuth authorize endpoint with a freshly minted CSRF state, which is also stashed in a

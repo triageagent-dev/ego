@@ -19,4 +19,4 @@ published from the same tag; update to the newest one.
   `--no-auth` says so.
 - Releases are built from a tagged commit. Those built in CI (up to v0.1.50, and from v0.1.60 on) carry keyless
   cosign signatures on the checksums file and the container image; see the README for how to verify them. v0.1.51 to
-  v0.1.59 were built on a maintainer's machine and are not signed. The Helm chart is not signed yet.
+  v0.1.59 were built on a maintainer's machine and are not signed. The Helm chart (an OCI artifact) is signed the same way from v0.7.0 on.

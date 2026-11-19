@@ -276,23 +276,36 @@ func (s *SQLiteStore) InsertUsage(rows []usageRow) error {
 	return s.announce(topicUsage, tx.Commit())
 }
 
+// usageDrop names one ledger row to remove: a span in the session it was ledgered under.
+type usageDrop struct {
+	SessionID string
+	SpanID    string
+}
+
 // DeleteUsageSpans removes the rows of spans whose tokens are counted by a span inside them (adk.TokenCover). A span
-// that has no row is no error.
-func (s *SQLiteStore) DeleteUsageSpans(spanIDs []string) error {
-	const chunk = 500
-	for len(spanIDs) > 0 {
-		n := min(chunk, len(spanIDs))
-		args := make([]any, n)
-		for i, id := range spanIDs[:n] {
-			args[i] = id
-		}
-		q := `DELETE FROM llm_calls WHERE span_id IN (?` + strings.Repeat(`,?`, n-1) + `)`
-		if _, err := s.db.Exec(q, args...); err != nil {
+// that has no row is no error. A row goes only when it belongs to the session that names it: span ids are chosen by
+// the sender, and a session id carries the sender's namespace, so no sender can remove another's row.
+func (s *SQLiteStore) DeleteUsageSpans(drops []usageDrop) error {
+	if len(drops) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`DELETE FROM llm_calls WHERE span_id = ? AND session_id = ?`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	for _, d := range drops {
+		if _, err := stmt.Exec(d.SpanID, d.SessionID); err != nil {
+			tx.Rollback()
 			return err
 		}
-		spanIDs = spanIDs[n:]
 	}
-	return s.announce(topicUsage, nil)
+	return s.announce(topicUsage, tx.Commit())
 }
 
 // PruneUsage deletes rows that started before cutoff.

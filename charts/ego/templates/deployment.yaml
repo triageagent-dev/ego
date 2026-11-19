@@ -74,6 +74,9 @@ spec:
             {{- if .Values.auth.auditLog }}
             - --audit-log
             {{- end }}
+            {{- if not .Values.auth.githubTokens }}
+            - --no-github-tokens
+            {{- end }}
             - --session-db=/data/{{ .Values.persistence.dbFile }}
             - --session-memory={{ .Values.persistence.memorySessions }}
             - --session-retention={{ .Values.persistence.retention }}

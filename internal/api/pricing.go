@@ -125,11 +125,13 @@ func adminPricingHandler(store *SQLiteStore) http.HandlerFunc {
 				writeEvaluateError(w, http.StatusInternalServerError, "failed to save the price: "+err.Error())
 				return
 			}
+			auditLog(r.Context(), "price.set", "model", model)
 		case http.MethodDelete:
 			if err := store.DeleteModelPrice(model); err != nil {
 				writeEvaluateError(w, http.StatusInternalServerError, "failed to drop the price: "+err.Error())
 				return
 			}
+			auditLog(r.Context(), "price.delete", "model", model)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
