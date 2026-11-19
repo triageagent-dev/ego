@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"sort"
 
 	"github.com/triageagent-dev/ego/internal/judge"
 	"github.com/triageagent-dev/ego/internal/logx"
@@ -24,6 +25,9 @@ type EvalLimits struct {
 	// Models limits a judge model by name; "*" covers a model not listed. The caps count tokens, not money, so a
 	// model that costs more per token has a weight above 1 to use up the daily budget faster, or its own cap.
 	Models map[string]ModelLimit `json:"models,omitempty"`
+	// ListedModelsOnly lets a member name only the judge models listed in Models by name ("*" lists none), so a member
+	// cannot pick a model nobody weighed or capped. An admin may name any.
+	ListedModelsOnly bool `json:"listedModelsOnly,omitempty"`
 }
 
 // ModelLimit is the limit on one judge model.
@@ -48,6 +52,9 @@ func (l EvalLimits) Validate() error {
 		if m.Weight < 0 || math.IsNaN(m.Weight) || math.IsInf(m.Weight, 0) || m.DailyTokens < 0 {
 			return fmt.Errorf("model %q has a negative or invalid weight or cap", name)
 		}
+	}
+	if l.ListedModelsOnly && len(l.listed()) == 0 {
+		return fmt.Errorf("listedModelsOnly needs at least one model listed by name")
 	}
 	return nil
 }
@@ -241,5 +248,17 @@ func judgeModelsOf(evaluators []evaluatorConfigDTO, defaultModel string) []strin
 			out = append(out, name)
 		}
 	}
+	return out
+}
+
+// listed is the models named in Models, sorted; "*" is not a name.
+func (l EvalLimits) listed() []string {
+	var out []string
+	for name := range l.Models {
+		if name != "*" {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
 	return out
 }

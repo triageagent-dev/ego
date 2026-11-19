@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { css } from '@emotion/react';
-import { Button, Input, InputNumber } from 'antd';
+import { Button, Checkbox, Input, InputNumber } from 'antd';
 import { Plus, X } from 'lucide-react';
 import { getEvalLimits, resetEvalLimits, saveEvalLimits } from '../../api/client';
 import type { EvalLimits, EvalLimitsState } from '../../lib/types';
@@ -14,10 +14,10 @@ interface ModelRow {
 const rowsOf = (l: EvalLimits): ModelRow[] =>
   Object.entries(l.models ?? {}).map(([name, m]) => ({ name, weight: m.weight || undefined, dailyTokens: m.dailyTokens || undefined }));
 
-const limitsOf = (userConcurrent: number | undefined, userPerMinute: number | undefined, rows: ModelRow[]): EvalLimits => {
+const limitsOf = (userConcurrent: number | undefined, userPerMinute: number | undefined, rows: ModelRow[], listedModelsOnly: boolean): EvalLimits => {
   const models: NonNullable<EvalLimits['models']> = {};
   for (const r of rows) models[r.name.trim()] = { weight: r.weight, dailyTokens: r.dailyTokens };
-  return { userConcurrent, userPerMinute, models };
+  return { userConcurrent, userPerMinute, models, listedModelsOnly: listedModelsOnly || undefined };
 };
 
 /** The limits on interactive evaluation: how much one member may run, and what each judge model may use. Admin only. */
@@ -26,6 +26,7 @@ export const EvalLimitsPanel: React.FC = () => {
   const [userConcurrent, setUserConcurrent] = useState<number | undefined>();
   const [userPerMinute, setUserPerMinute] = useState<number | undefined>();
   const [rows, setRows] = useState<ModelRow[]>([]);
+  const [listedOnly, setListedOnly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [unavailable, setUnavailable] = useState(false);
@@ -35,6 +36,7 @@ export const EvalLimitsPanel: React.FC = () => {
     setUserConcurrent(s.userConcurrent || undefined);
     setUserPerMinute(s.userPerMinute || undefined);
     setRows(rowsOf(s));
+    setListedOnly(!!s.listedModelsOnly);
   }, []);
 
   useEffect(() => {
@@ -42,12 +44,13 @@ export const EvalLimitsPanel: React.FC = () => {
   }, [adopt]);
 
   const names = rows.map((r) => r.name.trim());
-  const invalid = names.some((n) => !/^(\*|[A-Za-z0-9._-]{1,64})$/.test(n)) || new Set(names).size !== names.length;
+  const invalid = names.some((n) => !/^(\*|[A-Za-z0-9._-]{1,64})$/.test(n)) || new Set(names).size !== names.length || (listedOnly && !names.some((n) => n !== '*'));
   const dirty = useMemo(
     () =>
       loaded !== null &&
-      JSON.stringify(limitsOf(userConcurrent, userPerMinute, rows)) !== JSON.stringify(limitsOf(loaded.userConcurrent || undefined, loaded.userPerMinute || undefined, rowsOf(loaded))),
-    [loaded, userConcurrent, userPerMinute, rows],
+      JSON.stringify(limitsOf(userConcurrent, userPerMinute, rows, listedOnly)) !==
+        JSON.stringify(limitsOf(loaded.userConcurrent || undefined, loaded.userPerMinute || undefined, rowsOf(loaded), !!loaded.listedModelsOnly)),
+    [loaded, userConcurrent, userPerMinute, rows, listedOnly],
   );
 
   if (unavailable) return null;
@@ -105,6 +108,11 @@ export const EvalLimitsPanel: React.FC = () => {
           )}
         </div>
       ))}
+      <div css={actionsStyle}>
+        <Checkbox disabled={fixed} checked={listedOnly} onChange={(e) => setListedOnly(e.target.checked)}>
+          Members may use only the models listed here
+        </Checkbox>
+      </div>
       {!fixed && (
         <>
           <div css={actionsStyle}>
@@ -114,7 +122,7 @@ export const EvalLimitsPanel: React.FC = () => {
           </div>
 
           <div css={actionsStyle}>
-            <Button size="small" type="primary" loading={busy} disabled={!dirty || invalid} onClick={() => run(() => saveEvalLimits(limitsOf(userConcurrent, userPerMinute, rows)))}>
+            <Button size="small" type="primary" loading={busy} disabled={!dirty || invalid} onClick={() => run(() => saveEvalLimits(limitsOf(userConcurrent, userPerMinute, rows, listedOnly)))}>
               Save
             </Button>
             {dirty && <Button size="small" onClick={() => adopt(loaded)}>Discard changes</Button>}

@@ -64,6 +64,7 @@ adminGithubUsers: []
 #     models:
 #       "*": {weight: 1}
 #       gemini-2.5-pro: {weight: 4, dailyTokens: 1000000}
+#     listedModelsOnly: true   # a member may name only the models listed above; an admin any
 evalLimits: {}
 
 
@@ -89,6 +90,9 @@ auth:
   # -- Accept a raw GitHub access token (the output of `gh auth token`) as a bearer on /mcp. Such a token is accepted
   # whichever application it was issued to. false (--no-github-tokens): MCP clients need an API, delegate or sender token.
   githubTokens: true
+  # -- How long a browser session lasts before the user signs in again (--session-ttl, 5m to 24h; empty: 8h). Org
+  # membership and teams are read at sign-in, so a member removed from the org keeps access until the session ends.
+  sessionTTL: ""
   githubOrg: ""
   publicUrl: ""
   # -- Secret holding GITHUB_CLIENT_SECRET.

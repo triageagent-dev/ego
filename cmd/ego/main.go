@@ -128,7 +128,7 @@ func usage() {
 
 Usage:
   ego run <trace-file>... --eval-set <path> -m <metric> [-m <metric>...] [flags]
-  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--archive-alert-percent 10] [--segment-idle 30m] [--segment-max-spans n] [--segment-max-age 6h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth] [--audit-log] [--no-github-tokens] [--log-level info]
+  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--archive-alert-percent 10] [--segment-idle 30m] [--segment-max-spans n] [--segment-max-age 6h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth] [--audit-log] [--no-github-tokens] [--session-ttl 8h] [--log-level info]
                    [--admin-github-users user1,user2] [--default-role member]
   ego auth mint-token --name <label> [--ttl-days 90] [--secret ...]
   ego mcp [--server-url http://localhost:8001] [--session-token ...] [--trace-dir dir] [--admin-tools]
@@ -449,6 +449,8 @@ func serveCmd(args []string) error {
 		"comma-separated addresses or CIDRs of the gateways in front of ego; a request from one of them is counted, for the per-source limits on refused tokens, against the client named in its X-Forwarded-For instead of the gateway that every client shares; falls back to EGO_TRUSTED_PROXIES")
 	sessionMemory := fs.Int("session-memory", envIntOrDefault("SESSION_MEMORY", api.DefaultSessionMemory),
 		"completed sessions kept in memory with --session-db; older ones stay in the archive and load on demand (0 = no cap); falls back to EGO_SESSION_MEMORY")
+	sessionTTL := fs.Duration("session-ttl", envDurationOrDefault("SESSION_TTL", api.DefaultSessionTTL),
+		"how long a browser session lasts before the user signs in again (5m to 24h); org membership and teams are read at sign-in, so a member removed from the org keeps access until the session ends; falls back to EGO_SESSION_TTL")
 	sessionRetention := fs.Duration("session-retention", envDurationOrDefault("SESSION_RETENTION", api.DefaultSessionRetention),
 		"delete archived sessions not updated for this long, once a day, then compact the file (0 = keep forever); falls back to EGO_SESSION_RETENTION")
 	archiveAlertPercent := fs.Float64("archive-alert-percent", envFloatOrDefault("ARCHIVE_ALERT_PERCENT", api.DefaultArchiveAlertPercent),
@@ -499,6 +501,10 @@ func serveCmd(args []string) error {
 	if githubOAuth != nil {
 		githubOAuth.AuditLog = *auditLog
 		githubOAuth.NoGitHubTokens = *noGitHubTokens
+		if *sessionTTL < api.MinSessionTTL || *sessionTTL > api.MaxSessionTTL {
+			return fmt.Errorf("--session-ttl must be between %s and %s, got %s", api.MinSessionTTL, api.MaxSessionTTL, *sessionTTL)
+		}
+		githubOAuth.SessionTTL = *sessionTTL
 	}
 	if githubOAuth != nil && (*defaultRole == "member" || *defaultRole == "admin") {
 		logx.Warnf("every org member gets the %s role without a binding; set --default-role viewer or none and bind roles to users and teams to narrow it", *defaultRole)

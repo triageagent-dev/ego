@@ -23,7 +23,7 @@ func githubAPIStub(t *testing.T, login string, isMember bool) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"login":"` + login + `"}`))
+		_, _ = w.Write([]byte(`{"login":"` + login + `","id":42}`))
 	})
 	mux.HandleFunc("/orgs/triageagent-dev/members/"+login, func(w http.ResponseWriter, r *http.Request) {
 		if isMember {
@@ -300,5 +300,21 @@ func TestGitHubTokenValidator_RefusesWhenTurnedOff(t *testing.T) {
 	v := newGitHubTokenValidator(&GitHubOAuthConfig{Org: "triageagent-dev", NoGitHubTokens: true})
 	if _, ok := v.validate("ghp_validtoken0123456789abcdefghij"); ok {
 		t.Error("a raw GitHub token was accepted with NoGitHubTokens set")
+	}
+}
+
+// A member's token is refused when its login was first used here by another GitHub account.
+func TestGitHubTokenValidator_RefusesALoginThatChangedHands(t *testing.T) {
+	githubAPIStub(t, "octocat", true)
+	cfg := &GitHubOAuthConfig{Org: "triageagent-dev", pins: newIdentityPins(nil)}
+	if ok, err := cfg.pins.check("octocat", 7); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if _, ok := newGitHubTokenValidator(cfg).validate("ghp_validtoken0123456789abcdefghij"); ok {
+		t.Error("account 42 was accepted under a login pinned to account 7")
+	}
+	cfg.pins.forget("octocat")
+	if _, ok := newGitHubTokenValidator(cfg).validate("ghp_validtoken0123456789abcdefghij"); !ok {
+		t.Error("the account was refused after the pin was forgotten")
 	}
 }

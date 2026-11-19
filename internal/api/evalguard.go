@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -193,6 +194,15 @@ func (g *evalGuard) admit(now time.Time, user string, admin bool, models ...stri
 		if cap := g.limits.model(m).DailyTokens; cap > 0 && g.byModel[m] >= cap {
 			g.mu.Unlock()
 			return nil, http.StatusTooManyRequests, fmt.Sprintf("the daily token budget for the judge model %s is used up; it resets at 00:00 UTC, or use another model", m)
+		}
+	}
+	if counted && g.limits.ListedModelsOnly {
+		for _, m := range models {
+			if _, ok := g.limits.Models[m]; !ok || m == "*" {
+				listed := strings.Join(g.limits.listed(), ", ")
+				g.mu.Unlock()
+				return nil, http.StatusForbidden, fmt.Sprintf("the judge model %s is not one a member may use here; use one of: %s", m, listed)
+			}
 		}
 	}
 	if counted {

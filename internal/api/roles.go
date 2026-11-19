@@ -100,7 +100,7 @@ func (b RoleBinding) subjectKey() string {
 // applying to their session. Matches sessionTTL: both are refreshed
 // together at the user's next login, so this never outlives the session
 // cookie it's paired with.
-const teamCacheTTL = sessionTTL
+func teamCacheTTL() time.Duration { return sessionTTL }
 
 type teamCacheEntry struct {
 	teams   []string
@@ -360,7 +360,7 @@ func (s *RoleStore) dropTeams(username string) {
 func (s *RoleStore) setTeams(username string, teams []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.teamCache[strings.ToLower(username)] = teamCacheEntry{teams: teams, expires: time.Now().Add(teamCacheTTL)}
+	s.teamCache[strings.ToLower(username)] = teamCacheEntry{teams: teams, expires: time.Now().Add(teamCacheTTL())}
 }
 
 // RoleInfo is one request's resolved access level: computed once per

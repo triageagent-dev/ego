@@ -160,6 +160,15 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		roleStore.SetOnChange(hub.kickAll)
 	}
 
+	var pins *identityPins
+	if githubOAuth != nil {
+		pins = newIdentityPins(archive)
+		githubOAuth.pins = pins
+		sessionTTL = DefaultSessionTTL
+		if githubOAuth.SessionTTL > 0 {
+			sessionTTL = githubOAuth.SessionTTL
+		}
+	}
 	ghTokens := newGitHubTokenValidator(githubOAuth)
 	ghTokens.proxies = proxies
 	mux := http.NewServeMux()
@@ -211,6 +220,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/admin/roles", adminRolesHandler(roleStore))
 	mux.HandleFunc("/api/admin/roles/{id}", adminRoleByIDHandler(roleStore))
 	mux.HandleFunc("/api/admin/revocations", adminRevocationsHandler(revoked, ghTokens, roleStore))
+	mux.HandleFunc("/api/admin/identities/{login}", adminIdentityHandler(pins))
 	mux.HandleFunc("/api/admin/tenant-names", adminTenantNamesHandler(tenantNames))
 	var purgeGuarded purgeGuard
 	if onlineEngine != nil {

@@ -1040,6 +1040,8 @@ export interface EvalLimits {
   userPerMinute?: number;
   /** Per judge model name, or "*" for any other. */
   models?: Record<string, { weight?: number; dailyTokens?: number }>;
+  /** A member (not an admin) may name only the models listed in `models`. */
+  listedModelsOnly?: boolean;
 }
 
 export interface EvalLimitsState extends EvalLimits {

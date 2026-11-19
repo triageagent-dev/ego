@@ -77,6 +77,9 @@ spec:
             {{- if not .Values.auth.githubTokens }}
             - --no-github-tokens
             {{- end }}
+            {{- with .Values.auth.sessionTTL }}
+            - --session-ttl={{ . }}
+            {{- end }}
             - --session-db=/data/{{ .Values.persistence.dbFile }}
             - --session-memory={{ .Values.persistence.memorySessions }}
             - --session-retention={{ .Values.persistence.retention }}

@@ -37,6 +37,11 @@ type GitHubOAuthConfig struct {
 	// NoGitHubTokens refuses a raw GitHub access token as a bearer on /mcp: such a token is accepted whichever application
 	// it was issued to, so a deployment whose MCP clients all hold API, delegate or sender tokens turns it off.
 	NoGitHubTokens bool
+	// SessionTTL is how long a browser session lasts (0: DefaultSessionTTL). A member removed from the org, or from a
+	// team, keeps their access until the session ends, so a shorter one closes that gap sooner.
+	SessionTTL time.Duration
+	// pins refuses a login that now belongs to another GitHub account than the one first seen (identitypin.go).
+	pins *identityPins
 }
 
 // auditf logs a sign-in event that names a user, only when the audit log is on.
@@ -46,9 +51,19 @@ func (c *GitHubOAuthConfig) auditf(format string, args ...any) {
 	}
 }
 
+// sessionTTL is how long a browser session lasts before the user signs in again, which is also when org membership
+// and teams are read again. Serve sets it from GitHubOAuthConfig.SessionTTL.
+var sessionTTL = DefaultSessionTTL
+
+// DefaultSessionTTL, MinSessionTTL and MaxSessionTTL are the default and the bounds of --session-ttl.
 const (
-	sessionTTL = 8 * time.Hour
-	stateTTL   = 10 * time.Minute
+	DefaultSessionTTL = 8 * time.Hour
+	MinSessionTTL     = 5 * time.Minute
+	MaxSessionTTL     = 24 * time.Hour
+)
+
+const (
+	stateTTL = 10 * time.Minute
 
 	stateCookieName = "ego_oauth_state"
 )
@@ -175,7 +190,7 @@ func authCallbackHandler(cfg *GitHubOAuthConfig, roleStore *RoleStore) http.Hand
 			return
 		}
 
-		username, err := fetchGitHubLogin(client, accessToken)
+		username, userID, err := fetchGitHubUser(client, accessToken)
 		if err != nil {
 			logx.Warnf("auth: fetching GitHub user failed: %v", err)
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to fetch GitHub user"})
@@ -191,6 +206,17 @@ func authCallbackHandler(cfg *GitHubOAuthConfig, roleStore *RoleStore) http.Hand
 		if !member {
 			cfg.auditf("auth: GitHub OAuth: %s denied (not an active member of org %s)", username, cfg.Org)
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("GitHub user %q is not an active member of the %q org", username, cfg.Org)})
+			return
+		}
+
+		if same, err := cfg.pins.check(username, userID); err != nil {
+			logx.Warnf("auth: checking the GitHub account of a login failed: %v", err)
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to verify the GitHub account"})
+			return
+		} else if !same {
+			logx.Warnf("auth: a sign-in was refused: its login belongs to another GitHub account than the one first seen under it; an admin can forget that account with DELETE /api/admin/identities/<login>")
+			cfg.auditf("auth: GitHub OAuth: %s denied (the login belongs to another GitHub account than the one first seen)", username)
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "this GitHub login was first used here by another account; ask an admin"})
 			return
 		}
 
@@ -272,35 +298,42 @@ func exchangeCodeForToken(client *http.Client, cfg *GitHubOAuthConfig, code stri
 }
 
 func fetchGitHubLogin(client *http.Client, accessToken string) (string, error) {
+	login, _, err := fetchGitHubUser(client, accessToken)
+	return login, err
+}
+
+// fetchGitHubUser is fetchGitHubLogin with the account's numeric id, which stays the same when the login changes.
+func fetchGitHubUser(client *http.Client, accessToken string) (string, int64, error) {
 	req, err := http.NewRequest(http.MethodGet, githubAPIBaseURL+"/user", nil)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	req.Header.Set("Authorization", "token "+accessToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return "", fmt.Errorf("%w: GitHub user endpoint returned %d", errGitHubRefused, resp.StatusCode)
+		return "", 0, fmt.Errorf("%w: GitHub user endpoint returned %d", errGitHubRefused, resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub user endpoint returned %d", resp.StatusCode)
+		return "", 0, fmt.Errorf("GitHub user endpoint returned %d", resp.StatusCode)
 	}
 
 	var data struct {
 		Login string `json:"login"`
+		ID    int64  `json:"id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if data.Login == "" {
-		return "", fmt.Errorf("GitHub user endpoint returned no login")
+		return "", 0, fmt.Errorf("GitHub user endpoint returned no login")
 	}
-	return data.Login, nil
+	return data.Login, data.ID, nil
 }
 
 // teamsFetchMaxPages/teamsFetchPerPage bound GET /user/teams pagination -

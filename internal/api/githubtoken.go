@@ -166,15 +166,24 @@ func (v *githubTokenValidator) lookup(token string) githubTokenCacheEntry {
 	// A refusal (a bad token, a non-member) is an answer: cached, and counted against the source. A lookup that got
 	// no answer (network, a rate limit, a 5xx) is neither, so a GitHub outage locks nobody out and is retried.
 	var entry githubTokenCacheEntry
-	login, err := fetchGitHubLogin(v.client, token)
+	login, userID, err := fetchGitHubUser(v.client, token)
 	switch {
 	case err == nil:
 		member, memberErr := checkOrgMembership(v.client, v.cfg.Org, login, token)
 		if memberErr != nil {
 			return entry
 		}
-		entry.cacheable = true
+		// A member's login that now belongs to another account than the one first seen is refused, like a non-member.
+		// Only a member is pinned, so a stranger's token leaves nothing behind.
+		same := true
 		if member {
+			var pinErr error
+			if same, pinErr = v.cfg.pins.check(login, userID); pinErr != nil {
+				return entry
+			}
+		}
+		entry.cacheable = true
+		if member && same {
 			entry.username, entry.ok = login, true
 		}
 	case errors.Is(err, errGitHubRefused):
