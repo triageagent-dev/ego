@@ -29,11 +29,37 @@ var (
 	hallucinationNegativeLabels = map[string]bool{"unsupported": true, "contradictory": true, "disputed": true}
 )
 
-// Caps on what the judge is shown of the tools: one result, and all of a turn's results together.
+// Caps on what the judge is shown of the tools: one result, and all of a turn's results together. The evaluator
+// config can raise them (maxToolOutputChars, maxToolOutputsTotal), since a turn that reads several files holds more
+// than these and the answer's claims rest on the later reads as much as on the first.
 const (
 	maxToolOutputChars  = 6000
 	maxToolOutputsTotal = 24000
 )
+
+// ToolOutputLimits is how much of the tools' results the judge is shown, in bytes; 0 keeps the default.
+type ToolOutputLimits struct {
+	PerOutput int
+	Total     int
+}
+
+func (l ToolOutputLimits) perOutput() int {
+	if l.PerOutput > 0 {
+		return l.PerOutput
+	}
+	return maxToolOutputChars
+}
+
+func (l ToolOutputLimits) total() int {
+	if l.Total > 0 {
+		return l.Total
+	}
+	return maxToolOutputsTotal
+}
+
+// outputOmitted stands for a result left out because the turn's budget was spent, so the judge sees that a result
+// exists and was not shown, not an empty one.
+const outputOmitted = "[output omitted: the turn's tool-output budget was used up before this result]"
 
 // maxEarlierTurns and maxEarlierTurnChars bound the earlier turns quoted in the context: the newest turns, each
 // side of each cut, so a long conversation does not crowd out the turn being checked.
@@ -49,6 +75,11 @@ const (
 // said before ("the quote deployment" named three turns ago); without them every such reference read as invented.
 // The tool_code and tool_outputs blocks are the ones the validator prompt's fifth rule speaks of.
 func buildHallucinationContext(inv adk.Invocation, earlier []adk.Invocation) string {
+	return buildHallucinationContextWith(inv, earlier, ToolOutputLimits{})
+}
+
+// buildHallucinationContextWith is buildHallucinationContext with the limits on the tools' results given.
+func buildHallucinationContextWith(inv adk.Invocation, earlier []adk.Invocation, limits ToolOutputLimits) string {
 	var uses []adk.FunctionCall
 	var responses []adk.FunctionResponse
 	if inv.IntermediateData != nil {
@@ -80,7 +111,8 @@ func buildHallucinationContext(inv adk.Invocation, earlier []adk.Invocation) str
 			b.WriteString("- " + oneLine(u.Name) + "\n")
 		}
 	}
-	budget := maxToolOutputsTotal
+	perOutput := limits.perOutput()
+	budget := limits.total()
 	for i, u := range uses {
 		args, _ := json.Marshal(u.Args)
 		fmt.Fprintf(&b, "\n```tool_code\n%s(%s)\n```\n", oneLine(u.Name), plainText(string(args)))
@@ -89,10 +121,13 @@ func buildHallucinationContext(inv adk.Invocation, earlier []adk.Invocation) str
 			raw, _ := json.Marshal(r.Response)
 			out = string(raw)
 		}
-		if len(out) > maxToolOutputChars {
-			out = clipUTF8(out, maxToolOutputChars) + " …"
+		if len(out) > perOutput {
+			out = clipUTF8(out, perOutput) + " …"
 		}
-		if len(out) > budget {
+		switch {
+		case out != "" && budget == 0:
+			out = outputOmitted
+		case len(out) > budget:
 			out = clipUTF8(out, budget) + " …"
 		}
 		budget = max(budget-len(out), 0)
@@ -267,6 +302,11 @@ func evaluateHallucinationResponse(ctx context.Context, model Model, nlResponse,
 // claims against the invocation's own context) via a two-stage judge-model pipeline, then averages the
 // per-invocation scores.
 func HallucinationsV1(ctx context.Context, model Model, actual []adk.Invocation, threshold float64) (eval.Result, error) {
+	return HallucinationsV1With(ctx, model, actual, threshold, ToolOutputLimits{})
+}
+
+// HallucinationsV1With is HallucinationsV1 with the limits on how much of the tools' results the judge is shown.
+func HallucinationsV1With(ctx context.Context, model Model, actual []adk.Invocation, threshold float64, limits ToolOutputLimits) (eval.Result, error) {
 	const name = "hallucinations_v1"
 
 	perInvocation := make([]float64, len(actual))
@@ -294,7 +334,7 @@ func HallucinationsV1(ctx context.Context, model Model, actual []adk.Invocation,
 			}
 			continue
 		}
-		score, results, err := evaluateHallucinationResponse(ctx, model, text, buildHallucinationContext(inv, actual[:i]))
+		score, results, err := evaluateHallucinationResponse(ctx, model, text, buildHallucinationContextWith(inv, actual[:i], limits))
 		if err != nil {
 			return eval.Result{}, fmt.Errorf("invocation %d: %w", i, err)
 		}

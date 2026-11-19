@@ -30,6 +30,10 @@ type Evaluator struct {
 	Questions           json.RawMessage `json:"questions,omitempty"`
 	// NumSamples is the judge samples per invocation; 0 means 1 here.
 	NumSamples int `json:"numSamples,omitempty"`
+	// MaxToolOutputChars and MaxToolOutputsTotal are how many bytes of one tool result, and of all a turn's results,
+	// hallucinations_v1 shows its judge; 0 keeps the defaults (6000 and 24000).
+	MaxToolOutputChars  int `json:"maxToolOutputChars,omitempty"`
+	MaxToolOutputsTotal int `json:"maxToolOutputsTotal,omitempty"`
 }
 
 // Profile maps sessions of one call kind (optionally narrowed to a service
@@ -400,6 +404,9 @@ func (c *Config) validate() error {
 			}
 			if e.Name == decision.CustomMetricName && len(e.Questions) == 0 {
 				return fmt.Errorf("online config: profile %q: %s needs questions", p.Key(), e.Name)
+			}
+			if e.MaxToolOutputChars < 0 || e.MaxToolOutputChars > 100000 || e.MaxToolOutputsTotal < 0 || e.MaxToolOutputsTotal > 400000 {
+				return fmt.Errorf("online config: profile %q: %s maxToolOutputChars must be 0..100000 and maxToolOutputsTotal 0..400000", p.Key(), e.Name)
 			}
 			if e.NumSamples < 1 || e.NumSamples > 5 {
 				return fmt.Errorf("online config: profile %q: %s numSamples must be 1..5", p.Key(), e.Name)

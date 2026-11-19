@@ -134,6 +134,10 @@ spec:
             - name: EGO_DECISION_URL
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.decision.protocol }}
+            - name: EGO_DECISION_PROTOCOL
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .Values.decision.model }}
             - name: EGO_DECISION_MODEL
               value: {{ . | quote }}
