@@ -35,6 +35,9 @@ type Extractor struct {
 	currentInvocationID string
 	seenMessageContents map[string]bool
 	toolNamesByID       map[string]string
+	// cover keeps a model call traced twice (the program's span and the SDK's inside it, both with the usage) from
+	// being counted twice.
+	cover adk.TokenCover
 }
 
 type tokenTotal struct {
@@ -115,6 +118,22 @@ func (e *Extractor) ProcessSpan(span *tracepkg.Span) []Update {
 		}
 
 		inToks, outToks, model := adk.ExtractTokenUsageFromAttrs(span.Tags)
+		if adk.HasTokenUsage(span) {
+			counts, dropped := e.cover.Add(span)
+			// A span that counted until this one arrived inside it takes its tokens back, as a negative update.
+			for _, d := range dropped {
+				dIn, dOut, dModel := adk.ExtractTokenUsageFromAttrs(d.Tags)
+				dID := e.invocationID(d)
+				if total := e.tokenTotals[dID]; total != nil {
+					total.InputTokens -= dIn
+					total.OutputTokens -= dOut
+				}
+				updates = append(updates, Update{Type: "token_update", InvocationID: dID, InputTokens: -dIn, OutputTokens: -dOut, Model: dModel})
+			}
+			if !counts {
+				inToks, outToks = 0, 0
+			}
+		}
 		if inToks != 0 || outToks != 0 {
 			total := e.tokenTotals[invocationID]
 			if total == nil {

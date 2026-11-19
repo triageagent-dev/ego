@@ -12,12 +12,16 @@ import (
 // is a paid model call, and any member (or anyone, with login off) can start one, so a request is bounded in
 // size, only a few run at once, and the judge tokens they use count against a daily cap shared by all callers.
 const (
-	maxEvaluators        = 20
-	maxJudgeSamples      = 8
-	maxRubrics           = 50
-	maxTraceFiles        = 50
-	maxConcurrentEvals   = 4
-	DefaultEvalDailyToks = 5_000_000
+	maxEvaluators   = 20
+	maxJudgeSamples = 8
+	// The tool results hallucinations_v1 may be shown, in bytes: more than the defaults, bounded because they are
+	// judge tokens spent on every invocation.
+	maxToolOutputCharsLimit  = 100000
+	maxToolOutputsTotalLimit = 400000
+	maxRubrics               = 50
+	maxTraceFiles            = 50
+	maxConcurrentEvals       = 4
+	DefaultEvalDailyToks     = 5_000_000
 	// One signed-in member may have this many evaluations running and start this many a minute, so one caller
 	// cannot hold every slot or loop on a judge that reports no token counts (Vertex, Jev), which the token share
 	// does not see. An admin is not held to them.
@@ -38,6 +42,9 @@ func validateEvalConfig(cfg evalConfigDTO, traceFiles int) string {
 	for _, ev := range cfg.Evaluators {
 		if ev.NumSamples < 0 || ev.NumSamples > maxJudgeSamples {
 			return fmt.Sprintf("numSamples %d is out of range (0 to %d)", ev.NumSamples, maxJudgeSamples)
+		}
+		if msg := toolOutputLimitsError(ev.MaxToolOutputChars, ev.MaxToolOutputsTotal); msg != "" {
+			return msg
 		}
 		if len(ev.Rubrics) > maxRubrics {
 			return fmt.Sprintf("too many rubrics: %d (at most %d per evaluator)", len(ev.Rubrics), maxRubrics)
@@ -229,4 +236,15 @@ func (g *evalGuard) admit(now time.Time, user string, admin bool, models ...stri
 		g.mu.Unlock()
 		<-g.slots
 	}, 0, ""
+}
+
+// toolOutputLimitsError checks the limits on the tools' results an evaluator asks for; 0 is the default.
+func toolOutputLimitsError(perOutput, total int) string {
+	if perOutput < 0 || perOutput > maxToolOutputCharsLimit {
+		return fmt.Sprintf("maxToolOutputChars %d is out of range (0 to %d)", perOutput, maxToolOutputCharsLimit)
+	}
+	if total < 0 || total > maxToolOutputsTotalLimit {
+		return fmt.Sprintf("maxToolOutputsTotal %d is out of range (0 to %d)", total, maxToolOutputsTotalLimit)
+	}
+	return ""
 }

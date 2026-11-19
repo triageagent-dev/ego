@@ -79,6 +79,7 @@ func FeaturesOf(sessionID string, spans []*tracepkg.Span, tenantAttr string) Fea
 	var tools []string
 	ordered := append([]*tracepkg.Span(nil), spans...)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].StartTime < ordered[j].StartTime })
+	counted := adk.CountedTokenSpans(spans)
 	for _, sp := range ordered {
 		if adk.IsToolSpan(sp) {
 			f.ToolCalls++
@@ -96,6 +97,9 @@ func FeaturesOf(sessionID string, spans []*tracepkg.Span, tenantAttr string) Fea
 		f.LLMCalls++
 		lastLLM = sp
 		in, out, model := adk.ExtractTokenUsageFromAttrs(sp.Tags)
+		if !counted[sp] {
+			in, out = 0, 0
+		}
 		f.Tokens += in + out
 		kind := sp.TagString(adk.GenAIAgentName)
 		if kind == "" {

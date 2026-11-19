@@ -3,6 +3,7 @@ package incremental
 import (
 	"testing"
 
+	"github.com/triageagent-dev/ego/internal/adk"
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 )
 
@@ -88,5 +89,28 @@ func TestProcessSpan_TokenTotalsAccumulate(t *testing.T) {
 	}
 	if tokenUpdates != 1 {
 		t.Fatalf("got %d token_update events, want 1", tokenUpdates)
+	}
+}
+
+// The SDK's span arrives inside a span that already counted the same usage: the extractor takes the outer span's
+// tokens back with a negative update, so the card ends at one call's usage.
+func TestExtractorCountsACallTracedTwiceOnce(t *testing.T) {
+	call := func(id, parent string) *tracepkg.Span {
+		return &tracepkg.Span{TraceID: "t", SpanID: id, ParentSpanID: parent, OperationName: "chat", Tags: map[string]any{
+			adk.GenAIRequestModel: "m", adk.GenAIUsageInputTokens: int64(100), adk.GenAIUsageOutputTokens: int64(10),
+		}}
+	}
+	e := New()
+	var in, out int64
+	for _, sp := range []*tracepkg.Span{call("outer", "root"), call("inner", "outer")} {
+		for _, u := range e.ProcessSpan(sp) {
+			if u.Type == "token_update" {
+				in += u.InputTokens
+				out += u.OutputTokens
+			}
+		}
+	}
+	if in != 100 || out != 10 {
+		t.Errorf("the card ends at in %d out %d, want one call's 100 and 10", in, out)
 	}
 }

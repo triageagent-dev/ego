@@ -56,12 +56,14 @@ type Session struct {
 	Metadata       map[string]any
 	TraceIDs       map[string]struct{}
 	Spans          []*tracepkg.Span
-	StartedAt      time.Time
-	HasRootSpan    bool
-	IsComplete     bool
-	CompletedAt    *time.Time
-	Invocations    []InvocationDTO
-	extractor      *incremental.Extractor
+	// cover works out, as spans arrive, whose tokens count when a call is traced twice (usage ledger rows).
+	cover       adk.TokenCover
+	StartedAt   time.Time
+	HasRootSpan bool
+	IsComplete  bool
+	CompletedAt *time.Time
+	Invocations []InvocationDTO
+	extractor   *incremental.Extractor
 	// Sender is the sender that owns the session: the one whose token sent it. Spans from any other sender are
 	// refused. Empty for sessions from the shared token or an open receiver. The session's tenants are read from the
 	// spans' tenant label (tenantAttr) and keyed with the sender, see tenantKey.
@@ -235,13 +237,14 @@ func spanTemporal(spans []*tracepkg.Span) map[string]string {
 }
 
 // spanServiceAndTokens returns the first service.name on spans and the input and output tokens their LLM spans
-// reported.
+// reported, a call traced twice (the program's span and the SDK's under it) counted once.
 func spanServiceAndTokens(spans []*tracepkg.Span) (service string, input, output int64) {
+	counted := adk.CountedTokenSpans(spans)
 	for _, sp := range spans {
 		if service == "" {
 			service = sp.TagString(adk.OtelServiceName)
 		}
-		if adk.IsLLMSpan(sp) {
+		if counted[sp] {
 			in, out, _ := adk.ExtractTokenUsageFromAttrs(sp.Tags)
 			input += in
 			output += out
@@ -268,8 +271,9 @@ func spanServices(spans []*tracepkg.Span) []string {
 
 // spanCacheTokens sums the prompt-cache parts of the input tokens of the LLM spans.
 func spanCacheTokens(spans []*tracepkg.Span) (read, write int64) {
+	counted := adk.CountedTokenSpans(spans)
 	for _, sp := range spans {
-		if adk.IsLLMSpan(sp) {
+		if counted[sp] {
 			read += tagInt(sp, "gen_ai.usage.cache_read.input_tokens")
 			write += cacheWriteTokens(sp)
 		}
@@ -513,6 +517,9 @@ type SessionStore struct {
 	// snapshots. Only collected when an archive is configured. Touched with
 	// mu held.
 	pendingUsage []usageRow
+	// pendingUsageDrops are the spans whose ledger rows are to go: a span that reported usage and then turned out to
+	// have the call's own span inside it, which reports the same.
+	pendingUsageDrops []string
 	// pendingRoots maps a trace ID to its root span's name, for
 	// FillUsageKinds at the next flush. Touched with mu held.
 	pendingRoots map[string]string
@@ -690,6 +697,9 @@ func NewSessionStoreWithArchive(hub *sseHub, store *SQLiteStore, limits SessionL
 	return s
 }
 
+// usageOnceKey is the online_state key set once the ledger holds one row per model call (see adk.TokenCover).
+const usageOnceKey = "usage_counted_once_v1"
+
 // migrationBatch is how many ledger rows a startup pass over the archive writes at a time.
 const migrationBatch = 5000
 
@@ -738,8 +748,9 @@ func (s *SessionStore) LoadPersisted() error {
 		}
 		sessions := 0
 		if err := s.store.ForEachSnapshot(func(snap sessionSnapshot) {
+			counted := adk.CountedTokenSpans(snap.Spans)
 			for _, span := range snap.Spans {
-				if row, ok := usageRowFromSpan(span, snap.SessionID, s.usageTenantAttr, snap.Sender, traceTenantLabel(snap.Spans, s.usageTenantAttr)); ok {
+				if row, ok := usageRowFromSpan(span, snap.SessionID, s.usageTenantAttr, snap.Sender, traceTenantLabel(snap.Spans, s.usageTenantAttr)); ok && counted[span] {
 					row.Thread = snapThread(snap)
 					batch = append(batch, row)
 				}
@@ -824,6 +835,46 @@ func (s *SessionStore) LoadPersisted() error {
 	}
 
 	phase("usage kinds")
+	// A model call the program and its SDK both traced was ledgered twice. Take the outer span's row out, once, for
+	// the sessions in the archive; later spans are matched as they arrive.
+	if done, err := s.store.OnlineState(usageOnceKey); err != nil {
+		return fmt.Errorf("checking the usage ledger for calls counted twice: %w", err)
+	} else if done == "" {
+		var drops []string
+		var werr error
+		flush := func() {
+			if werr == nil && len(drops) > 0 {
+				werr = s.store.DeleteUsageSpans(drops)
+			}
+			drops = drops[:0]
+		}
+		sessions := 0
+		if err := s.store.ForEachSnapshot(func(snap sessionSnapshot) {
+			counted := adk.CountedTokenSpans(snap.Spans)
+			keep := make(map[string]bool, len(counted))
+			for span := range counted {
+				keep[span.SpanID] = true
+			}
+			for _, span := range snap.Spans {
+				// A span delivered twice is in the session twice; its row stays.
+				if adk.HasTokenUsage(span) && !counted[span] && !keep[span.SpanID] {
+					drops = append(drops, span.SpanID)
+				}
+			}
+			if sessions++; len(drops) >= migrationBatch {
+				flush()
+			}
+		}); err != nil {
+			return fmt.Errorf("reading session archive for calls counted twice: %w", err)
+		}
+		if flush(); werr != nil {
+			return fmt.Errorf("removing calls counted twice from the usage ledger: %w", werr)
+		}
+		if err := s.store.SetOnlineState(usageOnceKey, "done"); err != nil {
+			return fmt.Errorf("recording the usage ledger cleanup: %w", err)
+		}
+	}
+	phase("usage counted once")
 	// Only the newest sessions come back into memory; the rest stay in the
 	// archive and are read on demand. A few extra beyond maxMemory leave
 	// room for still-active sessions among the newest.
@@ -1189,6 +1240,19 @@ func (s *SessionStore) requeueRootsLocked(roots map[string]string) {
 	}
 }
 
+// dropUsageRowLocked takes a span's row out of the ledger: out of the buffer if it has not been written, and from the
+// table at the next flush if it has.
+func (s *SessionStore) dropUsageRowLocked(spanID string) {
+	kept := s.pendingUsage[:0]
+	for _, r := range s.pendingUsage {
+		if r.SpanID != spanID {
+			kept = append(kept, r)
+		}
+	}
+	s.pendingUsage = kept
+	s.pendingUsageDrops = append(s.pendingUsageDrops, spanID)
+}
+
 // flushUsage writes buffered usage rows and, at most once a day, prunes
 // rows older than usageRetention. Rows go back into the buffer when the
 // write fails, so the next tick retries them.
@@ -1196,6 +1260,8 @@ func (s *SessionStore) flushUsage() error {
 	s.mu.Lock()
 	rows := s.pendingUsage
 	s.pendingUsage = nil
+	drops := s.pendingUsageDrops
+	s.pendingUsageDrops = nil
 	roots := s.pendingRoots
 	s.pendingRoots = nil
 	prune := s.usageRetention > 0 && time.Since(s.lastUsagePrune) >= 24*time.Hour
@@ -1207,9 +1273,17 @@ func (s *SessionStore) flushUsage() error {
 	if err := s.store.InsertUsage(rows); err != nil {
 		s.mu.Lock()
 		s.pendingUsage = append(rows, s.pendingUsage...)
+		s.pendingUsageDrops = append(drops, s.pendingUsageDrops...)
 		s.requeueRootsLocked(roots)
 		s.mu.Unlock()
 		return fmt.Errorf("writing usage ledger: %w", err)
+	}
+	if err := s.store.DeleteUsageSpans(drops); err != nil {
+		s.mu.Lock()
+		s.pendingUsageDrops = append(drops, s.pendingUsageDrops...)
+		s.requeueRootsLocked(roots)
+		s.mu.Unlock()
+		return fmt.Errorf("dropping counted-twice usage rows: %w", err)
 	}
 	if err := s.store.FillUsageKinds(roots); err != nil {
 		s.mu.Lock()
@@ -1412,7 +1486,11 @@ func (s *SessionStore) IngestBound(sender, tenant string, body map[string]any) i
 				s.markChangedLocked(session)
 				ingested++
 				if s.store != nil {
-					if row, ok := usageRowFromSpan(span, session.ID, s.usageTenantAttr, session.Sender, traceTenantLabel(tr.AllSpans, s.usageTenantAttr)); ok {
+					counts, dropped := session.cover.Add(span)
+					for _, d := range dropped {
+						s.dropUsageRowLocked(d.SpanID)
+					}
+					if row, ok := usageRowFromSpan(span, session.ID, s.usageTenantAttr, session.Sender, traceTenantLabel(tr.AllSpans, s.usageTenantAttr)); ok && counts {
 						row.Thread = session.threadKey()
 						if row.Kind == "" {
 							row.Kind = traceRootName(session.Spans, span.TraceID)

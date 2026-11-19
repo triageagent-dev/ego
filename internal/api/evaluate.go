@@ -37,6 +37,10 @@ type evaluatorConfigDTO struct {
 	Questions json.RawMessage `json:"questions,omitempty"`
 	// NumSamples is the judge samples per invocation; 0 means judge.DefaultNumSamples.
 	NumSamples int `json:"numSamples,omitempty"`
+	// MaxToolOutputChars and MaxToolOutputsTotal are how many bytes of one tool result, and of all a turn's results,
+	// hallucinations_v1 shows its judge; 0 keeps the defaults (6000 and 24000).
+	MaxToolOutputChars  int `json:"maxToolOutputChars,omitempty"`
+	MaxToolOutputsTotal int `json:"maxToolOutputsTotal,omitempty"`
 }
 
 // evalConfigDTO is POST /api/evaluate's "config" form field, matching
@@ -296,7 +300,7 @@ func newVertexEvalClientGetter(ctx context.Context) func() (*vertexeval.Client, 
 
 // runJudgeMetric dispatches one judgeMetrics-listed metric name to its
 // internal/judge implementation.
-func runJudgeMetric(ctx context.Context, name string, model judge.Model, actual, expected []adk.Invocation, rubricTexts []string, numSamples int, threshold float64) eval.Result {
+func runJudgeMetric(ctx context.Context, name string, model judge.Model, actual, expected []adk.Invocation, rubricTexts []string, numSamples int, threshold float64, limits judge.ToolOutputLimits) eval.Result {
 	switch name {
 	case "final_response_match_v2":
 		if expected == nil {
@@ -309,7 +313,7 @@ func runJudgeMetric(ctx context.Context, name string, model judge.Model, actual,
 		}
 		return r
 	case "hallucinations_v1":
-		r, err := judge.HallucinationsV1(ctx, model, actual, threshold)
+		r, err := judge.HallucinationsV1With(ctx, model, actual, threshold, limits)
 		if err != nil {
 			return eval.Result{MetricName: name, Error: err.Error()}
 		}
@@ -663,7 +667,8 @@ func evaluateInvocations(
 				if ratesTheAnswer(evaluator.Name) {
 					actual, exp = settled, eval.FindExpectedInvocations(settled, evalSet)
 				}
-				result = runJudgeMetric(ctx, evaluator.Name, model, actual, exp, evaluator.Rubrics, numSamples, threshold)
+				result = runJudgeMetric(ctx, evaluator.Name, model, actual, exp, evaluator.Rubrics, numSamples, threshold,
+					judge.ToolOutputLimits{PerOutput: evaluator.MaxToolOutputChars, Total: evaluator.MaxToolOutputsTotal})
 			}
 		case vertexEvalMetrics[evaluator.Name]:
 			judgeModelUsed = vertexEvalServiceLabel
