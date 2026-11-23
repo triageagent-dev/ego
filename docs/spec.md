@@ -31,7 +31,7 @@ Spans group into sessions by `ego.session_name`, then `gen_ai.conversation.id`, 
 
 ### Always-on agents: threads and segments
 
-For an agent that wakes every few minutes for weeks, a session id names the agent and not a unit of work. A sender that declares the resource attribute `ego.thread` gets three levels. The **thread** is the declared value. A **segment** is what ego stores, lists, scores and cites as a session: a run of whole traces whose first one keeps the thread's id and whose n-th is `<thread>~n`. A **turn** is one trace, and a segment never cuts one. A trace goes to the segment its first span chose, so late spans still land in it. Segmentation is opt-in; every session without the attribute behaves as described above.
+For an agent that wakes every few minutes for weeks, a session id names the agent and not a unit of work. A sender that declares the resource attribute `ego.thread` (or `ego.trace_thread` on a span of each trace) gets three levels. The **thread** is the declared value. A **segment** is what ego stores, lists, scores and cites as a session: a run of whole traces whose first one keeps the thread's id and whose n-th is `<thread>~n`. A **turn** is one trace, and a segment never cuts one. A trace goes to the segment its first span chose, so late spans still land in it. Segmentation is opt-in; every session without the attribute behaves as described above.
 
 | A segment closes when | Setting | Default |
 |---|---|---|

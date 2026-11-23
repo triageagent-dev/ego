@@ -13,7 +13,8 @@ import (
 type segSpan struct {
 	trace, span, parent string
 	startMs, durMs      int64
-	tokens              int // > 0 makes it an LLM span with that many prompt tokens
+	tokens              int    // > 0 makes it an LLM span with that many prompt tokens
+	thread              string // the thread declared on the span itself
 }
 
 // segBody is an OTLP export whose resource names a thread and/or a session, holding the given spans.
@@ -45,6 +46,10 @@ func segBody(thread, session string, spans ...segSpan) map[string]any {
 				map[string]any{"key": "llm.token_count.prompt", "value": map[string]any{"intValue": strconvI(int64(sp.tokens))}},
 				map[string]any{"key": "llm.token_count.completion", "value": map[string]any{"intValue": "1"}},
 			}
+		}
+		if sp.thread != "" {
+			as, _ := m["attributes"].([]any)
+			m["attributes"] = append(as, attr(traceThreadAttr, sp.thread))
 		}
 		out = append(out, m)
 	}
@@ -274,6 +279,43 @@ func TestSegments_ThreadAttributeOverridesTheSessionID(t *testing.T) {
 	}
 	if _, ok := s.byID(t, "pod-a").Metadata[threadAttr]; ok {
 		t.Error("the thread attribute is a session attribute, not metadata")
+	}
+}
+
+// One program that runs several agents has one resource: it names each agent's thread on a span of its traces.
+func TestSegments_ThreadDeclaredOnASpan(t *testing.T) {
+	s := newSegStore(t)
+	base := time.Now().Add(-time.Hour).UnixMilli()
+	s.Ingest(segBody("", "", segSpan{trace: "t1", span: "a", startMs: base, durMs: 10, thread: "spot-x"}, segSpan{trace: "t1", span: "a2", parent: "a", startMs: base + 1, durMs: 5}))
+	s.Ingest(segBody("", "", segSpan{trace: "t2", span: "b", startMs: base + 1000, durMs: 10, thread: "spot-x"}))
+	s.Ingest(segBody("", "", segSpan{trace: "t3", span: "c", startMs: base + 2000, durMs: 10, thread: "spot-y"}))
+	s.Ingest(segBody("", "", segSpan{trace: "t4", span: "d", startMs: base + 3000, durMs: 10}))
+	ids := s.ids()
+	if len(ids) != 3 {
+		t.Fatalf("sessions = %v, want spot-x, spot-y and one plain session", ids)
+	}
+	x := s.byID(t, "spot-x")
+	if x.SpanCount != 3 || !x.Segmented {
+		t.Errorf("spot-x: %d spans, segmented %v; want 3 spans of two traces in one segment of a thread", x.SpanCount, x.Segmented)
+	}
+	if y := s.byID(t, "spot-y"); !y.Segmented {
+		t.Error("spot-y is not a thread")
+	}
+}
+
+// ego.thread on a span is not a declaration: a sender that sets it there keeps its plain sessions.
+func TestSegments_ThreadAttributeOnASpanChangesNothing(t *testing.T) {
+	s := newSegStore(t)
+	base := time.Now().Add(-time.Hour).UnixMilli()
+	body := segBody("", "run-1", segSpan{trace: "t1", span: "a", startMs: base, durMs: 10})
+	sp := body["resourceSpans"].([]any)[0].(map[string]any)["scopeSpans"].([]any)[0].(map[string]any)["spans"].([]any)[0].(map[string]any)
+	sp["attributes"] = []any{map[string]any{"key": threadAttr, "value": map[string]any{"stringValue": "chat-x"}}}
+	s.Ingest(body)
+	if got := fmt.Sprint(s.ids()); got != "[run-1]" {
+		t.Fatalf("sessions = %s, want [run-1]", got)
+	}
+	if s.byID(t, "run-1").Segmented {
+		t.Error("a span's ego.thread made the session a segment")
 	}
 }
 

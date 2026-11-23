@@ -11,8 +11,9 @@ import (
 	tracepkg "github.com/triageagent-dev/ego/internal/trace"
 )
 
-// Threads, segments and turns. Opt-in: only a sender that declares a thread with the resource attribute ego.thread
-// (an always-on agent) gets any of this. A session without it is its own thread, part 1, and works as it always did:
+// Threads, segments and turns. Opt-in: only a sender that declares a thread (an always-on agent: the resource
+// attribute ego.thread, or ego.trace_thread on a span of each trace when one program runs several agents) gets any
+// of this. A session without it is its own thread, part 1, and works as it always did:
 // it completes 30 s after its last span (3 s after a root), is queued for scoring then, reopens on a late span, and is
 // capped at maxSpansPerSession.
 //
@@ -46,6 +47,9 @@ import (
 
 const (
 	threadAttr = "ego.thread"
+	// traceThreadAttr declares the thread of one trace, on any of its spans, for a program that runs several agents
+	// under one resource. The resource's ego.thread wins.
+	traceThreadAttr = "ego.trace_thread"
 
 	// segmentSep joins a thread id and a part number into a segment id. A thread whose own name ends in "~n" can
 	// collide with that thread's segment n; senders that care name their threads with ego.thread.

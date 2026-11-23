@@ -261,7 +261,7 @@ ego does not unwrap; use the LangSmith export below for LangChain and LangGraph.
 ### Always-on agents: threads and segments
 
 The id above is the sender's own, and for an agent that wakes every few minutes for weeks it names the agent, not
-a unit of work. This is opt-in: **only a sender that declares the resource attribute `ego.thread` is segmented**; without
+a unit of work. This is opt-in: **only a sender that declares the resource attribute `ego.thread` is segmented** (or `ego.trace_thread` on a span of each trace, when one program runs several agents); without
 it ego behaves as it always did (a session completes after 30 s of quiet and is scored then, a late span reopens it).
 For a declared thread ego keeps three levels. A **thread** is the `ego.thread` value (it wins over `ego.session_name`, so
 a runtime that rotates its session id keeps one thread). A **segment** is what ego

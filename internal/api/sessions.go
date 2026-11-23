@@ -31,7 +31,7 @@ const (
 // Session is one live OTLP-ingested session: the aggregated spans of every trace grouped under one session
 // identity.
 //
-// A session whose sender declared a thread (the resource attribute ego.thread) is a segment of that thread
+// A session whose sender declared a thread (the resource attribute ego.thread, or ego.trace_thread on a span of the trace) is a segment of that thread
 // (segments.go): ID is the thread's id for the first part and "<thread>~n" for part n. Every other session is its own
 // thread, part 1: Thread is its ID and it never gets a "~n". Thread and Part are stored, so the thread table is an
 // indexed query rather than a parse of ids.
@@ -1415,8 +1415,14 @@ func (s *SessionStore) IngestBound(sender, tenant string, body map[string]any) i
 		for _, tr := range p.traces {
 			// A sender that declares a thread (ego.thread) is an always-on agent: its name is the thread, whatever the
 			// session id says, and its sessions are segments of it. Every other sender's session is its own.
-			declared := p.thread != ""
-			name := p.thread
+			// A program that runs several agents (one resource for all of them) declares the thread per trace, with
+			// ego.trace_thread on a span.
+			thread := p.thread
+			if thread == "" {
+				thread = traceThread(tr)
+			}
+			declared := thread != ""
+			name := thread
 			if name == "" {
 				name = sessionName
 			}
@@ -1733,6 +1739,17 @@ func shortID(id string) string {
 		return id[:12]
 	}
 	return id
+}
+
+// traceThread is the thread a trace declares on one of its spans (ego.trace_thread), "" when none does. It has a
+// name of its own: ego.thread on a span never meant anything, and senders that put it there keep their sessions.
+func traceThread(tr *tracepkg.Trace) string {
+	for _, span := range tr.AllSpans {
+		if v := span.TagString(traceThreadAttr); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func traceConversationID(tr *tracepkg.Trace) string {
