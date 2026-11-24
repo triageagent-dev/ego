@@ -128,7 +128,7 @@ func usage() {
 
 Usage:
   ego run <trace-file>... --eval-set <path> -m <metric> [-m <metric>...] [flags]
-  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-retention 720h] [--archive-alert-percent 10] [--segment-idle 30m] [--segment-max-spans n] [--segment-max-age 6h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth] [--audit-log] [--no-github-tokens] [--session-ttl 8h] [--log-level info]
+  ego serve [--addr :8001] [--otlp-addr :4318] [--otlp-grpc-addr :4317] [--health-addr :9090] [--session-db path] [--session-memory n] [--session-memory-mb n] [--session-retention 720h] [--archive-alert-percent 10] [--segment-idle 30m] [--segment-max-spans n] [--segment-max-age 6h] [--usage-tenant-attr key] [--session-secret secret] [--otlp-token token] [--eval-daily-tokens n] [--no-auth] [--audit-log] [--no-github-tokens] [--session-ttl 8h] [--log-level info]
                    [--admin-github-users user1,user2] [--default-role member]
   ego auth mint-token --name <label> [--ttl-days 90] [--secret ...]
   ego mcp [--server-url http://localhost:8001] [--session-token ...] [--trace-dir dir] [--admin-tools]
@@ -449,6 +449,8 @@ func serveCmd(args []string) error {
 		"comma-separated addresses or CIDRs of the gateways in front of ego; a request from one of them is counted, for the per-source limits on refused tokens, against the client named in its X-Forwarded-For instead of the gateway that every client shares; falls back to EGO_TRUSTED_PROXIES")
 	sessionMemory := fs.Int("session-memory", envIntOrDefault("SESSION_MEMORY", api.DefaultSessionMemory),
 		"completed sessions kept in memory with --session-db; older ones stay in the archive and load on demand (0 = no cap); falls back to EGO_SESSION_MEMORY")
+	sessionMemoryMB := fs.Int("session-memory-mb", envIntOrDefault("SESSION_MEMORY_MB", api.DefaultSessionMemoryMB),
+		"estimated megabytes of completed sessions kept in memory with --session-db, next to the count of --session-memory; the oldest leave first and load on demand (0 = no cap); falls back to EGO_SESSION_MEMORY_MB")
 	sessionTTL := fs.Duration("session-ttl", envDurationOrDefault("SESSION_TTL", api.DefaultSessionTTL),
 		"how long a browser session lasts before the user signs in again (5m to 24h); org membership and teams are read at sign-in, so a member removed from the org keeps access until the session ends; falls back to EGO_SESSION_TTL")
 	sessionRetention := fs.Duration("session-retention", envDurationOrDefault("SESSION_RETENTION", api.DefaultSessionRetention),
@@ -516,7 +518,7 @@ func serveCmd(args []string) error {
 		}
 	}
 	return api.Serve(*addr, *otlpAddr, *otlpGRPCAddr, *healthAddr, *sessionDB, *sessionSecret, githubOAuth, adminUsers, *defaultRole,
-		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, ArchiveAlertPercent: *archiveAlertPercent, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens, EvalLimitsFile: *evalLimitsFile,
+		api.SessionLimits{Memory: *sessionMemory, MemoryMB: *sessionMemoryMB, Retention: *sessionRetention, ArchiveAlertPercent: *archiveAlertPercent, UsageTenantAttr: *usageTenantAttr, EvalDailyTokens: *evalDailyTokens, EvalLimitsFile: *evalLimitsFile,
 			SegmentIdle: *segmentIdle, SegmentMaxSpans: *segmentMaxSpans, SegmentMaxAge: *segmentMaxAge}, *onlineConfig, *otlpToken, api.OTLPTLS{CertFile: *otlpTLSCert, KeyFile: *otlpTLSKey}, *trustedProxies)
 }
 

@@ -142,3 +142,38 @@ func TestSessionLimits_PruneDeletesOldAndCompacts(t *testing.T) {
 		t.Error("fresh session gone")
 	}
 }
+
+// TestSessionLimits_EvictsByBytes: with the count cap far away, a byte cap
+// still drops the oldest completed sessions until what is left fits, and a
+// session with unsaved changes stays.
+func TestSessionLimits_EvictsByBytes(t *testing.T) {
+	archive, err := NewSQLiteStore(filepath.Join(t.TempDir(), "s.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	store := NewSessionStoreWithArchive(nil, archive, SessionLimits{Memory: 200, MemoryMB: 1})
+	completeAll(t, store, "old", "mid", "new")
+	store.mu.Lock()
+	for _, name := range []string{"old", "mid", "new"} {
+		if store.sessions[name].approxBytes <= 0 {
+			t.Fatalf("session %s has no size estimate", name)
+		}
+		store.sessions[name].approxBytes = 600 << 10
+	}
+	store.mu.Unlock()
+
+	if err := store.flushPersist(); err != nil {
+		t.Fatalf("flushPersist: %v", err)
+	}
+	var ids []string
+	for _, s := range store.List() {
+		ids = append(ids, s.SessionID)
+	}
+	if len(ids) != 1 || ids[0] != "new" {
+		t.Fatalf("in memory = %v, want [new]: 600 KB each under a 1 MB cap", ids)
+	}
+	if tr, ok := store.Trace("old"); !ok || len(tr.AllSpans) != 1 {
+		t.Fatalf("evicted session not served from the archive: ok=%v", ok)
+	}
+}

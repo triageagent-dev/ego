@@ -239,6 +239,7 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`. The s
 |---|---|---|
 | EGO_SESSION_DB_PATH | `--session-db` | SQLite file; enables persistence, runs, online evaluation |
 | EGO_SESSION_MEMORY | `--session-memory` | Completed sessions kept in memory |
+| EGO_SESSION_MEMORY_MB | `--session-memory-mb` | Estimated megabytes of completed sessions kept in memory (default 256, 0 = no cap) |
 | EGO_SESSION_RETENTION | `--session-retention` | Delete sessions older than this |
 | EGO_SESSION_SECRET | `--session-secret` | Signs cookies and tokens; enables authentication |
 | EGO_GITHUB_*, EGO_PUBLIC_URL | `--github-*`, `--public-url` | GitHub OAuth for an organisation |

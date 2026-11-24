@@ -73,6 +73,8 @@ type Session struct {
 	// time the last span came in; segments close on them.
 	firstUs, lastUs int64
 	lastArrival     time.Time
+	// approxBytes is the estimated size of the spans (spanBytes), for the memory cap.
+	approxBytes int64
 
 	// changeSeq is this session's own stamp from SessionStore.changeSeq as
 	// of its last mutation - only ever set with SessionStore.mu held. A
@@ -534,7 +536,10 @@ type SessionStore struct {
 	// completed sessions are evicted once durably archived and read back on demand (lookupLocked).
 	// sessionRetention deletes archived sessions not updated for that long (0 = keep forever), once a day, then
 	// compacts the file.
-	maxMemory        int
+	maxMemory int
+	// maxMemoryBytes caps the estimated size of the completed sessions held in memory (0 = no cap): a few sessions
+	// of thousands of spans fill the pod long before the count is reached.
+	maxMemoryBytes   int64
 	sessionRetention time.Duration
 	lastSessionPrune time.Time
 
@@ -609,14 +614,18 @@ func (s *SessionStore) SetOnComplete(fn func(sessionID string)) {
 // Defaults for SessionLimits: the newest 200 completed sessions in memory,
 // archived sessions kept 30 days.
 const (
-	DefaultSessionMemory    = 200
+	DefaultSessionMemory = 200
+	// DefaultSessionMemoryMB is the estimated megabytes of completed sessions kept in memory.
+	DefaultSessionMemoryMB  = 256
 	DefaultSessionRetention = 30 * 24 * time.Hour
 )
 
 // SessionLimits bounds the session store: how many completed sessions stay
 // in memory and how long archived sessions are kept.
 type SessionLimits struct {
-	Memory    int
+	Memory int
+	// MemoryMB caps the estimated megabytes of completed sessions kept in memory; 0 means no cap.
+	MemoryMB  int
 	Retention time.Duration
 	// ArchiveAlertPercent is the free space, in percent of the archive's volume, below which ego warns that the
 	// volume is running out; 0 means DefaultArchiveAlertPercent.
@@ -681,6 +690,7 @@ func NewSessionStoreWithArchive(hub *sseHub, store *SQLiteStore, limits SessionL
 	s.storage = newStorageWatch(store.path, limits.ArchiveAlertPercent)
 	s.usageRetention = DefaultUsageRetention
 	s.maxMemory = limits.Memory
+	s.maxMemoryBytes = int64(limits.MemoryMB) << 20
 	s.sessionRetention = limits.Retention
 	if limits.UsageTenantAttr != "" {
 		s.usageTenantAttr = limits.UsageTenantAttr
@@ -1133,27 +1143,34 @@ func (s *SessionStore) flushPersist() error {
 }
 
 // evictLocked drops the oldest completed sessions from memory while more
-// than maxMemory are held. Only sessions already durably archived (their
-// changeSeq persisted) with no pending timer go; they stay readable via
-// lookupLocked. Must be called with s.mu held.
+// than maxMemory are held, or while they hold more than maxMemoryBytes.
+// Only sessions already durably archived (their changeSeq persisted) with
+// no pending timer go; they stay readable via lookupLocked. Must be called
+// with s.mu held.
 func (s *SessionStore) evictLocked() {
-	if s.maxMemory <= 0 || s.store == nil {
+	if (s.maxMemory <= 0 && s.maxMemoryBytes <= 0) || s.store == nil {
 		return
 	}
 	var done []*Session
+	var bytes int64
 	for _, sess := range s.sessions {
 		if sess.IsComplete {
 			done = append(done, sess)
+			bytes += sess.approxBytes
 		}
 	}
-	excess := len(done) - s.maxMemory
-	if excess <= 0 {
+	excess := 0
+	if s.maxMemory > 0 {
+		excess = len(done) - s.maxMemory
+	}
+	overBytes := func() bool { return s.maxMemoryBytes > 0 && bytes > s.maxMemoryBytes }
+	if excess <= 0 && !overBytes() {
 		return
 	}
 	sort.Slice(done, func(i, j int) bool { return sessionAge(done[i]).Before(sessionAge(done[j])) })
 	evicted := map[string]bool{}
 	for _, sess := range done {
-		if len(evicted) == excess {
+		if len(evicted) >= excess && !overBytes() {
 			break
 		}
 		id := sess.ID
@@ -1161,6 +1178,7 @@ func (s *SessionStore) evictLocked() {
 			continue
 		}
 		evicted[id] = true
+		bytes -= sess.approxBytes
 		delete(s.sessions, id)
 		delete(s.persistedSeq, id)
 	}

@@ -344,7 +344,7 @@ bindings survive restarts:
 ego serve --session-db ego.db
 ```
 
-Only the newest `--session-memory` completed sessions (default 200) stay in memory; older ones load on demand.
+Only the newest `--session-memory` completed sessions (default 200) stay in memory, and no more than `--session-memory-mb` megabytes of them (default 256, an estimate from the spans' attributes); older ones load on demand.
 `--session-retention` (default 30 days) deletes stale sessions daily. The three flags that close a segment of a
 thread (`--segment-idle`, `--segment-max-spans`, `--segment-max-age`) are described under Ingesting traces.
 
@@ -562,6 +562,7 @@ Every flag of `ego serve` can be set from the environment as `EGO_<NAME>`:
 |---|---|---|
 | `EGO_SESSION_DB_PATH` | `--session-db` | SQLite file for persistence |
 | `EGO_SESSION_MEMORY` | `--session-memory` | Completed sessions kept in memory |
+| `EGO_SESSION_MEMORY_MB` | `--session-memory-mb` | Estimated megabytes of completed sessions kept in memory (default 256, 0 = no cap) |
 | `EGO_SESSION_RETENTION` | `--session-retention` | Delete sessions older than this |
 | `EGO_SESSION_SECRET` | `--session-secret` | Signs session cookies and tokens; enables auth |
 | `EGO_GITHUB_CLIENT_ID`, `EGO_GITHUB_CLIENT_SECRET`, `EGO_GITHUB_ORG`, `EGO_PUBLIC_URL` | `--github-*`, `--public-url` | GitHub OAuth |

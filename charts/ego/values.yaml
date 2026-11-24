@@ -39,6 +39,10 @@ persistence:
   # -- Completed sessions kept in memory; older ones stay in the database
   # and load on demand (0 = no cap). Memory use grows with this.
   memorySessions: 200
+  # -- Estimated megabytes of completed sessions kept in memory, next to
+  # the count above; the oldest leave first (0 = no cap). Keep it well
+  # under the memory limit.
+  memoryMB: 256
   # -- Delete sessions not updated for this long, daily, then compact the
   # file (Go duration; "0" = keep forever).
   retention: 720h

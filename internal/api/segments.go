@@ -133,8 +133,9 @@ func (s *Session) partNo() int {
 // session is "closed" only while it is complete, and a late span reopens it.
 func (s *Session) sealed() bool { return s.Segmented && s.Closed }
 
-// noteSpan widens the segment's span window.
+// noteSpan widens the segment's span window and counts the span's size.
 func (s *Session) noteSpan(sp *tracepkg.Span) {
+	s.approxBytes += spanBytes(sp)
 	if sp.StartTime > 0 && (s.firstUs == 0 || sp.StartTime < s.firstUs) {
 		s.firstUs = sp.StartTime
 	}
@@ -145,7 +146,7 @@ func (s *Session) noteSpan(sp *tracepkg.Span) {
 
 // recomputeBounds derives the span window from the spans (after a restore).
 func (s *Session) recomputeBounds() {
-	s.firstUs, s.lastUs = 0, 0
+	s.firstUs, s.lastUs, s.approxBytes = 0, 0, 0
 	for _, sp := range s.Spans {
 		s.noteSpan(sp)
 	}
@@ -634,4 +635,17 @@ func clipChars(s string, n int) string {
 		return string(r)
 	}
 	return string(r[:n]) + "..."
+}
+
+// spanBytes is roughly what a span holds in memory: its attribute keys and string values, and a fixed part for the
+// rest. It is an estimate for the memory cap, not an account.
+func spanBytes(sp *tracepkg.Span) int64 {
+	n := int64(256 + len(sp.OperationName))
+	for k, v := range sp.Tags {
+		n += int64(len(k)) + 16
+		if str, ok := v.(string); ok {
+			n += int64(len(str))
+		}
+	}
+	return n
 }
