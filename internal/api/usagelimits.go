@@ -1,9 +1,14 @@
 package api
 
 import (
+	"math"
 	"net/http"
+	"runtime/debug"
+	"runtime/metrics"
 	"sort"
 	"time"
+
+	"github.com/triageagent-dev/ego/internal/logx"
 )
 
 // GET /api/usage/limits: the caps and limits this server runs with and, where it counts them, how much of each
@@ -60,6 +65,63 @@ func (s *SessionStore) limitsSnapshot() (maxMemory, inMemory int, sessionRetenti
 	return s.maxMemory, inMemory, s.sessionRetention, s.usageRetention
 }
 
+// memoryUse is what the sessions in memory are estimated to hold and what the Go heap holds.
+type memoryUse struct {
+	// Completed and CompletedBytes are the finished sessions in memory, the ones the caps evict; Open and OpenBytes
+	// the ones still collecting, which always stay.
+	Completed, Open           int
+	CompletedBytes, OpenBytes int64
+	CapBytes                  int64
+	// HeapLive is the heap that survived the last collection, HeapLimit the Go memory limit (0 = none).
+	HeapLive, HeapLimit int64
+}
+
+// memorySnapshot reads memoryUse.
+func (s *SessionStore) memorySnapshot() memoryUse {
+	var m memoryUse
+	s.mu.Lock()
+	for _, sess := range s.sessions {
+		if sess.IsComplete {
+			m.Completed++
+			m.CompletedBytes += sess.approxBytes
+		} else {
+			m.Open++
+			m.OpenBytes += sess.approxBytes
+		}
+	}
+	m.CapBytes = s.maxMemoryBytes
+	s.mu.Unlock()
+	sample := []metrics.Sample{{Name: "/gc/heap/live:bytes"}}
+	metrics.Read(sample)
+	if sample[0].Value.Kind() == metrics.KindUint64 {
+		m.HeapLive = int64(sample[0].Value.Uint64())
+	}
+	if limit := debug.SetMemoryLimit(-1); limit < math.MaxInt64 {
+		m.HeapLimit = limit
+	}
+	return m
+}
+
+// memoryLogEvery is how often the store writes its memory use to the log.
+const memoryLogEvery = 10 * time.Minute
+
+// logMemory writes the memory use to the log, at most once per memoryLogEvery: the pod's own figure says only how
+// much the Go runtime has taken, which under a memory limit is close to the limit whatever the sessions hold.
+func (s *SessionStore) logMemory() {
+	s.mu.Lock()
+	due := s.now().Sub(s.lastMemoryLog) >= memoryLogEvery
+	if due {
+		s.lastMemoryLog = s.now()
+	}
+	s.mu.Unlock()
+	if !due {
+		return
+	}
+	m := s.memorySnapshot()
+	logx.Infof("memory: %d finished session(s) in memory, about %d MB of a %d MB cap; %d open, about %d MB; heap live %d MB of a %d MB limit",
+		m.Completed, m.CompletedBytes>>20, m.CapBytes>>20, m.Open, m.OpenBytes>>20, m.HeapLive>>20, m.HeapLimit>>20)
+}
+
 func days(d time.Duration) int64 { return int64(d / (24 * time.Hour)) }
 
 func usageLimits(store *SessionStore, online *OnlineEngine, info RoleInfo, now time.Time) []limitDTO {
@@ -98,9 +160,14 @@ func usageLimits(store *SessionStore, online *OnlineEngine, info RoleInfo, now t
 
 	if store != nil {
 		maxMem, inMem, sessRet, usageRet := store.limitsSnapshot()
+		mem := store.memorySnapshot()
 		out = append(out,
 			limitDTO{Key: "sessions.memory", Label: "Finished sessions kept in memory", Group: "Storage", Limit: int64(maxMem), Used: counted(int64(inMem)), Unit: "count",
 				Note: "Older ones are read from the database when opened."},
+			limitDTO{Key: "sessions.memory_bytes", Label: "Finished sessions in memory, estimated size", Group: "Storage", Limit: mem.CapBytes, Used: counted(mem.CompletedBytes), Unit: "bytes",
+				Note: "An estimate from the spans' attributes. The oldest leave first."},
+			limitDTO{Key: "process.heap", Label: "Heap in use after the last collection", Group: "Storage", Limit: mem.HeapLimit, Used: counted(mem.HeapLive), Unit: "bytes",
+				Note: "Against the Go memory limit. The pod's own figure stays near the limit whatever is held."},
 			limitDTO{Key: "sessions.retention", Label: "Sessions are kept for", Group: "Storage", Limit: days(sessRet), Unit: "days"},
 			limitDTO{Key: "usage.retention", Label: "Token usage is kept for", Group: "Storage", Limit: days(usageRet), Unit: "days"},
 		)

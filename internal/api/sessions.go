@@ -540,6 +540,7 @@ type SessionStore struct {
 	// maxMemoryBytes caps the estimated size of the completed sessions held in memory (0 = no cap): a few sessions
 	// of thousands of spans fill the pod long before the count is reached.
 	maxMemoryBytes   int64
+	lastMemoryLog    time.Time
 	sessionRetention time.Duration
 	lastSessionPrune time.Time
 
@@ -1139,6 +1140,7 @@ func (s *SessionStore) flushPersist() error {
 	s.pruneThreadsLocked()
 	s.mu.Unlock()
 	s.pruneSessions()
+	s.logMemory()
 	return nil
 }
 
