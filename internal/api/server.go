@@ -227,6 +227,11 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		purgeGuarded = onlineEngine.PurgeTenants
 	}
 	mux.HandleFunc("/api/admin/purge-tenants", adminPurgeTenantsHandler(store, tenantNames, purgeGuarded))
+	var sessionPurgeGuarded sessionPurgeGuard
+	if onlineEngine != nil {
+		sessionPurgeGuarded = onlineEngine.PurgeSessions
+	}
+	mux.HandleFunc("/api/admin/purge-sessions", adminPurgeSessionsHandler(store, sessionPurgeGuarded))
 	var mergeGuarded mergeGuard
 	if onlineEngine != nil {
 		mergeGuarded = onlineEngine.MergeTenants

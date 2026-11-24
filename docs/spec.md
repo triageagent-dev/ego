@@ -65,6 +65,8 @@ An admin creates senders and mints their tokens with `POST /api/admin/senders/{i
 
 `POST /api/admin/purge-tenants` removes tenants that no longer exist. The body lists tenant keys, never patterns, and has a dry-run flag. It deletes the sessions whose tenants are all among the keys, their usage and online-score rows, and the names. A session that also belongs to another tenant stays, and so do the labels people gave. The caller is written to the log.
 
+`POST /api/admin/purge-sessions` removes single sessions by id (`ids`, at most 100, with a dry-run flag): each one's archive and index rows, ledger rows and online scores, and nothing else of its tenant. It is for a session that was filed under the wrong tenant because its sender used another tenant's token. Findings, alerts and runs stay: they belong to a series. Admin only; the MCP tool is `purge_sessions`.
+
 ## Metrics and judges
 
 Every result says whether an algorithm or a model produced it. Algorithms run locally with no key. The other families call a judge: Gemini through the GenAI client, the Vertex AI Managed Evaluation service through Application Default Credentials, or Jev, the decision model.
@@ -199,7 +201,7 @@ One tool registry serves two transports. `ego mcp` on standard input and output 
 | Quality | `get_quality`, `explain_regression`, `explain_session` |
 | Ego (turns) | `get_ego_score` (agent, tenant, hours up to 720, by, limit, session_id): the ego of an agent from its turns with no judge, as text an agent reads at a glance. `by` cuts it per agent (the total of the window), per session (newest first, so a limit of 1 is the last session), per hour or per day. A row has the share of turns without a failure, the tool error rate, tokens and cache share, turn times and the five tools that failed most. `get_ego_tools`: every tool's calls, failures, failure rate and average time. `get_ego_errors`: the failures grouped by tool and error text, with count, first and last time and the session of the latest. Both take a session to look at one |
 | Correction loop | `get_findings`, `register_correction`, `list_corrections`, `label_session` (its author is the caller's own identity) |
-| Admin | `list_role_bindings`, `set_role_binding`, `delete_role_binding`, `mint_sender_token`, `revoke_sender_token`, `run_findings`; over stdio only with `--admin-tools` |
+| Admin | `list_role_bindings`, `set_role_binding`, `delete_role_binding`, `mint_sender_token`, `revoke_sender_token`, `purge_sessions`, `run_findings`; over stdio only with `--admin-tools` |
 | Local | `evaluate_traces` reads trace files under `--trace-dir` and exists on stdio only |
 
 The evidence a tool returns is read from the stored online results: the per-sentence verdicts of `hallucinations_v1` (unsupported, contradictory and disputed first), per-rubric verdicts, trajectory comparisons and the rationale of the `jev_*` decisions. A tool that needs online evaluation answers an error when it is not configured. The prompt `rsi_loop` is registered on both transports.

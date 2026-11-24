@@ -62,6 +62,10 @@ func (b *toolBackend) MintSenderToken(_ context.Context, in SenderTokenInput) (*
 	return &SenderToken{Token: "egs_x", ID: "st1", Sender: in.Sender, Tenant: in.Tenant, MCP: in.MCP}, nil
 }
 
+func (b *toolBackend) PurgeSessions(context.Context, []string, bool) (*SessionPurge, error) {
+	return &SessionPurge{}, nil
+}
+
 func (b *toolBackend) RevokeSenderToken(context.Context, string, string) (map[string]bool, error) {
 	return map[string]bool{"revoked": true}, nil
 }
@@ -133,6 +137,7 @@ func TestToolsDeclareTheirBehaviour(t *testing.T) {
 		"run_findings":        {false, false, false, true},
 		"delete_role_binding": {false, true, true, false},
 		"revoke_sender_token": {false, true, true, false},
+		"purge_sessions":      {false, true, true, false},
 	}
 	tools := allTools(&toolBackend{})
 	if len(tools) != len(expected) {

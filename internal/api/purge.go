@@ -3,6 +3,8 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -77,7 +79,14 @@ func (s *SessionStore) PurgeTenants(keys []string, dryRun bool) (PurgeResult, er
 		return res, nil
 	}
 
+	s.forget(doomed)
+	return res, nil
+}
+
+// forget drops the doomed sessions from memory, with their timers and the usage rows not yet written.
+func (s *SessionStore) forget(doomed map[string]bool) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	order := s.order[:0]
 	for _, id := range s.order {
 		if !doomed[id] {
@@ -103,7 +112,105 @@ func (s *SessionStore) PurgeTenants(keys []string, dryRun bool) (PurgeResult, er
 		}
 	}
 	s.pendingUsage = kept
+}
+
+// PurgeSessions removes the sessions with these ids and nothing else: each one's archive row, index row, ledger rows
+// and online scores. It is for a session that was filed under the wrong tenant (a sender that sent with another
+// tenant's token): the tenant keeps everything else. Findings, alerts and runs are left, as they belong to a series,
+// not to one session. An id ego does not hold is not counted. With dryRun it only counts. Archive first and memory
+// second, under the lock the persistence flush takes, as PurgeTenants does.
+func (s *SessionStore) PurgeSessions(ids []string, dryRun bool) (PurgeResult, error) {
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+
+	doomed := map[string]bool{}
+	s.mu.Lock()
+	for id := range want {
+		if s.sessions[id] != nil {
+			doomed[id] = true
+		}
+	}
 	s.mu.Unlock()
+
+	res := PurgeResult{DryRun: dryRun}
+	if s.store != nil {
+		var err error
+		if res, err = s.store.purgeSessionRows(want, doomed, dryRun); err != nil {
+			return res, err
+		}
+	}
+	res.Sessions = len(doomed)
+	if dryRun {
+		return res, nil
+	}
+	s.forget(doomed)
+	return res, nil
+}
+
+// purgeSessionRows deletes the rows of the wanted sessions in one transaction; doomed gains the wanted ids the
+// archive holds. With dryRun it counts and deletes nothing.
+func (s *SQLiteStore) purgeSessionRows(want map[string]bool, doomed map[string]bool, dryRun bool) (PurgeResult, error) {
+	res := PurgeResult{DryRun: dryRun}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return res, err
+	}
+	defer holdTimer("purge")()
+	defer tx.Rollback()
+	if !dryRun {
+		if err := takeWriteLock(tx); err != nil {
+			return res, err
+		}
+	}
+	for id := range want {
+		var n int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM session_index WHERE session_id = ?`, id).Scan(&n); err != nil {
+			return res, err
+		}
+		if n > 0 {
+			doomed[id] = true
+		}
+	}
+	for id := range doomed {
+		for _, q := range []struct {
+			count string
+			n     *int
+		}{
+			{`SELECT COUNT(*) FROM llm_calls WHERE session_id = ?`, &res.Calls},
+			{`SELECT COUNT(*) FROM online_scores WHERE session_id = ?`, &res.Scores},
+		} {
+			var n int
+			if err := tx.QueryRow(q.count, id).Scan(&n); err != nil {
+				return res, err
+			}
+			*q.n += n
+		}
+		if dryRun {
+			continue
+		}
+		for _, q := range []string{
+			`DELETE FROM sessions WHERE session_id = ?`,
+			`DELETE FROM session_index WHERE session_id = ?`,
+			`DELETE FROM online_evals WHERE session_id = ?`,
+			`DELETE FROM online_scores WHERE session_id = ?`,
+			`DELETE FROM llm_calls WHERE session_id = ?`,
+		} {
+			if _, err := tx.Exec(q, id); err != nil {
+				return res, err
+			}
+		}
+	}
+	if dryRun {
+		return res, nil
+	}
+	if err := tx.Commit(); err != nil {
+		return res, err
+	}
+	s.announce(topicUsage, nil)
 	return res, nil
 }
 
@@ -317,6 +424,87 @@ func adminPurgeTenantsHandler(store *SessionStore, names *TenantNames, guard pur
 			return
 		}
 		logx.Warnf("purge tenants %v by %s: dry run %v, %+v", keys, who, req.DryRun, res)
+		writeJSON(w, http.StatusOK, map[string]any{"data": res, "error": nil})
+	}
+}
+
+// maxPurgeSessions bounds one call: this is for a few misfiled sessions, and a tenant goes with purge-tenants.
+const maxPurgeSessions = 100
+
+type purgeSessionsRequest struct {
+	IDs []string `json:"ids"`
+	// DryRun counts what the purge would remove and removes nothing.
+	DryRun bool `json:"dryRun,omitempty"`
+}
+
+// purgeSessions checks the ids and runs the purge for who, with the online engine held still when there is one.
+func purgeSessions(store *SessionStore, guard sessionPurgeGuard, ids []string, dryRun bool, who string) (PurgeResult, error) {
+	var clean []string
+	for _, id := range ids {
+		if id = strings.TrimSpace(id); id != "" {
+			clean = append(clean, id)
+		}
+	}
+	if len(clean) == 0 {
+		return PurgeResult{}, errPurgeNoIDs
+	}
+	if len(clean) > maxPurgeSessions {
+		return PurgeResult{}, errPurgeTooMany
+	}
+	purge := func() (PurgeResult, error) { return store.PurgeSessions(clean, dryRun) }
+	var res PurgeResult
+	var err error
+	if guard != nil {
+		res, err = guard(dryRun, purge)
+	} else {
+		res, err = purge()
+	}
+	if err != nil {
+		logx.Errorf("purge sessions %v by %s failed: %v", clean, who, err)
+		return res, err
+	}
+	logx.Warnf("purge sessions %v by %s: dry run %v, %+v", clean, who, dryRun, res)
+	return res, nil
+}
+
+var (
+	errPurgeNoIDs   = errors.New("ids is required: the session ids to remove")
+	errPurgeTooMany = fmt.Errorf("at most %d session ids in one call", maxPurgeSessions)
+)
+
+// sessionPurgeGuard runs a purge of sessions while the online engine is held still. Nil when online evaluation is off.
+type sessionPurgeGuard func(dryRun bool, purge func() (PurgeResult, error)) (PurgeResult, error)
+
+// adminPurgeSessionsHandler implements POST /api/admin/purge-sessions {"ids": [...]}. Admin only. It removes the
+// sessions it is given by id, and nothing else of their tenants.
+func adminPurgeSessionsHandler(store *SessionStore, guard sessionPurgeGuard) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !roleInfoOrOpen(r.Context()).IsAdmin {
+			writeRoleForbidden(w)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req purgeSessionsRequest
+		if err := decodeJSON(w, r, &req); err != nil {
+			writeEvaluateError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+			return
+		}
+		who := "an admin"
+		if id, ok := identityFromContext(r.Context()); ok && id.Username != "" {
+			who = id.Username
+		}
+		res, err := purgeSessions(store, guard, req.IDs, req.DryRun, who)
+		switch {
+		case errors.Is(err, errPurgeNoIDs), errors.Is(err, errPurgeTooMany):
+			writeEvaluateError(w, http.StatusBadRequest, err.Error())
+			return
+		case err != nil:
+			writeEvaluateError(w, http.StatusInternalServerError, "failed to purge sessions: "+err.Error())
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"data": res, "error": nil})
 	}
 }

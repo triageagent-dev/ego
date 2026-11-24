@@ -427,6 +427,7 @@ its own, so a call cannot ask for `spots/<other>`. ego then drops the call's `te
 | `run_findings` | Run the findings sweep now. Admin. |
 | `mint_sender_token` | Mint an ingest token (`egs_…`) for an existing sender: `sender` (with `create_sender` it is registered first), `label`, `tenant`, `tenant_name`, `mcp`. The token is in the answer once. Admin; on stdio only with `--admin-tools`. |
 | `revoke_sender_token` | Revoke an ingest token by `sender` and `token_id` (the `st-…` id, never the token): what uses it is refused at once. Admin; on stdio only with `--admin-tools`. |
+| `purge_sessions` | Remove single sessions by `session_ids`, each with its ledger rows and scores and nothing else of its tenant: for a session filed under the wrong tenant. `dry_run` counts first; it cannot be undone. Admin; on stdio only with `--admin-tools`. |
 | `list_role_bindings`, `set_role_binding`, `delete_role_binding` | Manage roles. Admin; on stdio only with `--admin-tools`. |
 
 Prompt `rsi_loop` returns the agent-side skill. Every tool is limited to the tenants the caller may see.
@@ -525,6 +526,7 @@ curl -X POST   "$EGO/api/admin/merge-tenants"            -H "Authorization: Bear
 # remove tenants that no longer exist (admin): their sessions, usage rows and names go at once instead of at retention;
 # a session that also belongs to another tenant stays; the tenant's findings, corrections, human labels, alerts and evaluation runs go with it
 curl -X POST   "$EGO/api/admin/purge-tenants"            -H "Authorization: Bearer $ADMIN" -d '{"keys":["core/old-demo","legacy-label"]}'
+curl -X POST   "$EGO/api/admin/purge-sessions"           -H "Authorization: Bearer $ADMIN" -d '{"ids":["<session id>"],"dryRun":true}'
 
 # senders and their tokens (admin)
 curl -X POST   "$EGO/api/admin/senders"                  -H "Authorization: Bearer $ADMIN" -d '{"id":"core","name":"production core"}'

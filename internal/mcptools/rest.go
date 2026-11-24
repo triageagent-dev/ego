@@ -520,6 +520,14 @@ func (b *REST) RegisterCorrection(ctx context.Context, in CorrectionInput) (*onl
 	return &out, nil
 }
 
+func (b *REST) PurgeSessions(ctx context.Context, ids []string, dryRun bool) (*SessionPurge, error) {
+	var out SessionPurge
+	if err := b.post(ctx, "/api/admin/purge-sessions", map[string]any{"ids": ids, "dryRun": dryRun}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (b *REST) RunFindings(ctx context.Context) (*SweepReport, error) {
 	var out SweepReport
 	if err := b.post(ctx, "/api/online/findings/sweep", nil, &out); err != nil {

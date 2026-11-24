@@ -281,6 +281,28 @@ func (b *mcpBackend) DeleteRoleBinding(ctx context.Context, id string) (map[stri
 	return map[string]bool{"deleted": true}, nil
 }
 
+func (b *mcpBackend) PurgeSessions(ctx context.Context, ids []string, dryRun bool) (*mcptools.SessionPurge, error) {
+	if !roleInfoOrOpen(ctx).IsAdmin {
+		return nil, errors.New("admin role required")
+	}
+	var guard sessionPurgeGuard
+	if b.online != nil {
+		guard = b.online.PurgeSessions
+	}
+	who := "an admin"
+	if id, ok := identityFromContext(ctx); ok && id.Username != "" {
+		who = id.Username
+	}
+	res, err := purgeSessions(b.sessions, guard, ids, dryRun, who+" (mcp)")
+	if err != nil {
+		return nil, err
+	}
+	if !dryRun {
+		auditLog(ctx, "sessions.purge", "sessions", fmt.Sprint(res.Sessions), "via", "mcp")
+	}
+	return &mcptools.SessionPurge{DryRun: res.DryRun, Sessions: res.Sessions, Calls: res.Calls, Scores: res.Scores}, nil
+}
+
 func (b *mcpBackend) RevokeSenderToken(ctx context.Context, sender, tokenID string) (map[string]bool, error) {
 	if !roleInfoOrOpen(ctx).IsAdmin {
 		return nil, errors.New("admin role required")

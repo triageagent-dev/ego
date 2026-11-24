@@ -629,3 +629,11 @@ type ActivitySummary struct {
 	// Truncated is true when only the newest turns of a long window were read.
 	Truncated bool `json:"truncated,omitempty"`
 }
+
+// SessionPurge is the answer of purge_sessions: what was removed, or with a dry run what would be.
+type SessionPurge struct {
+	DryRun   bool `json:"dryRun,omitempty"`
+	Sessions int  `json:"sessions"`
+	Calls    int  `json:"calls"`
+	Scores   int  `json:"scores"`
+}

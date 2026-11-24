@@ -246,3 +246,101 @@ func TestPurgeTenantsDoesNotLetTheDetectorWriteAnAlertBack(t *testing.T) {
 		t.Errorf("alert rows after the purge and a tick belong to %v, want only keep", tenants)
 	}
 }
+
+// A session filed under the wrong tenant is removed by its id; the rest of that tenant stays.
+func TestPurgeSessionsRemovesOnlyTheNamedSessions(t *testing.T) {
+	archive, err := NewSQLiteStore(filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	sep := indexSep
+	for _, id := range []string{"old-wrong", "old-right"} {
+		if _, err := archive.db.Exec(`INSERT INTO session_index (session_id, started_ms, complete, llm_calls, tenants, agents, search, thread, part, first_ms, ended_ms, turns)
+			VALUES (?, 1, 1, 1, ?, '', '', ?, 1, 1, 1, 0)`, id, sep+"t"+sep, id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := archive.db.Exec(`INSERT INTO llm_calls (span_id, trace_id, session_id, start_ms, duration_ms, service, tenant, kind, model, name, input_tokens, output_tokens, is_error, thread)
+			VALUES (?, 't', ?, 1, 1, '', 't', '', 'm', '', 1, 1, 0, ?)`, "sp-"+id, id, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := NewSessionStoreWithArchive(nil, archive, SessionLimits{})
+	store.Ingest(labelledTracesBody("mem-wrong", "aaaa", "s1", "t"))
+	store.Ingest(labelledTracesBody("mem-right", "bbbb", "s2", "t"))
+	var memWrong string
+	for _, sum := range store.List() {
+		if strings.Contains(sum.SessionID, "mem-wrong") {
+			memWrong = sum.SessionID
+		}
+	}
+	if memWrong == "" {
+		t.Fatal("the session in memory was not found")
+	}
+
+	dry, err := store.PurgeSessions([]string{"old-wrong", memWrong, "nobody"}, true)
+	if err != nil || dry.Sessions != 2 || !dry.DryRun {
+		t.Fatalf("dry run = %+v, %v; want 2 sessions counted", dry, err)
+	}
+	if len(store.List()) != 2 {
+		t.Fatal("a dry run removed a session")
+	}
+
+	res, err := store.PurgeSessions([]string{"old-wrong", memWrong, "nobody"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Sessions != 2 {
+		t.Errorf("purged %d sessions, want the archived one and the one in memory", res.Sessions)
+	}
+	if res.Calls < 1 {
+		t.Errorf("counted %d ledger rows, want the archived session's", res.Calls)
+	}
+	left := store.List()
+	if len(left) != 1 || !strings.Contains(left[0].SessionID, "mem-right") {
+		t.Errorf("sessions in memory = %+v, want only mem-right", left)
+	}
+	var ids []string
+	rows, _ := archive.db.Query(`SELECT session_id FROM session_index ORDER BY session_id`)
+	for rows.Next() {
+		var id string
+		rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if strings.Join(ids, ",") != "old-right" {
+		t.Errorf("archived index = %v, want the tenant's other session", ids)
+	}
+	var calls int
+	archive.db.QueryRow(`SELECT COUNT(*) FROM llm_calls WHERE session_id = 'old-wrong'`).Scan(&calls)
+	if calls != 0 {
+		t.Errorf("%d ledger rows of the purged session remain", calls)
+	}
+	archive.db.QueryRow(`SELECT COUNT(*) FROM llm_calls WHERE session_id = 'old-right'`).Scan(&calls)
+	if calls != 1 {
+		t.Errorf("the other session has %d ledger rows, want 1", calls)
+	}
+}
+
+func TestPurgeSessionsEndpointIsAdminOnlyAndNeedsIDs(t *testing.T) {
+	store := NewSessionStore(nil)
+	h := adminPurgeSessionsHandler(store, nil)
+	post := func(role RoleInfo, body string) int {
+		req := withRoleInfoForTest(role)(httptest.NewRequest(http.MethodPost, "/api/admin/purge-sessions", strings.NewReader(body)))
+		rec := httptest.NewRecorder()
+		h(rec, req)
+		return rec.Code
+	}
+	admin := RoleInfo{Role: RoleAdmin, IsAdmin: true}
+	if code := post(RoleInfo{Role: RoleMember}, `{"ids":["x"]}`); code != http.StatusForbidden {
+		t.Errorf("a member got %d, want 403", code)
+	}
+	for _, bad := range []string{`{}`, `{"ids":[]}`, `{"ids":[" "]}`} {
+		if code := post(admin, bad); code != http.StatusBadRequest {
+			t.Errorf("%s = %d, want 400", bad, code)
+		}
+	}
+	if code := post(admin, `{"ids":["x"]}`); code != http.StatusOK {
+		t.Errorf("an admin got %d, want 200", code)
+	}
+}

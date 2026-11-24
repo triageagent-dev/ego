@@ -480,6 +480,19 @@ func Tools(b Backend, o Options) []server.ServerTool {
 					mcp.Description("ID of the token to revoke (st-...), never the token itself.")),
 			), Handler: revokeSenderTokenHandler(b)},
 
+			server.ServerTool{Tool: mcp.NewTool("purge_sessions",
+				hints(false, true, true, false),
+				mcp.WithDescription("Remove single sessions by id, each with its ledger rows and scores, and nothing else of "+
+					"its tenant: for a session that was filed under the wrong tenant because its sender used another "+
+					"tenant's token. It cannot be undone. Call it with dry_run first: the answer counts what would go. "+
+					"An id ego does not hold is not counted. Requires the caller to be an admin."),
+				mcp.WithArray("session_ids", mcp.Required(),
+					mcp.Description("The session ids to remove, as list_sessions names them. At most 100."),
+					mcp.Items(map[string]any{"type": "string"})),
+				mcp.WithBoolean("dry_run",
+					mcp.Description("true to count what would be removed and remove nothing.")),
+			), Handler: purgeSessionsHandler(b)},
+
 			server.ServerTool{Tool: mcp.NewTool("run_findings",
 				hints(false, false, false, true),
 				mcp.WithDescription("Run the findings sweep now instead of waiting for findings.every: every series with "+
@@ -890,6 +903,20 @@ func listCorrectionsHandler(b Backend) server.ToolHandlerFunc {
 		}
 		if out == nil {
 			out = []online.Correction{}
+		}
+		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func purgeSessionsHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		ids := req.GetStringSlice("session_ids", nil)
+		if len(ids) == 0 {
+			return toolError(fmt.Errorf("session_ids is required"))
+		}
+		out, err := b.PurgeSessions(ctx, ids, req.GetBool("dry_run", false))
+		if err != nil {
+			return toolError(err)
 		}
 		return mcp.NewToolResultStructuredOnly(out), nil
 	}

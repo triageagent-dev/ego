@@ -1047,6 +1047,18 @@ func (e *OnlineEngine) quiet(keys []string, fn func()) {
 	fn()
 }
 
+// PurgeSessions runs purge (the removal of single sessions) with the engine held still, so a tick cannot score a
+// session that is being removed. It drops nothing the engine keeps: alerts and runs belong to a series.
+func (e *OnlineEngine) PurgeSessions(dryRun bool, purge func() (PurgeResult, error)) (PurgeResult, error) {
+	if dryRun {
+		return purge()
+	}
+	var res PurgeResult
+	var err error
+	e.quiet(nil, func() { res, err = purge() })
+	return res, err
+}
+
 // PurgeTenants runs purge (the removal of the tenants' rows) with the engine held still (see quiet).
 func (e *OnlineEngine) PurgeTenants(keys []string, dryRun bool, purge func() (PurgeResult, error)) (PurgeResult, error) {
 	if dryRun {

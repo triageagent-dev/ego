@@ -48,6 +48,10 @@ type Backend interface {
 	// at once. Requires an admin.
 	RevokeSenderToken(ctx context.Context, sender, tokenID string) (map[string]bool, error)
 
+	// PurgeSessions answers purge_sessions: removes single sessions by id, with their ledger rows and scores, and
+	// nothing else of their tenants. Requires an admin.
+	PurgeSessions(ctx context.Context, ids []string, dryRun bool) (*SessionPurge, error)
+
 	// EgoScore answers get_ego_score: the score of the agents that work in turns, from their turns, for the
 	// caller's tenants.
 	EgoScore(ctx context.Context, q ActivityQuery) ([]TurnScore, error)
