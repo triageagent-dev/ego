@@ -35,8 +35,8 @@ github.com/googleapis/enterprise-certificate-proxy v0.3.23 h1:J+VGF1wjAM2dU2kKUX
 github.com/googleapis/enterprise-certificate-proxy v0.3.23/go.mod h1:Y8NO/15GNLkrXI3OR5xOFmeU3XLX1sLSdtlXgJ0zmIw=
 github.com/googleapis/gax-go/v2 v2.27.0 h1:qe2iQOUzxb3fd6x6ewpIEixPQhJ+0Ihc/RRZhKA/2g0=
 github.com/googleapis/gax-go/v2 v2.27.0/go.mod h1:RofiqDw3ehcG4L0H1zO3D2Itpwd3/uS/7wdmbNDF1DE=
-github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
-github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
+github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 h1:JeSE6pjso5THxAzdVpqr6/geYxZytqFMBCOtn/ujyeo=
+github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674/go.mod h1:r4w70xmWCQKmi1ONH4KIaBptdivuRPyosB9RmPlGEwA=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 h1:Bd7KaOxzULLxtZ/K5s1aLbWhR0+5RToO65TXHsf3bqQ=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0/go.mod h1:nN7ts3dFXKtCZWc//yfkpcQNKJABg16/uDVAZpLDalo=
 github.com/hashicorp/golang-lru/v2 v2.0.7 h1:a+bsQ5rvGLjzHuww6tVxozPZFVghXaHOwFs4luLUK2k=
