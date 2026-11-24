@@ -60,7 +60,7 @@ streaming** path for the UI.
     (whole-session JSON blob per row - adding a `Session` field needs no migration), run history
     (`runsstore.go`), eval sets (`evalsetsstore.go`), and role bindings (`rolesstore.go`). Only the newest
     `--session-memory` completed sessions (default 200) live in memory; older ones are read back by ID on demand
-    (`lookupLocked`). `--session-retention` (default 30 days) deletes stale sessions daily, then VACUUMs.
+    (`lookupLocked`). `--session-retention` (default 30 days) deletes stale sessions daily, and VACUUMs when a quarter of the file is free.
   - Auth (`oauth.go`, `sessionauth.go`, `githubtoken.go`) is active only with `--session-secret` /
     `EGO_SESSION_SECRET`: GitHub OAuth signed cookie, or bearer tokens (minted via `auth mint-token`,
     or, on `/mcp` only, a raw GitHub token validated against org membership). `server.go` wraps the main mux in

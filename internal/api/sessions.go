@@ -1238,11 +1238,25 @@ func (s *SessionStore) pruneSessions() {
 	}
 	s.order = order
 	s.mu.Unlock()
+	// The pages a prune frees are reused by the rows that come next, so the file is rewritten only when a real share
+	// of it is free. A daily prune of a few sessions, or the one every start runs, used to rewrite the whole archive:
+	// minutes with the database held and hundreds of megabytes taken that the process kept afterwards.
+	free, err := s.store.FreeShare()
+	if err != nil {
+		logx.Warnf("session archive: reading the free share: %v", err)
+	}
+	if free < compactFreeShare {
+		logx.Infof("session archive: pruned %d session(s) older than %s; %.0f%% of the file is free, not compacted (under %.0f%%)", n, s.sessionRetention, free*100, compactFreeShare*100)
+		return
+	}
 	if err := s.store.Compact(); err != nil {
 		logx.Errorf("session archive: compact failed: %v", err)
 	}
-	logx.Infof("session archive: pruned %d session(s) older than %s and compacted", n, s.sessionRetention)
+	logx.Infof("session archive: pruned %d session(s) older than %s and compacted (%.0f%% of the file was free)", n, s.sessionRetention, free*100)
 }
+
+// compactFreeShare is the share of the archive file that must be free before a prune compacts it.
+const compactFreeShare = 0.25
 
 // requeueRootsLocked puts trace roots back for the next flush after a
 // failed write. Caller holds mu.

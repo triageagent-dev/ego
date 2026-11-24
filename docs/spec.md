@@ -17,7 +17,7 @@ Persistence is optional. Without a session database, ego keeps the newest sessio
 | Concern | Behaviour |
 |---|---|
 | Memory | The newest completed sessions stay in memory (`--session-memory`, default 200); older ones are read from the archive by id |
-| Retention | `--session-retention`, default 720 hours; stale sessions are deleted daily and the file is compacted |
+| Retention | `--session-retention`, default 720 hours; stale sessions are deleted daily and the file is compacted when a quarter of it is free |
 | Live feed | A WebSocket per open page with a heartbeat every 15 s; a debounced `changed` message per topic makes the usage, quality and runs views read again. Server-Sent Events remain as a fallback for curl |
 | Re-execution | None. ego scores recorded traces; it never calls the agent |
 

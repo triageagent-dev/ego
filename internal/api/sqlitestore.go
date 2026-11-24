@@ -404,9 +404,27 @@ func (s *SQLiteStore) PruneSessions(cutoff time.Time) (int64, error) {
 	return res.RowsAffected()
 }
 
+// FreeShare is the share of the database file that is free pages: space a
+// prune left behind, which new rows reuse and only a VACUUM gives back to
+// the filesystem.
+func (s *SQLiteStore) FreeShare() (float64, error) {
+	var free, pages int64
+	if err := s.db.QueryRow("PRAGMA freelist_count").Scan(&free); err != nil {
+		return 0, err
+	}
+	if err := s.db.QueryRow("PRAGMA page_count").Scan(&pages); err != nil {
+		return 0, err
+	}
+	if pages <= 0 {
+		return 0, nil
+	}
+	return float64(free) / float64(pages), nil
+}
+
 // Compact returns freed pages to the filesystem after a prune: checkpoint
-// the WAL into the main file, then VACUUM. VACUUM rewrites the whole file,
-// so it runs only after rows were actually deleted.
+// the WAL into the main file, then VACUUM. VACUUM rewrites the whole file
+// and holds the database and a lot of memory while it does, so the caller
+// runs it only when enough of the file is free (compactFreeShare).
 func (s *SQLiteStore) Compact() error {
 	defer holdTimer("Compact")()
 	if _, err := s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {

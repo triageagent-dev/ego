@@ -43,8 +43,8 @@ persistence:
   # the count above; the oldest leave first (0 = no cap). Keep it well
   # under the memory limit.
   memoryMB: 256
-  # -- Delete sessions not updated for this long, daily, then compact the
-  # file (Go duration; "0" = keep forever).
+  # -- Delete sessions not updated for this long, daily; the file is
+  # compacted when a quarter of it is free (Go duration; "0" = keep forever).
   retention: 720h
   # -- Warn (Discord, /api/health, the UI) when the volume has less than this
   # percent free. Set it above the free space to see the warning work.

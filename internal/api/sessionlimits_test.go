@@ -2,6 +2,7 @@ package api
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -175,5 +176,42 @@ func TestSessionLimits_EvictsByBytes(t *testing.T) {
 	}
 	if tr, ok := store.Trace("old"); !ok || len(tr.AllSpans) != 1 {
 		t.Fatalf("evicted session not served from the archive: ok=%v", ok)
+	}
+}
+
+// TestFreeShare_SaysWhenACompactIsWorthIt: a fresh archive has nothing free;
+// deleting most of its rows leaves most of the file free; a compact gives
+// it back.
+func TestFreeShare_SaysWhenACompactIsWorthIt(t *testing.T) {
+	archive, err := NewSQLiteStore(filepath.Join(t.TempDir(), "s.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	blob := `{"session_id":"x","pad":"` + strings.Repeat("a", 200<<10) + `"}`
+	for _, id := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		at := "2026-01-02T00:00:00Z"
+		if id == "h" {
+			at = "2026-06-01T00:00:00Z"
+		}
+		if _, err := archive.db.Exec(`INSERT INTO sessions (session_id, data, updated_at) VALUES (?, ?, ?)`, id, blob, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if free, err := archive.FreeShare(); err != nil || free >= compactFreeShare {
+		t.Fatalf("free share of a full archive = %.2f, %v", free, err)
+	}
+	if n, err := archive.PruneSessions(time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)); err != nil || n != 7 {
+		t.Fatalf("PruneSessions = %d, %v, want 7", n, err)
+	}
+	free, err := archive.FreeShare()
+	if err != nil || free < compactFreeShare {
+		t.Fatalf("free share after deleting 7 of 8 = %.2f, %v, want at least %.2f", free, err, compactFreeShare)
+	}
+	if err := archive.Compact(); err != nil {
+		t.Fatal(err)
+	}
+	if free, err := archive.FreeShare(); err != nil || free > 0.01 {
+		t.Fatalf("free share after a compact = %.2f, %v", free, err)
 	}
 }
