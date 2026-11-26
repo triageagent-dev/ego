@@ -48,12 +48,17 @@ type bucket struct {
 	last   time.Time
 }
 
-// take refills at ratePerHour (capacity one hour's worth) and takes a token.
+// take refills at ratePerHour and takes a token. The capacity is one hour's worth, and never under one token: a
+// rate below one an hour would otherwise never hold the whole token a session costs. A rate of 0 or less takes none.
 func (b *bucket) take(ratePerHour float64, now time.Time) bool {
+	if ratePerHour <= 0 {
+		return false
+	}
+	capacity := math.Max(1, ratePerHour)
 	if b.last.IsZero() {
-		b.tokens = ratePerHour
+		b.tokens = capacity
 	} else {
-		b.tokens = math.Min(ratePerHour, b.tokens+now.Sub(b.last).Hours()*ratePerHour)
+		b.tokens = math.Min(capacity, b.tokens+now.Sub(b.last).Hours()*ratePerHour)
 	}
 	b.last = now
 	if b.tokens < 1 {

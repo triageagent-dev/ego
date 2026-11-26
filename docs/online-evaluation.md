@@ -46,7 +46,8 @@ A session is scored only when a profile matches its kind (section 2). Then:
    prompts carry event text makes almost every session novel.
 4. **Rate**: two token buckets per (tenant, kind). The base lane takes
    `perKindPerHour`, the boost lane `boostPerKindPerHour`. Rare kinds are not
-   crowded out by frequent ones.
+   crowded out by frequent ones. A rate below one an hour works: 0.25 scores a
+   session every four hours.
 5. **Budget**: a daily cap on judge tokens (Gemini, metered from the response's
    usage metadata) and on Jev calls (one per scored invocation). The scheduler
    reserves an estimate before scoring (an EWMA of the profile's actual cost)
@@ -112,6 +113,15 @@ service, version, model, metric, score, status, evaluator kind, judge model,
 sample reason). The results also go into Run History: one run per (kind, UTC
 hour), named `online · <kind> · <hour>`, so the existing run views and
 drill-down work unchanged. The run finishes when its hour closes.
+
+**A cut input is not judged.** `hallucinations_v1`, `rubric_based_final_response_quality_v1` and `jev_grounded`
+check an answer against what the model was given. Over a part of that input they read every fact from the missing
+part as made up, so a turn whose input the trace does not hold in full is `SKIPPED` for them, with the reason, and
+counts as neither a pass nor a failure. A turn is cut when a span of it carries `ego.input.truncated` = true, or,
+for a turn with no tool calls, when the model reports more input tokens than the trace holds bytes of input (calls
+of 2,000 tokens or fewer are not guessed; the turns of a voice conversation built from single-sided spans are not
+checked, since audio counts as input and the trace holds its transcript). A sender that clips what it records
+should set the attribute. The other metrics still rate the turn.
 
 ## 3. Detection
 

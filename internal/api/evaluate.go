@@ -607,7 +607,7 @@ func evaluateInvocations(
 	var decisionResults map[int][]eval.Result
 	var decisionModel string
 	if len(settled) > 0 || len(invocations) == 0 {
-		decisionResults, decisionModel = runDecisionEvaluators(ctx, evaluators, settled, eval.FindExpectedInvocations(settled, evalSet), getDecisionClient)
+		decisionResults, decisionModel = runDecisionsOnEvidence(ctx, evaluators, settled, evalSet, getDecisionClient)
 	} else {
 		decisionResults = map[int][]eval.Result{}
 		for i, ev := range evaluators {
@@ -649,6 +649,8 @@ func evaluateInvocations(
 		switch {
 		case ratesTheAnswer(evaluator.Name) && len(settled) == 0 && len(invocations) > 0:
 			result = skipped(evaluator.Name)
+		case needsWholeInput(evaluator.Name) && len(invocations) > 0 && len(wholeInput(judged(evaluator.Name, invocations, settled))) == 0:
+			result = eval.Result{MetricName: evaluator.Name, Status: eval.StatusSkipped, Error: cutInputSkip}
 		case judgeMetrics[evaluator.Name]:
 			modelName := evaluator.JudgeModel
 			if modelName == "" {
@@ -666,6 +668,10 @@ func evaluateInvocations(
 				actual, exp := invocations, expected
 				if ratesTheAnswer(evaluator.Name) {
 					actual, exp = settled, eval.FindExpectedInvocations(settled, evalSet)
+				}
+				if needsWholeInput(evaluator.Name) {
+					actual = wholeInput(actual)
+					exp = eval.FindExpectedInvocations(actual, evalSet)
 				}
 				result = runJudgeMetric(ctx, evaluator.Name, model, actual, exp, evaluator.Rubrics, numSamples, threshold,
 					judge.ToolOutputLimits{PerOutput: evaluator.MaxToolOutputChars, Total: evaluator.MaxToolOutputsTotal})
@@ -694,6 +700,70 @@ func evaluateInvocations(
 	}
 
 	return traceResult
+}
+
+// cutInputSkip is the reason a metric carries when no turn it would rate has its whole input in the trace.
+const cutInputSkip = "not rated: the trace holds only part of the model's input, so whether the answer is backed by it cannot be judged"
+
+// needsWholeInput reports whether a metric checks the answer against what the model was given. Scored over a part of
+// the input, it reads every fact from the missing part as made up.
+func needsWholeInput(name string) bool {
+	return name == "hallucinations_v1" || name == "jev_grounded" || name == "rubric_based_final_response_quality_v1"
+}
+
+// judged is the turns a metric rates: the settled ones for a metric of the answer, else all.
+func judged(name string, all, settled []adk.Invocation) []adk.Invocation {
+	if ratesTheAnswer(name) {
+		return settled
+	}
+	return all
+}
+
+// wholeInput is the turns whose input the trace holds in full.
+func wholeInput(invocations []adk.Invocation) []adk.Invocation {
+	out := make([]adk.Invocation, 0, len(invocations))
+	for _, inv := range invocations {
+		if !inv.InputCut {
+			out = append(out, inv)
+		}
+	}
+	return out
+}
+
+// runDecisionsOnEvidence is runDecisionEvaluators with the metrics that need the whole input kept to the turns that
+// have it. With no turn cut, every metric goes in one run as before.
+func runDecisionsOnEvidence(ctx context.Context, evaluators []evaluatorConfigDTO, settled []adk.Invocation, evalSet *adk.EvalSet, getClient func() (*decision.Client, error)) (map[int][]eval.Result, string) {
+	whole := wholeInput(settled)
+	if len(whole) == len(settled) {
+		return runDecisionEvaluators(ctx, evaluators, settled, eval.FindExpectedInvocations(settled, evalSet), getClient)
+	}
+	// Each run sees only its own evaluators; the others are blanked so that the indexes stay those of evaluators.
+	only := func(evidence bool) []evaluatorConfigDTO {
+		out := make([]evaluatorConfigDTO, len(evaluators))
+		for i, ev := range evaluators {
+			if needsWholeInput(ev.Name) == evidence {
+				out[i] = ev
+			}
+		}
+		return out
+	}
+	results, model := runDecisionEvaluators(ctx, only(false), settled, eval.FindExpectedInvocations(settled, evalSet), getClient)
+	if len(whole) > 0 {
+		backed, m := runDecisionEvaluators(ctx, only(true), whole, eval.FindExpectedInvocations(whole, evalSet), getClient)
+		for i, r := range backed {
+			results[i] = r
+		}
+		if model == "" {
+			model = m
+		}
+		return results, model
+	}
+	for i, ev := range evaluators {
+		if (ev.Type == "" || ev.Type == "builtin") && decision.IsMetric(ev.Name) && needsWholeInput(ev.Name) {
+			results[i] = []eval.Result{{MetricName: ev.Name, Status: eval.StatusSkipped, Error: cutInputSkip}}
+		}
+	}
+	return results, model
 }
 
 // pendingTurnSkip is the reason a skipped metric carries.

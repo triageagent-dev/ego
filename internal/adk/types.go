@@ -69,6 +69,9 @@ type Invocation struct {
 	// Pending is set from the root span's ego.turn.pending: the final response is an acknowledgement and the
 	// answer comes in a later turn.
 	Pending bool `json:"pending,omitempty"`
+	// InputCut is set when the trace holds only part of what the model was given (see inputCut), so whether the
+	// answer is backed by its input cannot be judged.
+	InputCut bool `json:"input_cut,omitempty"`
 }
 
 // UserText concatenates every text part of UserContent with a space.

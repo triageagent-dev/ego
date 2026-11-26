@@ -149,6 +149,7 @@ type conversationTurn struct {
 	ToolResponses  []turnToolResponse
 	StartTimeMicro int64
 	Pending        bool
+	InputCut       bool
 }
 
 type turnToolCall struct {
@@ -335,6 +336,7 @@ func extractSingleTurn(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span) (conve
 		ToolResponses:  toolResponses,
 		StartTimeMicro: invSpan.StartTime,
 		Pending:        boolTag(invSpan, EgoTurnPending),
+		InputCut:       inputCut(invSpan, llmSpans, len(toolCalls)),
 	}, nil
 }
 
@@ -804,5 +806,6 @@ func turnToInvocation(turn conversationTurn) Invocation {
 		},
 		CreationTimestamp: float64(turn.StartTimeMicro) / 1_000_000.0,
 		Pending:           turn.Pending,
+		InputCut:          turn.InputCut,
 	}
 }
