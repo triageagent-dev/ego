@@ -123,6 +123,18 @@ of 2,000 tokens or fewer are not guessed; the turns of a voice conversation buil
 checked, since audio counts as input and the trace holds its transcript). A sender that clips what it records
 should set the attribute. The other metrics still rate the turn.
 
+**Context documents.** A sender whose prompts are too long for the model span puts them on a retrieval span under
+the call: `ego.evidence.documents`, a JSON array of `{"id","content"}` in one attribute (an SDK limits how many
+attributes a span may have, often 128), or OpenInference's `retrieval.documents.N.document.{id,content}` on a
+`RETRIEVER` span. The three grounding judges are given the documents as evidence, all of them in one call; a turn
+with more than 400,000 bytes of them counts as cut. With a session archive the documents are taken off the span as
+it arrives and kept beside the session, each text once (gzip, keyed by its hash), at most 8 MB a session; they are
+not part of the live view or of the stored spans. A session that online evaluation decides not to score loses them,
+and a turn whose documents are gone counts as cut.
+
+**A daily cap.** A profile's `perDay` caps how many sessions of each (tenant, kind) it scores in a UTC day, both
+lanes counted (skip reason `daily_cap`); 0 sets no cap.
+
 ## 3. Detection
 
 Every 10 minutes, for each (tenant, kind, metric):

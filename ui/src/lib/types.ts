@@ -1029,6 +1029,8 @@ export interface OnlineJob {
   maxInvocations?: number;
   /** Sessions of each tenant and kind scored per hour; absent takes the default rate. */
   perHour?: number;
+  /** The most sessions of each tenant and kind scored in a UTC day; absent sets no cap. */
+  perDay?: number;
   evaluators: { name: string; rubrics?: string[]; numSamples?: number; judgeModel?: string }[];
 }
 

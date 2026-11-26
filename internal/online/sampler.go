@@ -22,6 +22,7 @@ const (
 	SkipAlreadySeen = "already_seen"
 	SkipQueueFull   = "queue_full"
 	SkipTrivial     = "trivial"
+	SkipDaily       = "daily_cap"
 )
 
 // Decision is the sampler's answer for one session.
@@ -100,6 +101,9 @@ type stream struct {
 	tokens, lat ewma
 	versions    map[string]time.Time
 	burst       int
+	// day and today count what was sampled this UTC day, for a profile's daily cap.
+	day   string
+	today int
 }
 
 // Sampler decides which completed sessions to score. Safe for concurrent use.
@@ -128,6 +132,37 @@ func (s *Sampler) SetConfig(cfg Sampling) {
 
 // DecideAt is Decide with the base rate of the session's profile; 0 takes the configured per-kind rate.
 func (s *Sampler) DecideAt(f Features, perHour float64, now time.Time) Decision {
+	return s.DecideCapped(f, perHour, 0, now)
+}
+
+// Seed counts n sessions of (tenant, kind) as sampled today, as a restart finds them in the store.
+func (s *Sampler) Seed(tenant, kind string, n int, now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.streamLocked(tenant, kind)
+	st.rollDay(now)
+	st.today += n
+}
+
+func (s *Sampler) streamLocked(tenant, kind string) *stream {
+	key := tenant + "\x00" + kind
+	st := s.streams[key]
+	if st == nil {
+		st = &stream{versions: map[string]time.Time{}}
+		s.streams[key] = st
+	}
+	return st
+}
+
+func (st *stream) rollDay(now time.Time) {
+	if day := now.UTC().Format(time.DateOnly); st.day != day {
+		st.day, st.today = day, 0
+	}
+}
+
+// DecideCapped is DecideAt with at most perDay sessions of (tenant, kind) sampled in a UTC day, both lanes counted;
+// 0 sets no cap.
+func (s *Sampler) DecideCapped(f Features, perHour float64, perDay int, now time.Time) Decision {
 	if perHour <= 0 {
 		s.mu.Lock()
 		perHour = s.cfg.PerKindPerHour
@@ -137,12 +172,8 @@ func (s *Sampler) DecideAt(f Features, perHour float64, now time.Time) Decision 
 	defer s.mu.Unlock()
 	s.pruneLocked(now)
 
-	key := f.Tenant + "\x00" + f.Kind
-	st := s.streams[key]
-	if st == nil {
-		st = &stream{versions: map[string]time.Time{}}
-		s.streams[key] = st
-	}
+	st := s.streamLocked(f.Tenant, f.Kind)
+	st.rollDay(now)
 
 	var reasons []string
 	if f.Errors > 0 {
@@ -164,11 +195,16 @@ func (s *Sampler) DecideAt(f Features, perHour float64, now time.Time) Decision 
 		reasons = append(reasons, ReasonChange)
 	}
 
+	if perDay > 0 && st.today >= perDay {
+		return Decision{Skip: SkipDaily}
+	}
+
 	if len(reasons) > 0 && st.boost.take(s.cfg.BoostPerKindPerHour, now) {
 		if st.burst > 0 {
 			st.burst--
 		}
 		s.seen[f.Fingerprint] = now
+		st.today++
 		return Decision{Sample: true, Lane: "boost", Reasons: reasons}
 	}
 	if last, ok := s.seen[f.Fingerprint]; ok && now.Sub(last) < s.cfg.DedupWindow.D() {
@@ -181,6 +217,7 @@ func (s *Sampler) DecideAt(f Features, perHour float64, now time.Time) Decision 
 	if len(reasons) == 0 {
 		reasons = []string{ReasonBase}
 	}
+	st.today++
 	return Decision{Sample: true, Lane: "base", Reasons: reasons}
 }
 

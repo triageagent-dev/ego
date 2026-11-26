@@ -57,13 +57,15 @@ type Session struct {
 	TraceIDs       map[string]struct{}
 	Spans          []*tracepkg.Span
 	// cover works out, as spans arrive, whose tokens count when a call is traced twice (usage ledger rows).
-	cover       adk.TokenCover
-	StartedAt   time.Time
-	HasRootSpan bool
-	IsComplete  bool
-	CompletedAt *time.Time
-	Invocations []InvocationDTO
-	extractor   *incremental.Extractor
+	cover adk.TokenCover
+	// evidenceBytes is how much context this session's spans have had kept (maxEvidenceBytesPerSession).
+	evidenceBytes int
+	StartedAt     time.Time
+	HasRootSpan   bool
+	IsComplete    bool
+	CompletedAt   *time.Time
+	Invocations   []InvocationDTO
+	extractor     *incremental.Extractor
 	// Sender is the sender that owns the session: the one whose token sent it. Spans from any other sender are
 	// refused. Empty for sessions from the shared token or an open receiver. The session's tenants are read from the
 	// spans' tenant label (tenantAttr) and keyed with the sender, see tenantKey.
@@ -522,6 +524,10 @@ type SessionStore struct {
 	// pendingUsageDrops are the spans whose ledger rows are to go: a span that reported usage and then turned out to
 	// have the call's own span inside it, which reports the same.
 	pendingUsageDrops []usageDrop
+	// pendingEvidence holds context documents taken off arriving spans until flushEvidence writes them; evidenceMu
+	// keeps one flush at a time, so a reader that flushes finds what an earlier flush took.
+	pendingEvidence []evidenceRow
+	evidenceMu      sync.Mutex
 	// pendingRoots maps a trace ID to its root span's name, for
 	// FillUsageKinds at the next flush. Touched with mu held.
 	pendingRoots map[string]string
@@ -1098,6 +1104,11 @@ func (s *SessionStore) StartPersistence(interval time.Duration, stop <-chan stru
 // retried next tick, exactly as before this optimization existed (when
 // every tick unconditionally retried everything).
 func (s *SessionStore) flushPersist() error {
+	if s.store != nil {
+		if err := s.flushEvidence(); err != nil {
+			logx.Errorf("%v", err)
+		}
+	}
 	// A purge holds the same lock, so a snapshot taken before it cannot be written back after it.
 	s.persistMu.Lock()
 	defer s.persistMu.Unlock()
@@ -1217,6 +1228,9 @@ func (s *SessionStore) pruneSessions() {
 		return
 	}
 	cutoff := time.Now().Add(-s.sessionRetention)
+	if err := s.store.PruneEvidence(s.now()); err != nil {
+		logx.Errorf("evidence: prune failed: %v", err)
+	}
 	n, err := s.store.PruneSessions(cutoff)
 	if err != nil {
 		logx.Errorf("session archive: prune failed: %v", err)
@@ -1520,6 +1534,9 @@ func (s *SessionStore) IngestBound(sender, tenant string, body map[string]any) i
 					len(session.Spans) >= hardMaxSpansPerSegment {
 					break
 				}
+				if s.store != nil {
+					s.takeEvidenceLocked(session, span)
+				}
 				session.Spans = append(session.Spans, span)
 				session.noteSpan(span)
 				session.lastArrival = arrived
@@ -1713,13 +1730,22 @@ func (s *SessionStore) Summary(sessionID string) (SessionSummary, bool) {
 // arrived under (mirrors how a session can span multiple traces).
 func (s *SessionStore) Trace(sessionID string) (*tracepkg.Trace, bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	session, ok := s.lookupLocked(sessionID)
 	if !ok {
+		s.mu.Unlock()
 		return nil, false
 	}
-	return otlp.BuildTrace(sessionID, session.Spans), true
+	spans, stored := session.Spans, []*tracepkg.Span(nil)
+	if s.store != nil {
+		spans, stored = withoutDocuments(session.Spans)
+	}
+	tr := otlp.BuildTrace(sessionID, spans)
+	s.mu.Unlock()
+	if len(stored) > 0 {
+		s.putDocumentsBack(sessionID, stored)
+	}
+	return tr, true
 }
 
 // SpanRows returns a session's spans depth-first, children by start time

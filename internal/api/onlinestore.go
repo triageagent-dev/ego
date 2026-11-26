@@ -193,6 +193,30 @@ func (s *SQLiteStore) OnlineEvalInvocations(sessionID string) (n int, scored boo
 	return n, err == nil, err
 }
 
+// onlineSampledCount is how many sessions of one (tenant, kind) were scored.
+type onlineSampledCount struct {
+	Tenant, Kind string
+	Sessions     int
+}
+
+// OnlineSampledSince counts the sessions scored since sinceMs by tenant and kind, for the daily caps at startup.
+func (s *SQLiteStore) OnlineSampledSince(sinceMs int64) ([]onlineSampledCount, error) {
+	rows, err := s.db.Query(`SELECT tenant, kind, COUNT(*) FROM online_evals WHERE at_ms >= ? GROUP BY tenant, kind`, sinceMs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []onlineSampledCount
+	for rows.Next() {
+		var c onlineSampledCount
+		if err := rows.Scan(&c.Tenant, &c.Kind, &c.Sessions); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // OnlineSpentSince sums judge cost since sinceMs (today's spend at startup).
 func (s *SQLiteStore) OnlineSpentSince(sinceMs int64) (online.Cost, error) {
 	var c online.Cost

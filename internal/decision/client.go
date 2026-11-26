@@ -315,6 +315,15 @@ func (c *Client) Model() string {
 // failures.
 const maxAttempts = 5
 
+// Cuts reports whether state would be shortened before it is sent.
+func (c *Client) Cuts(state map[string]any) bool {
+	if c.maxState <= 0 {
+		return false
+	}
+	raw, err := json.Marshal(state)
+	return err == nil && len(raw) > c.maxState
+}
+
 // Decide sends one Decisions API request and returns its answers keyed by
 // question name.
 func (c *Client) Decide(ctx context.Context, state map[string]any, questions map[string]Question) (map[string]Answer, error) {

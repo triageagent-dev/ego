@@ -197,6 +197,13 @@ type Request struct {
 	Threshold float64
 }
 
+const groundedMetric = "jev_grounded"
+
+// groundedWithContext is the groundedness question for a turn whose state holds context documents.
+const groundedWithContext = "Are the factual claims in the agent's final response backed by the tool results, the " +
+	"context documents the agent was given, the user input or the earlier turns in the state? Greetings, questions, " +
+	"offers of help and statements about the assistant's own limits need no backing."
+
 // historyTurns caps how many earlier turns go into each invocation's state.
 const historyTurns = 5
 
@@ -223,6 +230,13 @@ func State(actual []adk.Invocation, i int, reference *adk.Invocation) map[string
 	}
 	if reference != nil {
 		state["reference_response"] = reference.FinalResponse.Text()
+	}
+	if len(inv.Context) > 0 {
+		docs := make([]map[string]string, 0, len(inv.Context))
+		for _, d := range inv.Context {
+			docs = append(docs, map[string]string{"id": d.ID, "content": d.Text})
+		}
+		state["context_documents"] = docs
 	}
 	return defangState(state)
 }
@@ -348,19 +362,39 @@ func Evaluate(ctx context.Context, d Decider, actual, expected []adk.Invocation,
 	}
 
 	perInvocation := make([][]*float64, len(reqs))
+	// tooLong marks a metric left unasked for a turn because the endpoint's size limit would cut its documents.
+	tooLong := make([]bool, len(reqs))
 	details := make([][]map[string]any, len(reqs))
 	for inv := range actual {
 		var ref *adk.Invocation
 		if useRef {
 			ref = &expected[inv]
 		}
+		state := State(actual, inv, ref)
+		cut := false
+		if c, ok := d.(interface{ Cuts(map[string]any) bool }); ok && len(actual[inv].Context) > 0 {
+			cut = c.Cuts(state)
+		}
 		questions := make(map[string]Question, len(active))
 		for _, i := range active {
-			questions[reqs[i].Metric.Key] = reqs[i].Metric.Question
+			q := reqs[i].Metric.Question
+			if reqs[i].Metric.Name == groundedMetric {
+				if cut {
+					tooLong[i] = true
+					continue
+				}
+				if len(actual[inv].Context) > 0 {
+					q.Instructions = groundedWithContext
+				}
+			}
+			questions[reqs[i].Metric.Key] = q
 		}
-		answers, err := d.Decide(ctx, State(actual, inv, ref), questions)
-		if err != nil {
-			return nil, fmt.Errorf("invocation %d: %w", inv, err)
+		var answers map[string]Answer
+		if len(questions) > 0 {
+			var err error
+			if answers, err = d.Decide(ctx, state, questions); err != nil {
+				return nil, fmt.Errorf("invocation %d: %w", inv, err)
+			}
 		}
 		for _, i := range active {
 			a, ok := answers[reqs[i].Metric.Key]
@@ -393,6 +427,11 @@ func Evaluate(ctx context.Context, d Decider, actual, expected []adk.Invocation,
 				sum += *s
 				n++
 			}
+		}
+		if n == 0 && tooLong[i] {
+			results[i] = eval.Result{MetricName: m.Name, Status: eval.StatusSkipped,
+				Error: "not rated: the turn's context is larger than the decision model is sent (EGO_DECISION_MAX_STATE_BYTES)"}
+			continue
 		}
 		if n == 0 {
 			results[i] = eval.Result{MetricName: m.Name, Status: eval.StatusNotEvaluated}

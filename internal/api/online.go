@@ -171,6 +171,13 @@ func (e *OnlineEngine) Start(stop <-chan struct{}) {
 		}
 	}
 	e.finishStaleRuns(true)
+	if today, err := e.store.OnlineSampledSince(day.UnixMilli()); err != nil {
+		logx.Warnf("online: restoring today's sample counts: %v", err)
+	} else {
+		for _, c := range today {
+			e.sampler.Seed(c.Tenant, c.Kind, c.Sessions, now)
+		}
+	}
 	if !decision.Configured() {
 		for _, p := range e.conf().Profiles {
 			if p.UsesJev() {
@@ -230,6 +237,14 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		e.count(online.SkipAlreadySeen)
 		return
 	}
+	// A session that is not going to be scored keeps no context documents. One scored before keeps them: its scores
+	// are explained from them.
+	keepEvidence := scored
+	defer func() {
+		if !keepEvidence {
+			e.sessions.DropEvidence(sessionID)
+		}
+	}()
 	f := online.FeaturesOf(sessionID, tr.AllSpans, e.tenantAttr)
 	if f.Kind == "" {
 		e.count(online.SkipNoKind)
@@ -255,7 +270,7 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		f.Fingerprint += "#" + strconv.Itoa(len(invocations))
 	}
 	now := e.now()
-	d := e.sampler.DecideAt(f, p.PerHour, now)
+	d := e.sampler.DecideCapped(f, p.PerHour, p.PerDay, now)
 	if !d.Sample {
 		e.count(d.Skip)
 		return
@@ -272,6 +287,7 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		return
 	}
 	// The count the score covers is of the whole session, before the profile's cap takes the newest.
+	keepEvidence = true
 	covered := len(invocations)
 	if len(invocations) > p.MaxInvocations {
 		invocations = invocations[len(invocations)-p.MaxInvocations:]

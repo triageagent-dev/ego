@@ -46,7 +46,10 @@ type Profile struct {
 	// MaxInvocations scores only the last N invocations (default 3).
 	MaxInvocations int `json:"maxInvocations,omitempty"`
 	// PerHour is how many sessions of each (tenant, kind) this profile scores per hour; 0 takes sampling.perKindPerHour.
-	PerHour    float64     `json:"perHour,omitempty"`
+	PerHour float64 `json:"perHour,omitempty"`
+	// PerDay caps how many sessions of each (tenant, kind) this profile scores in a UTC day, the sessions boosted for
+	// an error, an outlier or a change included; 0 sets no cap.
+	PerDay     int         `json:"perDay,omitempty"`
 	Evaluators []Evaluator `json:"evaluators"`
 }
 
@@ -364,7 +367,7 @@ func (c *Config) validate() error {
 		if _, err := path.Match(p.Kind, ""); err != nil {
 			return fmt.Errorf("online config: profile kind %q is not a valid pattern", p.Kind)
 		}
-		if p.PerHour < 0 || p.MaxInvocations < 0 {
+		if p.PerHour < 0 || p.PerDay < 0 || p.MaxInvocations < 0 {
 			return fmt.Errorf("online config: profile %q: perHour and maxInvocations must not be negative", p.Key())
 		}
 		if seen[p.Key()] {

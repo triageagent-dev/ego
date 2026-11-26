@@ -86,7 +86,7 @@ export const ScoringJobsPanel: React.FC<{ canEdit: boolean }> = ({ canEdit }) =>
               {job.evaluators.map((e) => e.name.replace(/_v\d+$/, '')).join(', ') || 'no metric yet'}
             </span>
             <span css={metaStyle}>
-              {job.perHour ?? rate}/h · last {job.maxInvocations ?? DEFAULT_TURNS} turn{(job.maxInvocations ?? DEFAULT_TURNS) === 1 ? '' : 's'}
+              {job.perHour ?? rate}/h{job.perDay ? `, at most ${job.perDay} a day` : ''} · last {job.maxInvocations ?? DEFAULT_TURNS} turn{(job.maxInvocations ?? DEFAULT_TURNS) === 1 ? '' : 's'}
             </span>
             {canEdit && (
               <button

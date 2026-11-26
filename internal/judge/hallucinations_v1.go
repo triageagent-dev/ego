@@ -99,6 +99,7 @@ func buildHallucinationContextWith(inv adk.Invocation, earlier []adk.Invocation,
 	}
 	b.WriteString("User prompt:\n")
 	b.WriteString(plainText(inv.UserContent.Text()))
+	b.WriteString(contextText(inv))
 	b.WriteString("\n\nTool definitions:\n")
 	if len(uses) == 0 {
 		b.WriteString("Agent has no tools.\n")
@@ -386,4 +387,18 @@ func clipChars(s string, n int) string {
 		return string(r)
 	}
 	return string(r[:n]) + "…"
+}
+
+// contextText is the documents of the model's input that the turn's retrieval spans carry, quoted as the rest of the
+// trace is: facts the answer may rest on, never instructions. "" with none.
+func contextText(inv adk.Invocation) string {
+	if len(inv.Context) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\nContext the agent was given with the prompt (trusted evidence):\n")
+	for _, d := range inv.Context {
+		fmt.Fprintf(&b, "[%s]\n%s\n\n", plainText(oneLine(d.ID)), plainText(d.Text))
+	}
+	return b.String()
 }

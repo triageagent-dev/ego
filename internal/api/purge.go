@@ -198,6 +198,7 @@ func (s *SQLiteStore) purgeSessionRows(want map[string]bool, doomed map[string]b
 			`DELETE FROM online_evals WHERE session_id = ?`,
 			`DELETE FROM online_scores WHERE session_id = ?`,
 			`DELETE FROM llm_calls WHERE session_id = ?`,
+			`DELETE FROM evidence_refs WHERE session_id = ?`,
 		} {
 			if _, err := tx.Exec(q, id); err != nil {
 				return res, err
@@ -299,6 +300,7 @@ func (s *SQLiteStore) purgeTenantRows(set map[string]bool, doomed map[string]boo
 			`DELETE FROM online_evals WHERE session_id = ?`,
 			`DELETE FROM online_scores WHERE session_id = ?`,
 			`DELETE FROM llm_calls WHERE session_id = ?`,
+			`DELETE FROM evidence_refs WHERE session_id = ?`,
 		} {
 			if _, err := tx.Exec(q, id); err != nil {
 				return res, err

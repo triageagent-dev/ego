@@ -150,6 +150,7 @@ type conversationTurn struct {
 	StartTimeMicro int64
 	Pending        bool
 	InputCut       bool
+	Context        []ContextDoc
 }
 
 type turnToolCall struct {
@@ -328,6 +329,11 @@ func extractSingleTurn(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span) (conve
 	}
 	toolCalls, toolResponses := extractGenAIToolCalls(toolSpans, llmSpans)
 
+	context, cut := turnContext(invSpan), inputCut(invSpan, llmSpans, len(toolCalls))
+	if ContextBytes(context) > MaxContextBytes {
+		context, cut = nil, true
+	}
+
 	return conversationTurn{
 		InvocationID:   "genai-" + invSpan.SpanID,
 		UserText:       userText,
@@ -336,7 +342,8 @@ func extractSingleTurn(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span) (conve
 		ToolResponses:  toolResponses,
 		StartTimeMicro: invSpan.StartTime,
 		Pending:        boolTag(invSpan, EgoTurnPending),
-		InputCut:       inputCut(invSpan, llmSpans, len(toolCalls)),
+		InputCut:       cut,
+		Context:        context,
 	}, nil
 }
 
@@ -807,5 +814,6 @@ func turnToInvocation(turn conversationTurn) Invocation {
 		CreationTimestamp: float64(turn.StartTimeMicro) / 1_000_000.0,
 		Pending:           turn.Pending,
 		InputCut:          turn.InputCut,
+		Context:           turn.Context,
 	}
 }

@@ -116,6 +116,10 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := ensureEvidenceSchema(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if err := ensureRolesSchema(db); err != nil {
 		db.Close()
 		return nil, err
@@ -257,8 +261,10 @@ func (s *SQLiteStore) Delete(sessionID string) error {
 	if _, err := s.db.Exec("DELETE FROM session_index WHERE session_id = ?", sessionID); err != nil {
 		return err
 	}
-	_, err := s.db.Exec("DELETE FROM sessions WHERE session_id = ?", sessionID)
-	return err
+	if _, err := s.db.Exec("DELETE FROM sessions WHERE session_id = ?", sessionID); err != nil {
+		return err
+	}
+	return s.DropEvidence(sessionID)
 }
 
 // LoadRecent returns the limit most recently updated sessions' snapshots (every session when limit <= 0),

@@ -28,7 +28,8 @@ func inputCut(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span, toolCalls int) 
 		return false
 	}
 	var tokens int64
-	visible := 0
+	// Documents add to what the call's own span records; they are a part of the same input.
+	visible, documents := 0, ContextBytes(turnContext(invSpan))
 	// The call is often traced twice, one span with the messages and one with the usage, so the largest of each
 	// over the turn's spans is what is compared.
 	for _, s := range append([]*tracepkg.Span{invSpan}, llmSpans...) {
@@ -37,9 +38,12 @@ func inputCut(invSpan *tracepkg.Span, llmSpans []*tracepkg.Span, toolCalls int) 
 				tokens = in
 			}
 		}
-		if n := inputBytes(s); n > visible {
+		if n := messageBytes(s); n > visible {
 			visible = n
 		}
+	}
+	if visible > 0 {
+		visible += documents
 	}
 	// A span with no input at all is not a cut one: the sender records no content, and conversion says so itself.
 	return tokens > cutTokenFloor && visible > 0 && tokens > int64(visible)
@@ -58,8 +62,8 @@ func markedCut(span *tracepkg.Span) bool {
 	return false
 }
 
-// inputBytes is how many bytes of model input span records.
-func inputBytes(span *tracepkg.Span) int {
+// messageBytes is how many bytes of model input span records in its messages.
+func messageBytes(span *tracepkg.Span) int {
 	n := 0
 	for _, key := range []string{GenAIInputMessages, OpenInferenceInputValue, AdkLLMRequest} {
 		n = max(n, attrBytes(span.Tags[key]))
