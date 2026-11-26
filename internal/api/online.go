@@ -261,6 +261,15 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		e.count(online.SkipTrivial)
 		return
 	}
+	// Neither is a session nothing can be scored of: it takes no sample from the rate or the daily cap.
+	if len(invocations) == 0 {
+		e.count(online.SkipNoInvocs)
+		return
+	}
+	if nothingRatable(p, invocations) {
+		e.count(online.SkipCutInput)
+		return
+	}
 	// Profiles match on the label the sender wrote; scores, alerts and series are keyed with the sender too, so two
 	// senders that both send a tenant called "acme" stay apart.
 	f.Tenant = tenantKey(e.sessions.SenderOf(sessionID), f.Tenant)
@@ -281,11 +290,6 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		return
 	}
 
-	if len(invocations) == 0 {
-		e.budget.Settle(p, reserved, nil, now)
-		e.count(online.SkipNoInvocs)
-		return
-	}
 	// The count the score covers is of the whole session, before the profile's cap takes the newest.
 	keepEvidence = true
 	covered := len(invocations)
@@ -360,6 +364,23 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 	}, f.Version, f.Model, scores); err != nil {
 		logx.Errorf("online: storing scores for %s: %v", sessionID, err)
 	}
+}
+
+// nothingRatable reports whether every metric of the profile needs the whole input and none of the turns it would
+// score has it, so that scoring the session could only skip every metric.
+func nothingRatable(p online.Profile, invocations []adk.Invocation) bool {
+	if len(p.Evaluators) == 0 {
+		return false
+	}
+	for _, ev := range p.Evaluators {
+		if !needsWholeInput(ev.Name) {
+			return false
+		}
+	}
+	if len(invocations) > p.MaxInvocations {
+		invocations = invocations[len(invocations)-p.MaxInvocations:]
+	}
+	return len(wholeInput(invocations)) == 0
 }
 
 func profileEvaluators(p online.Profile) []evaluatorConfigDTO {

@@ -23,6 +23,7 @@ const (
 	SkipQueueFull   = "queue_full"
 	SkipTrivial     = "trivial"
 	SkipDaily       = "daily_cap"
+	SkipCutInput    = "cut_input"
 )
 
 // Decision is the sampler's answer for one session.

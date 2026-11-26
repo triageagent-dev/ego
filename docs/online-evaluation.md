@@ -121,7 +121,9 @@ counts as neither a pass nor a failure. A turn is cut when a span of it carries 
 for a turn with no tool calls, when the model reports more input tokens than the trace holds bytes of input (calls
 of 2,000 tokens or fewer are not guessed; the turns of a voice conversation built from single-sided spans are not
 checked, since audio counts as input and the trace holds its transcript). A sender that clips what it records
-should set the attribute. The other metrics still rate the turn.
+should set the attribute. The other metrics still rate the turn. When every metric of a profile needs the whole
+input and no turn it would score has it, the session is not sampled at all (skip reason `cut_input`), so it takes
+nothing from the rate or the daily cap.
 
 **Context documents.** A sender whose prompts are too long for the model span puts them on a retrieval span under
 the call: `ego.evidence.documents`, a JSON array of `{"id","content"}` in one attribute (an SDK limits how many
