@@ -118,9 +118,9 @@ function Turn({ turn, open, onToggle }: { turn: CCTurn; open: boolean; onToggle:
         <span style={{ fontSize: '10px', fontWeight: 700, color: USER, textTransform: 'uppercase', letterSpacing: '0.5px', flexShrink: 0 }}>Turn {turn.sequence}</span>
         <span title="When this turn started" style={{ fontSize: '10px', color: 'var(--text-muted)', flexShrink: 0 }}>{formatTurnTime(turn.startUs / 1000)}</span>
         {turn.tools > 0 && (
-          <span style={chip(turn.failedTools > 0 ? FAILED : 'var(--text-tertiary)', turn.failedTools > 0 ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-primary)')}>
+          <span style={chip('var(--text-tertiary)', 'var(--bg-primary)')}>
             {turn.tools} tool{turn.tools !== 1 ? 's' : ''}
-            {turn.failedTools > 0 && ` (${turn.failedTools} failed)`}
+            {turn.failedTools > 0 && <span style={{ color: FAILED }}> ({turn.failedTools} failed)</span>}
           </span>
         )}
         {turn.requests > 0 && <span style={chip(AGENT, 'rgba(16, 185, 129, 0.08)')}>↓{short(turn.inputTokens)} ↑{short(turn.outputTokens)}</span>}

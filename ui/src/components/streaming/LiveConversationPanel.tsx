@@ -301,14 +301,14 @@ export function LiveConversationPanel({ elements, isActive, invocations }: LiveC
                   <span style={{
                     fontSize: '10px',
                     fontWeight: 600,
-                    color: toolErrorCount > 0 ? '#ef4444' : 'var(--text-tertiary)',
-                    background: toolErrorCount > 0 ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-primary)',
+                    color: 'var(--text-tertiary)',
+                    background: 'var(--bg-primary)',
                     padding: '1px 6px',
                     borderRadius: 'var(--radius)',
                     flexShrink: 0,
                   }}>
                     {toolCount} tool{toolCount !== 1 ? 's' : ''}
-                    {toolErrorCount > 0 && ` (${toolErrorCount} failed)`}
+                    {toolErrorCount > 0 && <span style={{ color: '#ef4444' }}> ({toolErrorCount} failed)</span>}
                     {toolLatencyMs != null && ` · ${formatLatency(toolLatencyMs)}`}
                   </span>
                 )}
