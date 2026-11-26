@@ -22,8 +22,8 @@ thread. A hook hands each one to the sampler, which reads its features from the 
 - **kind**: the call kind with the most tokens in the session (same rule as
   the usage ledger), **tenant**, **service**, `service.version`, **model**;
 - error spans, total tokens, span-window latency;
-- a **fingerprint**: hash of kind, normalised first user input and the tool-call
-  name sequence.
+- a **fingerprint**: hash of kind, the start of the first call's user message
+  (normalised, not the system prompt) and the tool-call name sequence.
 
 A session is scored only when a profile matches its kind (section 2). Then:
 
@@ -41,8 +41,8 @@ A session is scored only when a profile matches its kind (section 2). Then:
    nothing, and it is skipped before the rate buckets, so it neither uses a
    kind's allowance nor moves its baselines. A session whose text cannot be read
    is never skipped this way, and neither is one with error spans. `"trivial": {"disabled": true}` turns it off.
-3. **Dedup**: a fingerprint already scored inside `dedupWindow` and without an
-   interest reason is skipped. Novelty is not a boost reason: a producer whose
+3. **Dedup**: a fingerprint already scored for the same tenant inside
+   `dedupWindow`, in a session without an interest reason, is skipped. Novelty is not a boost reason: a producer whose
    prompts carry event text makes almost every session novel.
 4. **Rate**: two token buckets per (tenant, kind). The base lane takes
    `perKindPerHour`, the boost lane `boostPerKindPerHour`. Rare kinds are not

@@ -107,12 +107,15 @@ type stream struct {
 	today int
 }
 
+// seenKey is what the duplicate check remembers of a session: one tenant's session never makes another's a repeat.
+func (f Features) seenKey() string { return f.Tenant + "\x00" + f.Fingerprint }
+
 // Sampler decides which completed sessions to score. Safe for concurrent use.
 type Sampler struct {
 	mu        sync.Mutex
 	cfg       Sampling
 	streams   map[string]*stream
-	seen      map[string]time.Time // fingerprint -> last sampled
+	seen      map[string]time.Time // seenKey -> last sampled
 	lastPrune time.Time
 }
 
@@ -204,17 +207,17 @@ func (s *Sampler) DecideCapped(f Features, perHour float64, perDay int, now time
 		if st.burst > 0 {
 			st.burst--
 		}
-		s.seen[f.Fingerprint] = now
+		s.seen[f.seenKey()] = now
 		st.today++
 		return Decision{Sample: true, Lane: "boost", Reasons: reasons}
 	}
-	if last, ok := s.seen[f.Fingerprint]; ok && now.Sub(last) < s.cfg.DedupWindow.D() {
+	if last, ok := s.seen[f.seenKey()]; ok && now.Sub(last) < s.cfg.DedupWindow.D() {
 		return Decision{Skip: SkipDuplicate}
 	}
 	if !st.base.take(perHour, now) {
 		return Decision{Skip: SkipRate}
 	}
-	s.seen[f.Fingerprint] = now
+	s.seen[f.seenKey()] = now
 	if len(reasons) == 0 {
 		reasons = []string{ReasonBase}
 	}

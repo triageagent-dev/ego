@@ -172,10 +172,15 @@ func (f Features) NotWorthJudging(t Trivial) bool {
 	return f.UserChars <= t.MaxUserChars && f.ReplyChars <= t.MaxReplyChars
 }
 
-// firstInput is the first LLM call's raw input text.
+// firstInput is what the first LLM call was asked: its user message, without the leading bracketed notes. The raw
+// input is read only when no user message can be told apart in it. In the raw input a system prompt comes first and
+// is the same in every call, which would make every session of a kind the same session to the duplicate check.
 func firstInput(sp *tracepkg.Span) string {
 	if sp == nil {
 		return ""
+	}
+	if text := strings.TrimSpace(stripWrappers(adk.ExtractUserTextFromAttrs(sp.Tags))); text != "" {
+		return text
 	}
 	for _, key := range []string{adk.GenAIInputMessages, adk.OpenInferenceInputValue} {
 		switch v := sp.Tag(key).(type) {
@@ -191,7 +196,7 @@ func firstInput(sp *tracepkg.Span) string {
 	return ""
 }
 
-// fingerprint hashes the kind, the normalised first input (numbers and hex
+// fingerprint hashes the kind, the start of the normalised first input (numbers and hex
 // IDs collapsed, so timestamps and counters do not make every session
 // unique) and the tool-call sequence.
 func fingerprint(kind, input string, tools []string) string {
