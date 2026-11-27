@@ -425,6 +425,7 @@ its own, so a call cannot ask for `spots/<other>`. ego then drops the call's `te
 | `get_session_spans` | One session's spans with their attributes; `errors_only` returns the failed ones with their message and their parent's attributes, to find why a session shows an error. |
 | `list_metrics`, `list_runs`, `get_run_results` | Metrics; evaluation runs and their per-case results. |
 | `run_findings` | Run the findings sweep now. Admin. |
+| `dismiss_findings` | Take open findings (`finding_ids`) off the open list with a `reason`, when the scores they rest on no longer hold. Each goes stale; the series is diagnosed again only from newer scores. Admin. |
 | `mint_sender_token` | Mint an ingest token (`egs_…`) for an existing sender: `sender` (with `create_sender` it is registered first), `label`, `tenant`, `tenant_name`, `mcp`. The token is in the answer once. Admin; on stdio only with `--admin-tools`. |
 | `revoke_sender_token` | Revoke an ingest token by `sender` and `token_id` (the `st-…` id, never the token): what uses it is refused at once. Admin; on stdio only with `--admin-tools`. |
 | `purge_sessions` | Remove single sessions by `session_ids`, each with its ledger rows and scores and nothing else of its tenant: for a session filed under the wrong tenant. `dry_run` counts first; it cannot be undone. Admin; on stdio only with `--admin-tools`. |

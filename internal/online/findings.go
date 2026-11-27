@@ -36,6 +36,7 @@ const (
 	TriggerFailed        = "failed"         // its correction did not help
 	TriggerAlertResolved = "alert_resolved" // the alert it came from resolved
 	TriggerHealthy       = "healthy"        // the series stayed above minScore for the window
+	TriggerDismissed     = "dismissed"      // an admin took it off the open list: what it rests on no longer holds
 )
 
 // NextFindingState applies a trigger to a state. ok is false when the trigger means nothing in that state (a
@@ -49,7 +50,7 @@ func NextFindingState(state, trigger string) (next string, ok bool) {
 			return FindingCorrected, true
 		case TriggerAlertResolved:
 			return FindingResolved, true
-		case TriggerHealthy:
+		case TriggerHealthy, TriggerDismissed:
 			return FindingStale, true
 		}
 	case FindingCorrected:
@@ -128,6 +129,25 @@ const (
 	ApprovalRejected = "rejected"
 )
 
+// Dismissal records who took a finding off the open list, and why.
+type Dismissal struct {
+	By     string    `json:"by"`
+	Reason string    `json:"reason"`
+	At     time.Time `json:"at"`
+}
+
+// ScoredAfter is the samples scored after t. The sweep reads a dismissed series through it, so the scores a dismissed
+// finding was written from, and others of that time, do not write it again.
+func ScoredAfter(samples []Sample, t time.Time) []Sample {
+	var out []Sample
+	for _, s := range samples {
+		if s.At.After(t) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // SuggestionHash identifies a suggested correction's text.
 func SuggestionHash(s string) string {
 	sum := sha256.Sum256([]byte(s))
@@ -149,6 +169,8 @@ type FindingData struct {
 	History   []CorrectionNote `json:"history"`
 	// Approval is the decision on the suggested correction, once a person has made one.
 	Approval *Approval `json:"approval,omitempty"`
+	// Dismissed is set when an admin dismissed the finding.
+	Dismissed *Dismissal `json:"dismissed,omitempty"`
 	// SuggestionWithheld is set on the copy a caller gets (never stored) when the suggestion is kept back until a
 	// person approves it.
 	SuggestionWithheld bool `json:"suggestion_withheld,omitempty"`

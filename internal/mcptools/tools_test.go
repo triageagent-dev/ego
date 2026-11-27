@@ -138,6 +138,7 @@ func TestToolsDeclareTheirBehaviour(t *testing.T) {
 		"delete_role_binding": {false, true, true, false},
 		"revoke_sender_token": {false, true, true, false},
 		"purge_sessions":      {false, true, true, false},
+		"dismiss_findings":    {false, true, false, false},
 	}
 	tools := allTools(&toolBackend{})
 	if len(tools) != len(expected) {

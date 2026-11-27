@@ -52,6 +52,9 @@ type Backend interface {
 	// nothing else of their tenants. Requires an admin.
 	PurgeSessions(ctx context.Context, ids []string, dryRun bool) (*SessionPurge, error)
 
+	// DismissFindings answers dismiss_findings: open findings go stale, each keeping the reason. Requires an admin.
+	DismissFindings(ctx context.Context, ids []string, reason string) ([]online.Finding, error)
+
 	// EgoScore answers get_ego_score: the score of the agents that work in turns, from their turns, for the
 	// caller's tenants.
 	EgoScore(ctx context.Context, q ActivityQuery) ([]TurnScore, error)

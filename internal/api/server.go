@@ -214,6 +214,7 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/online/findings", onlineFindingsHandler(onlineEngine))
 	mux.HandleFunc("/api/online/findings/{id}", onlineFindingHandler(onlineEngine))
 	mux.HandleFunc("/api/online/findings/sweep", onlineFindingsSweepHandler(onlineEngine))
+	mux.HandleFunc("/api/online/findings/dismiss", onlineFindingsDismissHandler(onlineEngine))
 	mux.HandleFunc("/api/online/findings/{id}/review", onlineFindingReviewHandler(onlineEngine))
 	mux.HandleFunc("/api/online/corrections", onlineCorrectionsHandler(onlineEngine))
 	mux.HandleFunc("/api/online/labels", onlineLabelsHandler(onlineEngine))

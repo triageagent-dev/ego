@@ -528,6 +528,14 @@ func (b *REST) PurgeSessions(ctx context.Context, ids []string, dryRun bool) (*S
 	return &out, nil
 }
 
+func (b *REST) DismissFindings(ctx context.Context, ids []string, reason string) ([]online.Finding, error) {
+	var out []online.Finding
+	if err := b.post(ctx, "/api/online/findings/dismiss", map[string]any{"ids": ids, "reason": reason}, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (b *REST) RunFindings(ctx context.Context) (*SweepReport, error) {
 	var out SweepReport
 	if err := b.post(ctx, "/api/online/findings/sweep", nil, &out); err != nil {

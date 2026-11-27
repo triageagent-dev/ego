@@ -93,7 +93,14 @@ A finding is written by the **findings pass** (`internal/online/findings.go`, wi
 - **Record.** `online_findings(finding_id, tenant, kind, metric, state, alert_id, created_ms, updated_ms,
   data JSON)`. `data` holds the diagnosis, the evidence session ids, the window, the model and tokens spent.
 - **State.** `open` → `corrected` (a correction names it) → `resolved` (its correction verified, or its alert
-  resolved) | `stale` (no correction and the series has been above `minScore` for `findings.window`).
+  resolved) | `stale` (no correction and the series has been above `minScore` for `findings.window`, or an admin
+  dismissed it).
+- **Dismiss.** An admin takes open findings off the open list with `dismiss_findings` or
+  `POST /api/online/findings/dismiss` `{"ids":[...],"reason":"..."}` (at most 100 ids and 500 characters; every id
+  is checked before any changes, 409 for one that is not open). It is for a finding whose scores no longer hold, such
+  as one written before a fix to what the judges read. The finding goes `stale`, keeps `dismissed` (`by`, `reason`,
+  `at`), is sent to the sinks as `stale` and is pruned like other stale findings. While ego keeps it, the sweep
+  diagnoses that series only from scores recorded after the dismissal.
 - **Notify.** Every sink gets findings as `{"type": "ego.finding.v1", "event": "open|updated|resolved|stale",
   "findingId", "tenant", "kind", "metric", "failureMode", "summary", "suggestedCorrection", "confidence",
   "sessions", "link"}`; the Discord text is the failure mode, the suggestion and the session links; the generic

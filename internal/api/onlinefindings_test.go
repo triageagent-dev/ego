@@ -418,6 +418,70 @@ func TestFindings_GoStaleWhenTheSeriesRecoversUncorrected(t *testing.T) {
 	}
 }
 
+// A dismissed finding goes stale with its reason, only an admin may do it, and the scores that wrote it do not write
+// it again; newer ones do.
+func TestDismissFindings(t *testing.T) {
+	f := newFindingsFixture(t, findingsConfig)
+	f.seedBad("acme", 9)
+	ctx := context.Background()
+	f.e.findingsMaintain(ctx, f.now)
+	open := f.findings(t, "open")
+	if len(open) != 1 {
+		t.Fatalf("open findings = %+v", open)
+	}
+	id := open[0].ID
+	admin := RoleInfo{Role: RoleAdmin, IsAdmin: true}
+
+	if _, err := f.e.DismissFindings(ctx, member("acme"), "bob", []string{id}, "stale"); err == nil {
+		t.Error("a member dismissed a finding")
+	}
+	if _, err := f.e.DismissFindings(ctx, admin, "ann", []string{id}, "  "); err == nil {
+		t.Error("a dismissal without a reason was accepted")
+	}
+	if _, err := f.e.DismissFindings(ctx, admin, "ann", []string{id, "finding-none"}, "stale"); err == nil {
+		t.Error("an unknown id was accepted")
+	}
+	if len(f.findings(t, "open")) != 1 {
+		t.Fatal("a refused call changed a finding")
+	}
+
+	out, err := f.e.DismissFindings(ctx, admin, "ann", []string{id, id}, "scored on part of the input")
+	if err != nil || len(out) != 1 || out[0].State != "stale" {
+		t.Fatalf("dismiss = %+v, %v", out, err)
+	}
+	stale := f.findings(t, "stale")
+	if len(f.findings(t, "open")) != 0 || len(stale) != 1 || stale[0].Dismissed == nil ||
+		stale[0].Dismissed.By != "ann" || stale[0].Dismissed.Reason != "scored on part of the input" {
+		t.Fatalf("after dismissal: %+v", stale)
+	}
+	evs := f.posts.ofType("ego.finding.v1")
+	if len(evs) != 2 || evs[1]["event"] != "stale" {
+		t.Errorf("payloads = %v", evs)
+	}
+	if _, err := f.e.DismissFindings(ctx, admin, "ann", []string{id}, "again"); err == nil {
+		t.Error("a stale finding was dismissed again")
+	}
+
+	// The same low scores are still inside the window: the sweep must not write the finding again.
+	f.now = f.now.Add(2 * time.Hour)
+	if rep, err := f.e.SweepNow(ctx, admin); err != nil || rep.Candidates != 0 {
+		t.Fatalf("sweep over the same scores = %+v, %v", rep, err)
+	}
+	if got := f.findings(t, "open"); len(got) != 0 {
+		t.Fatalf("the dismissed finding came back from the same scores: %+v", got)
+	}
+	for i := 0; i < 9; i++ {
+		f.seed("acme", 0.2, f.now.Add(-time.Hour+time.Duration(i)*time.Minute), "v1", "still bad", "get_pods")
+	}
+	f.now = f.now.Add(2 * time.Hour)
+	if rep, err := f.e.SweepNow(ctx, admin); err != nil || rep.Written != 1 {
+		t.Fatalf("sweep over newer scores = %+v, %v", rep, err)
+	}
+	if got := f.findings(t, "open"); len(got) != 1 || got[0].ID == id {
+		t.Fatalf("newer low scores wrote no new finding: %+v", got)
+	}
+}
+
 func member(tenants ...string) RoleInfo { return RoleInfo{Role: RoleMember, Tenants: tenants} }
 
 func TestRegisterCorrection_TenantImpliedAndForeignRefused(t *testing.T) {

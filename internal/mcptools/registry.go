@@ -493,6 +493,19 @@ func Tools(b Backend, o Options) []server.ServerTool {
 					mcp.Description("true to count what would be removed and remove nothing.")),
 			), Handler: purgeSessionsHandler(b)},
 
+			server.ServerTool{Tool: mcp.NewTool("dismiss_findings",
+				hints(false, true, false, false),
+				mcp.WithDescription("Take open findings off the open list when what they rest on no longer holds, such as "+
+					"scores written before a fix to what the judges read. Each goes stale and keeps who dismissed it and "+
+					"why; nothing is deleted at once. ego diagnoses that series again only from scores recorded after the "+
+					"dismissal. Not for a finding that is right but unwelcome. Requires the caller to be an admin."),
+				mcp.WithArray("finding_ids", mcp.Required(),
+					mcp.Description("The ids of open findings, as get_findings names them. At most 100."),
+					mcp.Items(map[string]any{"type": "string"})),
+				mcp.WithString("reason", mcp.Required(),
+					mcp.Description("Why they no longer hold. At most 500 characters.")),
+			), Handler: dismissFindingsHandler(b)},
+
 			server.ServerTool{Tool: mcp.NewTool("run_findings",
 				hints(false, false, false, true),
 				mcp.WithDescription("Run the findings sweep now instead of waiting for findings.every: every series with "+
@@ -919,6 +932,20 @@ func purgeSessionsHandler(b Backend) server.ToolHandlerFunc {
 			return toolError(err)
 		}
 		return mcp.NewToolResultStructuredOnly(out), nil
+	}
+}
+
+func dismissFindingsHandler(b Backend) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		ids := req.GetStringSlice("finding_ids", nil)
+		if len(ids) == 0 {
+			return toolError(fmt.Errorf("finding_ids is required"))
+		}
+		out, err := b.DismissFindings(ctx, ids, req.GetString("reason", ""))
+		if err != nil {
+			return toolError(err)
+		}
+		return mcp.NewToolResultStructuredOnly(map[string]any{"dismissed": out}), nil
 	}
 }
 

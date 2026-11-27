@@ -98,6 +98,34 @@ func onlineFindingReviewHandler(e *OnlineEngine) http.HandlerFunc {
 	}
 }
 
+// onlineFindingsDismissHandler implements POST /api/online/findings/dismiss {"ids":[...],"reason":"..."}: the REST
+// twin of dismiss_findings. Admin only.
+func onlineFindingsDismissHandler(e *OnlineEngine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct {
+			IDs    []string `json:"ids"`
+			Reason string   `json:"reason"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxCorrectionBody)).Decode(&in); err != nil {
+			writeEvaluateError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+			return
+		}
+		out, err := e.DismissFindings(r.Context(), roleInfoOrOpen(r.Context()), callerName(r.Context()), in.IDs, in.Reason)
+		for _, f := range out {
+			auditLog(r.Context(), "finding.dismiss", "findingId", f.ID)
+		}
+		if err != nil {
+			writeStatusError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": out, "error": nil})
+	}
+}
+
 // onlineCorrectionsHandler implements GET /api/online/corrections?state=&kind=&tenant= and POST (a write: a
 // viewer gets 403, a tenant-limited member may post for its own tenants only).
 func onlineCorrectionsHandler(e *OnlineEngine) http.HandlerFunc {

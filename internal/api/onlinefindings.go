@@ -550,6 +550,21 @@ func (e *OnlineEngine) runSweep(ctx context.Context, now time.Time) (rep mcptool
 		has[f.Key()] = true
 	}
 
+	dismissed, err := e.store.OnlineFindings(online.FindingStale, "", 0, maxListed)
+	if err != nil {
+		logx.Errorf("online: reading findings: %v", err)
+		return
+	}
+	since := map[online.SeriesKey]time.Time{}
+	for _, f := range dismissed {
+		if d := f.Dismissed; d != nil && d.At.After(since[f.Key()]) {
+			since[f.Key()] = d.At
+		}
+	}
+	for key, at := range since {
+		series[key] = online.ScoredAfter(series[key], at)
+	}
+
 	// Stale first: a finding that goes stale frees its series for the candidates below, which only matter if it
 	// went bad again.
 	e.mu.Lock()
@@ -892,6 +907,79 @@ func (e *OnlineEngine) ReviewFinding(info RoleInfo, by string, person bool, id, 
 		return nil, err
 	}
 	return f, nil
+}
+
+// Limits of one dismissal: the ids of a call, and the length of the reason.
+const (
+	maxDismissIDs    = 100
+	maxDismissReason = 500
+)
+
+// DismissFindings takes open findings off the open list: each goes stale and keeps who dismissed it and why. It is for
+// a finding whose scores no longer hold, such as one written before a fix to what the judges read. All the ids are
+// checked before any is changed. The series is diagnosed again only from scores recorded after the dismissal.
+func (e *OnlineEngine) DismissFindings(ctx context.Context, info RoleInfo, by string, ids []string, reason string) ([]online.Finding, error) {
+	if e == nil {
+		return nil, errOnlineUnavailable
+	}
+	if info.Scoped() {
+		return nil, errAgentScopedOnline
+	}
+	if !info.IsAdmin {
+		return nil, &statusError{403, "admin role required to dismiss a finding"}
+	}
+	reason = strings.TrimSpace(reason)
+	if len(ids) == 0 || len(ids) > maxDismissIDs {
+		return nil, &statusError{400, fmt.Sprintf("give 1 to %d finding ids", maxDismissIDs)}
+	}
+	if reason == "" || len(reason) > maxDismissReason {
+		return nil, &statusError{400, fmt.Sprintf("give a reason of at most %d characters", maxDismissReason)}
+	}
+	changed, err := e.dismiss(info, by, ids, reason)
+	out := []online.Finding{}
+	for _, f := range changed {
+		logx.Infof("online: finding %s dismissed by %s", f.ID, by)
+		e.notifyFinding(ctx, online.EventStale, f)
+		out = append(out, f.ForCaller(e.conf().Findings.RequireApproval, false))
+	}
+	return out, err
+}
+
+// dismiss checks and writes the dismissal under the findings lock, and returns what it wrote.
+func (e *OnlineEngine) dismiss(info RoleInfo, by string, ids []string, reason string) ([]*online.Finding, error) {
+	e.fmu.Lock()
+	defer e.fmu.Unlock()
+	var found []*online.Finding
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		f, ok, err := e.store.OnlineFinding(id)
+		if err != nil {
+			return nil, err
+		}
+		if !ok || !info.AllowsAnyTenant([]string{f.Tenant}) {
+			return nil, notFound("finding " + id)
+		}
+		if _, ok := online.NextFindingState(f.State, online.TriggerDismissed); !ok {
+			return nil, &statusError{409, fmt.Sprintf("finding %s is %s: only an open finding can be dismissed", id, f.State)}
+		}
+		found = append(found, f)
+	}
+	now := e.now().UTC()
+	var written []*online.Finding
+	for _, f := range found {
+		f.State, _ = online.NextFindingState(f.State, online.TriggerDismissed)
+		f.Dismissed = &online.Dismissal{By: by, Reason: reason, At: now}
+		f.UpdatedAt = now
+		if err := e.store.UpsertOnlineFinding(f); err != nil {
+			return written, err
+		}
+		written = append(written, f)
+	}
+	return written, nil
 }
 
 // Corrections lists the corrections of the tenants info may see, newest first.

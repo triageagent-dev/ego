@@ -380,6 +380,14 @@ func (b *mcpBackend) RegisterCorrection(ctx context.Context, in mcptools.Correct
 	return b.online.RegisterCorrection(roleInfoOrOpen(ctx), in)
 }
 
+func (b *mcpBackend) DismissFindings(ctx context.Context, ids []string, reason string) ([]online.Finding, error) {
+	out, err := b.online.DismissFindings(ctx, roleInfoOrOpen(ctx), callerName(ctx), ids, reason)
+	for _, f := range out {
+		auditLog(ctx, "finding.dismiss", "findingId", f.ID, "via", "mcp")
+	}
+	return out, err
+}
+
 func (b *mcpBackend) RunFindings(ctx context.Context) (*mcptools.SweepReport, error) {
 	return b.online.SweepNow(ctx, roleInfoOrOpen(ctx))
 }
