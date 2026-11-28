@@ -203,6 +203,9 @@ func (e *OnlineEngine) LabelSession(info RoleInfo, by string, in mcptools.LabelI
 	case len([]rune(in.Note)) > online.MaxLabelNoteChars:
 		return nil, &statusError{http.StatusBadRequest, "note is at most " + strconv.Itoa(online.MaxLabelNoteChars) + " characters"}
 	}
+	// Held from the lookup to the insert, so a purge cannot leave a label of a session it removed.
+	e.sessions.purgeGate.RLock()
+	defer e.sessions.purgeGate.RUnlock()
 	rec, ok, err := e.store.OnlineEval(in.SessionID)
 	if err != nil {
 		return nil, err

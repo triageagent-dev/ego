@@ -223,6 +223,8 @@ func (e *OnlineEngine) Start(stop <-chan struct{}) {
 // span and completes again; it is scored again only when it grew, as a chat does when the person speaks again
 // after the first score: its new turns were never judged, and OnlineEvalInvocations is what tells the two apart.
 func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
+	// Taken before the session is read: scoring takes minutes, and a purge meanwhile must win.
+	mark := e.sessions.purgeMark()
 	tr, ok := e.sessions.Trace(sessionID)
 	if !ok {
 		return
@@ -331,6 +333,16 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 
 	actual := online.Cost{JudgeTokens: e.judgeTokens.Load(), JevCalls: jevCalls.Load()}
 	e.budget.Settle(p, reserved, &actual, now)
+
+	e.sessions.purgeGate.RLock()
+	defer e.sessions.purgeGate.RUnlock()
+	if e.sessions.purgedSince(mark, sessionID) {
+		// Nothing of it may be written back. The tokens were spent all the same, and no scored row will carry them
+		// over a restart.
+		logx.Infof("online: %s was purged while it was scored; its scores are not kept", sessionID)
+		e.persistSpend(now, actual.JudgeTokens)
+		return
+	}
 
 	lane := d.Lane
 	for _, r := range d.Reasons {
@@ -1059,6 +1071,9 @@ func onlineFailedHandler(e *OnlineEngine, store *SQLiteStore) http.HandlerFunc {
 func (e *OnlineEngine) quiet(keys []string, fn func()) {
 	e.tickMu.Lock()
 	defer e.tickMu.Unlock()
+	// fmu: a finding read before the purge must not be stored over what the purge made of it.
+	e.fmu.Lock()
+	defer e.fmu.Unlock()
 	set := map[string]bool{}
 	for _, k := range keys {
 		set[k] = true
@@ -1078,8 +1093,9 @@ func (e *OnlineEngine) quiet(keys []string, fn func()) {
 	fn()
 }
 
-// PurgeSessions runs purge (the removal of single sessions) with the engine held still, so a tick cannot score a
-// session that is being removed. It drops nothing the engine keeps: alerts and runs belong to a series.
+// PurgeSessions runs purge (the removal of single sessions) with the detector held still. The scoring worker is not
+// stopped: it checks for a purge before it writes (see process). It drops nothing the engine keeps: alerts and runs
+// belong to a series.
 func (e *OnlineEngine) PurgeSessions(dryRun bool, purge func() (PurgeResult, error)) (PurgeResult, error) {
 	if dryRun {
 		return purge()

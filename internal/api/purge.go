@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/triageagent-dev/ego/internal/logx"
+	"github.com/triageagent-dev/ego/internal/online"
 )
 
 // Purging tenants that no longer exist. Retention removes old sessions on its own, but a tenant a sender stopped
@@ -20,7 +22,8 @@ type PurgeResult struct {
 	DryRun   bool `json:"dryRun,omitempty"`
 	Sessions int  `json:"sessions"`
 	Calls    int  `json:"calls"`
-	// Scores, Findings, Corrections, Alerts and Labels are the online evaluation rows of the tenants.
+	// Scores, Findings, Corrections, Alerts and Labels are the online evaluation rows removed. In a purge of single
+	// sessions, Findings are the ones that quoted a session and lost their diagnosis, not removed.
 	Scores      int `json:"scores"`
 	Findings    int `json:"findings"`
 	Corrections int `json:"corrections"`
@@ -29,6 +32,8 @@ type PurgeResult struct {
 	// Runs are the evaluation runs of the tenants, with their results: the judge's verdicts and rationales per
 	// session. A run shared with another tenant stays.
 	Runs int `json:"runs"`
+	// Results are the online run results removed by a purge of single sessions; their runs stay.
+	Results int `json:"results,omitempty"`
 }
 
 // allIn reports whether list is not empty and every entry of it is in set.
@@ -55,8 +60,7 @@ func (s *SessionStore) PurgeTenants(keys []string, dryRun bool) (PurgeResult, er
 	for _, k := range keys {
 		set[k] = true
 	}
-	s.persistMu.Lock()
-	defer s.persistMu.Unlock()
+	defer s.lockForPurge()()
 
 	doomed := map[string]bool{}
 	s.mu.Lock()
@@ -83,10 +87,58 @@ func (s *SessionStore) PurgeTenants(keys []string, dryRun bool) (PurgeResult, er
 	return res, nil
 }
 
-// forget drops the doomed sessions from memory, with their timers and the usage rows not yet written.
+// lockForPurge keeps everything that could write a purged session back out of the way: the writers that quote a
+// session (purgeGate), an evidence flush that has taken its rows and not yet written them (evidenceMu), and the
+// persistence flush (persistMu). It returns the unlock.
+func (s *SessionStore) lockForPurge() func() {
+	s.purgeGate.Lock()
+	s.evidenceMu.Lock()
+	s.persistMu.Lock()
+	return func() {
+		s.persistMu.Unlock()
+		s.evidenceMu.Unlock()
+		s.purgeGate.Unlock()
+	}
+}
+
+// purgeMark is taken before work on a session that ends in a write quoting it; purgedSince then says whether a purge
+// removed it meanwhile. Check and write with purgeGate held for reading.
+func (s *SessionStore) purgeMark() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.purgeSeq
+}
+
+func (s *SessionStore) purgedSince(mark uint64, ids ...string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, id := range ids {
+		if s.purged[id] > mark {
+			return true
+		}
+	}
+	return false
+}
+
+// forget drops the doomed sessions from memory, with their timers, the usage rows and the context documents not yet
+// written, and records that they were purged.
 func (s *SessionStore) forget(doomed map[string]bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.purgeSeq++
+	if s.purged == nil {
+		s.purged = map[string]uint64{}
+	}
+	for id := range doomed {
+		s.purged[id] = s.purgeSeq
+	}
+	docs := s.pendingEvidence[:0]
+	for _, row := range s.pendingEvidence {
+		if !doomed[row.SessionID] {
+			docs = append(docs, row)
+		}
+	}
+	s.pendingEvidence = docs
 	order := s.order[:0]
 	for _, id := range s.order {
 		if !doomed[id] {
@@ -114,18 +166,18 @@ func (s *SessionStore) forget(doomed map[string]bool) {
 	s.pendingUsage = kept
 }
 
-// PurgeSessions removes the sessions with these ids and nothing else: each one's archive row, index row, ledger rows
-// and online scores. It is for a session that was filed under the wrong tenant (a sender that sent with another
-// tenant's token): the tenant keeps everything else. Findings, alerts and runs are left, as they belong to a series,
-// not to one session. An id ego does not hold is not counted. With dryRun it only counts. Archive first and memory
-// second, under the lock the persistence flush takes, as PurgeTenants does.
+// PurgeSessions removes the sessions with these ids and what quotes them, and nothing else: each one's archive row,
+// index row, ledger rows, context documents, online scores, online run results and labels. It is for a session that
+// was filed under the wrong tenant (a sender that sent with another tenant's token): the tenant keeps everything else.
+// A finding quoting one loses its diagnosis (see scrubFindings); alerts and runs are left, as they belong to a series,
+// not to one session. What a notification sink was already sent stays there. An id ego does not hold is not counted.
+// With dryRun it only counts. Archive first and memory second, under the locks of lockForPurge, as PurgeTenants does.
 func (s *SessionStore) PurgeSessions(ids []string, dryRun bool) (PurgeResult, error) {
 	want := map[string]bool{}
 	for _, id := range ids {
 		want[id] = true
 	}
-	s.persistMu.Lock()
-	defer s.persistMu.Unlock()
+	defer s.lockForPurge()()
 
 	doomed := map[string]bool{}
 	s.mu.Lock()
@@ -175,13 +227,19 @@ func (s *SQLiteStore) purgeSessionRows(want map[string]bool, doomed map[string]b
 			doomed[id] = true
 		}
 	}
+	runs := map[string]bool{}
 	for id := range doomed {
+		if err := collectRunsOfItem(tx, id, runs); err != nil {
+			return res, err
+		}
 		for _, q := range []struct {
 			count string
 			n     *int
 		}{
 			{`SELECT COUNT(*) FROM llm_calls WHERE session_id = ?`, &res.Calls},
 			{`SELECT COUNT(*) FROM online_scores WHERE session_id = ?`, &res.Scores},
+			{`SELECT COUNT(*) FROM run_results WHERE eval_set_item_id = ?`, &res.Results},
+			{`SELECT COUNT(*) FROM online_labels WHERE session_id = ?`, &res.Labels},
 		} {
 			var n int
 			if err := tx.QueryRow(q.count, id).Scan(&n); err != nil {
@@ -199,20 +257,137 @@ func (s *SQLiteStore) purgeSessionRows(want map[string]bool, doomed map[string]b
 			`DELETE FROM online_scores WHERE session_id = ?`,
 			`DELETE FROM llm_calls WHERE session_id = ?`,
 			`DELETE FROM evidence_refs WHERE session_id = ?`,
+			`DELETE FROM run_results WHERE eval_set_item_id = ?`,
+			`DELETE FROM online_labels WHERE session_id = ?`,
 		} {
 			if _, err := tx.Exec(q, id); err != nil {
 				return res, err
 			}
 		}
 	}
+	if res.Findings, err = scrubFindings(tx, doomed, dryRun, time.Now()); err != nil {
+		return res, err
+	}
 	if dryRun {
 		return res, nil
+	}
+	if _, err := tx.Exec(deleteOrphanEvidence); err != nil {
+		return res, err
 	}
 	if err := tx.Commit(); err != nil {
 		return res, err
 	}
+	s.resummarizeRuns(runs)
 	s.announce(topicUsage, nil)
 	return res, nil
+}
+
+// collectRunsOfItem adds to runs the ids of the runs holding results of item.
+func collectRunsOfItem(tx *sql.Tx, item string, runs map[string]bool) error {
+	rows, err := tx.Query(`SELECT DISTINCT run_id FROM run_results WHERE eval_set_item_id = ?`, item)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		runs[id] = true
+	}
+	return rows.Err()
+}
+
+// resummarizeRuns recomputes the summary of the finished runs that lost results. The results are gone already, so a
+// failure leaves only counts that are off, and is logged.
+func (s *SQLiteStore) resummarizeRuns(runs map[string]bool) {
+	for id := range runs {
+		rows, err := s.GetRunResults(id)
+		if err != nil {
+			logx.Warnf("purge: summarizing run %s: %v", id, err)
+			continue
+		}
+		raw, err := json.Marshal(summarizeResultRows(rows))
+		if err != nil {
+			logx.Warnf("purge: summarizing run %s: %v", id, err)
+			continue
+		}
+		if _, err := s.db.Exec(`UPDATE runs SET summary_json = ? WHERE run_id = ? AND summary_json IS NOT NULL`, string(raw), id); err != nil {
+			logx.Warnf("purge: summarizing run %s: %v", id, err)
+		}
+	}
+}
+
+// scrubbedFinding is what a finding that quoted a purged session says in place of its diagnosis.
+const scrubbedFinding = "removed: it quoted a purged session"
+
+// scrubFindings takes the text out of every finding that rests on a purged session. The whole diagnosis goes, as the
+// judge that wrote it read all the evidence at once; an open finding goes stale, so the next sweep can diagnose its
+// series again from what is left. The record and its corrections stay. It returns how many findings that is.
+func scrubFindings(tx *sql.Tx, doomed map[string]bool, dryRun bool, now time.Time) (int, error) {
+	if len(doomed) == 0 {
+		return 0, nil
+	}
+	type hit struct {
+		id, state string
+		data      online.FindingData
+	}
+	rows, err := tx.Query(`SELECT finding_id, state, data FROM online_findings`)
+	if err != nil {
+		return 0, err
+	}
+	var hits []hit
+	for rows.Next() {
+		var h hit
+		var raw string
+		if err := rows.Scan(&h.id, &h.state, &raw); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if err := json.Unmarshal([]byte(raw), &h.data); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("reading finding %s: %w", h.id, err)
+		}
+		quotes := false
+		for _, id := range h.data.Sessions {
+			quotes = quotes || doomed[id]
+		}
+		for _, e := range h.data.Diagnosis.Evidence {
+			quotes = quotes || doomed[e.SessionID]
+		}
+		if quotes {
+			hits = append(hits, h)
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil || dryRun {
+		return len(hits), err
+	}
+	for _, h := range hits {
+		kept := []string{}
+		for _, id := range h.data.Sessions {
+			if !doomed[id] {
+				kept = append(kept, id)
+			}
+		}
+		h.data.Sessions = kept
+		h.data.Diagnosis = online.Diagnosis{FailureMode: scrubbedFinding, Evidence: []online.DiagnosisEvidence{}}
+		h.data.Approval = nil
+		if h.state == online.FindingOpen {
+			h.state = online.FindingStale
+		}
+		raw, err := json.Marshal(h.data)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := tx.Exec(`UPDATE online_findings SET state = ?, data = ?, updated_ms = ? WHERE finding_id = ?`,
+			h.state, string(raw), now.UnixMilli(), h.id); err != nil {
+			return 0, err
+		}
+	}
+	return len(hits), nil
 }
 
 // purgeTenantRows finds the archived sessions whose tenants are all in set (doomed gains them) and deletes them, with
@@ -307,6 +482,9 @@ func (s *SQLiteStore) purgeTenantRows(set map[string]bool, doomed map[string]boo
 			}
 		}
 	}
+	if _, err := tx.Exec(deleteOrphanEvidence); err != nil {
+		return res, err
+	}
 	if err := tx.Commit(); err != nil {
 		return res, err
 	}
@@ -381,7 +559,8 @@ func adminPurgeTenantsHandler(store *SessionStore, names *TenantNames, guard pur
 			return
 		}
 		var req purgeTenantsRequest
-		if err := decodeJSON(w, r, &req); err != nil {
+		// Strict: an ignored "dry_run" would turn a preview into the purge.
+		if err := decodeJSONStrict(w, r, &req); err != nil {
 			writeEvaluateError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 			return
 		}
@@ -490,7 +669,8 @@ func adminPurgeSessionsHandler(store *SessionStore, guard sessionPurgeGuard) htt
 			return
 		}
 		var req purgeSessionsRequest
-		if err := decodeJSON(w, r, &req); err != nil {
+		// Strict: an ignored "dry_run" would turn a preview into the purge.
+		if err := decodeJSONStrict(w, r, &req); err != nil {
 			writeEvaluateError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 			return
 		}

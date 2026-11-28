@@ -110,7 +110,9 @@ func onlineFindingsDismissHandler(e *OnlineEngine) http.HandlerFunc {
 			IDs    []string `json:"ids"`
 			Reason string   `json:"reason"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxCorrectionBody)).Decode(&in); err != nil {
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxCorrectionBody))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&in); err != nil {
 			writeEvaluateError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 			return
 		}

@@ -65,7 +65,9 @@ An admin creates senders and mints their tokens with `POST /api/admin/senders/{i
 
 `POST /api/admin/purge-tenants` removes tenants that no longer exist. The body lists tenant keys, never patterns, and has a dry-run flag. It deletes the sessions whose tenants are all among the keys, their usage and online-score rows, and the names. A session that also belongs to another tenant stays, and so do the labels people gave. The caller is written to the log.
 
-`POST /api/admin/purge-sessions` removes single sessions by id (`ids`, at most 100, with a dry-run flag): each one's archive and index rows, ledger rows and online scores, and nothing else of its tenant. It is for a session that was filed under the wrong tenant because its sender used another tenant's token. Findings, alerts and runs stay: they belong to a series. Admin only; the MCP tool is `purge_sessions`.
+`POST /api/admin/purge-sessions` removes single sessions by id (`ids`, at most 100, with the flag `dryRun`): each one's archive and index rows, ledger rows, context documents, online scores, online run results and labels, and nothing else of its tenant. It is for a session that was filed under the wrong tenant because its sender used another tenant's token. A finding that quotes one loses its whole diagnosis and its link to the session, and goes stale if it was open; the record and its corrections stay, as do alerts and runs, which belong to a series. A session being scored or diagnosed during the purge gets nothing written back. What a notification sink was already sent stays there. Admin only; the MCP tool is `purge_sessions` (`dry_run`).
+
+The bodies of `purge-tenants`, `purge-sessions`, `merge-tenants` and `findings/dismiss` are read strictly: an unknown field is a 400, so a misspelt dry-run flag never removes anything.
 
 ## Metrics and judges
 

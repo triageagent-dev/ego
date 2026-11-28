@@ -300,7 +300,8 @@ func (b *mcpBackend) PurgeSessions(ctx context.Context, ids []string, dryRun boo
 	if !dryRun {
 		auditLog(ctx, "sessions.purge", "sessions", fmt.Sprint(res.Sessions), "via", "mcp")
 	}
-	return &mcptools.SessionPurge{DryRun: res.DryRun, Sessions: res.Sessions, Calls: res.Calls, Scores: res.Scores}, nil
+	return &mcptools.SessionPurge{DryRun: res.DryRun, Sessions: res.Sessions, Calls: res.Calls, Scores: res.Scores,
+		Results: res.Results, Labels: res.Labels, Findings: res.Findings}, nil
 }
 
 func (b *mcpBackend) RevokeSenderToken(ctx context.Context, sender, tokenID string) (map[string]bool, error) {

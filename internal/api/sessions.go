@@ -527,7 +527,13 @@ type SessionStore struct {
 	// pendingEvidence holds context documents taken off arriving spans until flushEvidence writes them; evidenceMu
 	// keeps one flush at a time, so a reader that flushes finds what an earlier flush took.
 	pendingEvidence []evidenceRow
-	evidenceMu      sync.Mutex
+	// purgeGate keeps a purge apart from the writers of rows that quote a session: a purge holds it, and a writer that
+	// worked on a session for a while holds it for reading while it checks purgedSince and writes. purgeSeq counts
+	// the purges and purged holds the one that last removed each id (both under mu).
+	purgeGate  sync.RWMutex
+	purgeSeq   uint64
+	purged     map[string]uint64
+	evidenceMu sync.Mutex
 	// pendingRoots maps a trace ID to its root span's name, for
 	// FillUsageKinds at the next flush. Touched with mu held.
 	pendingRoots map[string]string
@@ -1219,7 +1225,7 @@ func sessionAge(sess *Session) time.Time {
 // anything was deleted.
 func (s *SessionStore) pruneSessions() {
 	s.mu.Lock()
-	due := s.store != nil && s.sessionRetention > 0 && time.Since(s.lastSessionPrune) >= 24*time.Hour
+	due := s.store != nil && time.Since(s.lastSessionPrune) >= 24*time.Hour
 	if due {
 		s.lastSessionPrune = time.Now()
 	}
@@ -1227,10 +1233,14 @@ func (s *SessionStore) pruneSessions() {
 	if !due {
 		return
 	}
-	cutoff := time.Now().Add(-s.sessionRetention)
+	// Documents nothing refers to go whatever the retention: keeping every session is not keeping what was dropped.
 	if err := s.store.PruneEvidence(s.now()); err != nil {
 		logx.Errorf("evidence: prune failed: %v", err)
 	}
+	if s.sessionRetention <= 0 {
+		return
+	}
+	cutoff := time.Now().Add(-s.sessionRetention)
 	n, err := s.store.PruneSessions(cutoff)
 	if err != nil {
 		logx.Errorf("session archive: prune failed: %v", err)

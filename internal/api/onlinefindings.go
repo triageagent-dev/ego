@@ -270,6 +270,7 @@ func (e *OnlineEngine) writeFinding(ctx context.Context, now time.Time, key onli
 		e.fSkippedUncalibrated.Add(1)
 		return
 	}
+	mark := e.sessions.purgeMark()
 	from := now.Add(-cfg.Window.D())
 	samples, err := e.store.OnlineSamplesFor(key.Tenant, key.Kind, key.Metric, "", from.UnixMilli(), now.UnixMilli()+1)
 	if err != nil {
@@ -308,12 +309,22 @@ func (e *OnlineEngine) writeFinding(ctx context.Context, now time.Time, key onli
 	}
 
 	e.fmu.Lock()
+	// The model read the evidence while a purge could remove it: its text must not be stored then. fmu before the gate,
+	// the order a purge takes them in.
+	e.sessions.purgeGate.RLock()
+	if e.sessions.purgedSince(mark, sessions...) {
+		e.sessions.purgeGate.RUnlock()
+		e.fmu.Unlock()
+		logx.Infof("online: finding of %s/%s/%s dropped: a session it quotes was purged", key.Tenant, key.Kind, key.Metric)
+		return
+	}
 	var f *online.Finding
 	event := online.EventOpen
 	if existing != nil {
 		// Re-read: a correction may have been registered while the model was thinking.
 		fresh, ok, err := e.store.OnlineFinding(existing.ID)
 		if err != nil || !ok {
+			e.sessions.purgeGate.RUnlock()
 			e.fmu.Unlock()
 			return
 		}
@@ -327,6 +338,7 @@ func (e *OnlineEngine) writeFinding(ctx context.Context, now time.Time, key onli
 	}
 	apply(f)
 	err = e.store.UpsertOnlineFinding(f)
+	e.sessions.purgeGate.RUnlock()
 	e.fmu.Unlock()
 	if err != nil {
 		logx.Errorf("online: storing finding: %v", err)

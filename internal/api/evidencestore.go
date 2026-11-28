@@ -138,9 +138,12 @@ func (s *SQLiteStore) PruneEvidence(now time.Time) error {
 		now.Add(-evidenceOrphanAge).UnixMilli()); err != nil {
 		return err
 	}
-	_, err := s.db.Exec(`DELETE FROM evidence_blobs WHERE NOT EXISTS (SELECT 1 FROM evidence_refs r WHERE r.hash = evidence_blobs.hash)`)
+	_, err := s.db.Exec(deleteOrphanEvidence)
 	return err
 }
+
+// deleteOrphanEvidence removes the texts no session refers to.
+const deleteOrphanEvidence = `DELETE FROM evidence_blobs WHERE NOT EXISTS (SELECT 1 FROM evidence_refs r WHERE r.hash = evidence_blobs.hash)`
 
 // takeEvidenceLocked moves a span's documents into the pending rows, leaving on the span how many were kept. A
 // session past its bound keeps no more, and the span says it is cut.

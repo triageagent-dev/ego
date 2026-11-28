@@ -29,9 +29,15 @@ type scriptedJudge struct {
 	tokens  int64
 	prompts []string
 	onUsage func(int64)
+	// during, when set, runs once while the model is "thinking".
+	during func()
 }
 
 func (j *scriptedJudge) Generate(ctx context.Context, prompt string) (string, error) {
+	if f := j.during; f != nil {
+		j.during = nil
+		f()
+	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.prompts = append(j.prompts, prompt)

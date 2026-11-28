@@ -636,4 +636,9 @@ type SessionPurge struct {
 	Sessions int  `json:"sessions"`
 	Calls    int  `json:"calls"`
 	Scores   int  `json:"scores"`
+	// Results are online run results and Labels are labels removed; Findings are findings that quoted a session and
+	// lost their diagnosis.
+	Results  int `json:"results"`
+	Labels   int `json:"labels"`
+	Findings int `json:"findings"`
 }

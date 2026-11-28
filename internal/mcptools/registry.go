@@ -3,6 +3,7 @@ package mcptools
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -482,9 +483,11 @@ func Tools(b Backend, o Options) []server.ServerTool {
 
 			server.ServerTool{Tool: mcp.NewTool("purge_sessions",
 				hints(false, true, true, false),
-				mcp.WithDescription("Remove single sessions by id, each with its ledger rows and scores, and nothing else of "+
-					"its tenant: for a session that was filed under the wrong tenant because its sender used another "+
-					"tenant's token. It cannot be undone. Call it with dry_run first: the answer counts what would go. "+
+				mcp.WithDescription("Remove single sessions by id, each with its ledger rows, scores, context documents, "+
+					"online run results and labels, and nothing else of its tenant: for a session that was filed under "+
+					"the wrong tenant because its sender used another tenant's token. A finding that quotes one loses its "+
+					"diagnosis (an open one goes stale). What a notification sink was already sent stays there. It cannot "+
+					"be undone. Call it with dry_run first: the answer counts what would go. "+
 					"An id ego does not hold is not counted. Requires the caller to be an admin."),
 				mcp.WithArray("session_ids", mcp.Required(),
 					mcp.Description("The session ids to remove, as list_sessions names them. At most 100."),
@@ -921,8 +924,28 @@ func listCorrectionsHandler(b Backend) server.ToolHandlerFunc {
 	}
 }
 
+// onlyArguments refuses an argument a tool does not take. For a tool that removes things, an ignored argument is not
+// harmless: "dryRun" in place of "dry_run" would remove what the caller meant to preview.
+func onlyArguments(req mcp.CallToolRequest, allowed ...string) error {
+	for name := range req.GetArguments() {
+		if !slices.Contains(allowed, name) {
+			return fmt.Errorf("unknown argument %q: this tool takes %s", name, strings.Join(allowed, ", "))
+		}
+	}
+	return nil
+}
+
 func purgeSessionsHandler(b Backend) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if err := onlyArguments(req, "session_ids", "dry_run"); err != nil {
+			return toolError(err)
+		}
+		// A dry_run that is not a boolean must not read as false.
+		if v, given := req.GetArguments()["dry_run"]; given {
+			if _, ok := v.(bool); !ok {
+				return toolError(fmt.Errorf("dry_run is true or false"))
+			}
+		}
 		ids := req.GetStringSlice("session_ids", nil)
 		if len(ids) == 0 {
 			return toolError(fmt.Errorf("session_ids is required"))
@@ -937,6 +960,9 @@ func purgeSessionsHandler(b Backend) server.ToolHandlerFunc {
 
 func dismissFindingsHandler(b Backend) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if err := onlyArguments(req, "finding_ids", "reason"); err != nil {
+			return toolError(err)
+		}
 		ids := req.GetStringSlice("finding_ids", nil)
 		if len(ids) == 0 {
 			return toolError(fmt.Errorf("finding_ids is required"))

@@ -51,7 +51,8 @@ A session is scored only when a profile matches its kind (section 2). Then:
 5. **Budget**: a daily cap on judge tokens (Gemini, metered from the response's
    usage metadata) and on Jev calls (one per scored invocation). The scheduler
    reserves an estimate before scoring (an EWMA of the profile's actual cost)
-   and books the actual cost after. When the cap is reached, scoring stops until
+   and books the actual cost after: for the decision model, every request sent,
+   retries included, whatever became of the metrics. When the cap is reached, scoring stops until
    00:00 UTC and the skip reason is `budget`. A profile that uses a judge family
    whose cap is 0 is a config error. Vertex managed-eval metrics are refused,
    because the budget cannot meter them, and so are metrics that need a golden

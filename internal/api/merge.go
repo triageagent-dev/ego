@@ -353,7 +353,7 @@ func adminMergeTenantsHandler(store *SessionStore, names *TenantNames, senders *
 			return
 		}
 		var req mergeTenantsRequest
-		if err := decodeJSON(w, r, &req); err != nil {
+		if err := decodeJSONStrict(w, r, &req); err != nil {
 			writeEvaluateError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 			return
 		}
