@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/redact"
@@ -315,6 +316,15 @@ func (c *Client) Model() string {
 // failures.
 const maxAttempts = 5
 
+type callCountKey struct{}
+
+// CountCalls returns a context in which every request sent to the decision model is added to n, retries included. It
+// is what the daily call cap is charged: a metric's result says nothing reliable about the calls made for it, as a
+// skipped or failed one may have shared them with others.
+func CountCalls(ctx context.Context, n *atomic.Int64) context.Context {
+	return context.WithValue(ctx, callCountKey{}, n)
+}
+
 // Cuts reports whether state would be shortened before it is sent.
 func (c *Client) Cuts(state map[string]any) bool {
 	if c.maxState <= 0 {
@@ -403,6 +413,9 @@ func (c *Client) decideOnce(ctx context.Context, body []byte) (answers map[strin
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Title", "ego")
 
+	if n, ok := ctx.Value(callCountKey{}).(*atomic.Int64); ok {
+		n.Add(1)
+	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, ctx.Err() == nil, fmt.Errorf("calling the decision model: %w", err)

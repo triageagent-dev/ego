@@ -299,6 +299,8 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 
 	evalCtx, cancel := context.WithTimeout(ctx, onlineEvalTimeout)
 	defer cancel()
+	var jevCalls atomic.Int64
+	evalCtx = decision.CountCalls(evalCtx, &jevCalls)
 	// The part of the thread before this one, as context for the judge (segment n >= 2 only).
 	getJudge := e.getJudge(evalCtx)
 	if earlier, ok := e.sessions.EarlierPart(sessionID); ok {
@@ -327,15 +329,7 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		result.MetricResults[i] = unscoredAsError(result.MetricResults[i])
 	}
 
-	actual := online.Cost{JudgeTokens: e.judgeTokens.Load()}
-	for _, m := range result.MetricResults {
-		if decision.IsMetric(m.MetricName) || strings.HasPrefix(m.MetricName, "jev:") {
-			if m.Error == nil {
-				actual.JevCalls = int64(len(invocations))
-			}
-			break
-		}
-	}
+	actual := online.Cost{JudgeTokens: e.judgeTokens.Load(), JevCalls: jevCalls.Load()}
 	e.budget.Settle(p, reserved, &actual, now)
 
 	lane := d.Lane

@@ -44,15 +44,22 @@ func (b *BudgetMeter) rollLocked(now time.Time) {
 
 // Estimate is the expected cost of scoring one session with p.
 func (b *BudgetMeter) estimateLocked(p Profile) Cost {
-	if e, ok := b.estimate[p.Key()]; ok {
-		return e
+	c, ok := b.estimate[p.Key()]
+	if !ok {
+		if p.UsesJudge() {
+			c.JudgeTokens = firstJudgeTokens
+		}
+		if p.UsesJev() {
+			c.JevCalls = firstJevCalls
+		}
 	}
-	var c Cost
+	// An estimate of nothing would skip the cap check altogether: sessions that happened to cost nothing must not
+	// open the cap to the next one.
 	if p.UsesJudge() {
-		c.JudgeTokens = firstJudgeTokens
+		c.JudgeTokens = max(c.JudgeTokens, 1)
 	}
 	if p.UsesJev() {
-		c.JevCalls = firstJevCalls
+		c.JevCalls = max(c.JevCalls, 1)
 	}
 	return c
 }

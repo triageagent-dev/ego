@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/triageagent-dev/ego/internal/adk"
@@ -405,6 +406,8 @@ func (e *OnlineEngine) rescoreSession(ctx context.Context, now time.Time, sessio
 	}
 	evalCtx, cancel := context.WithTimeout(ctx, onlineEvalTimeout)
 	defer cancel()
+	var jevCalls atomic.Int64
+	evalCtx = decision.CountCalls(evalCtx, &jevCalls)
 	before := e.recalTokens.Load()
 	result := evaluateInvocations(evalCtx, traceResultDTO{
 		TraceID: rec.TraceID, NumInvocations: len(invocations), MetricResults: []metricResultDTO{},
@@ -418,10 +421,8 @@ func (e *OnlineEngine) rescoreSession(ctx context.Context, now time.Time, sessio
 		if m.Error == nil && m.Score != nil {
 			scores[m.MetricName] = *m.Score
 		}
-		if isJevMetric(m.MetricName) && m.Error == nil {
-			actual.JevCalls = int64(len(invocations))
-		}
 	}
+	actual.JevCalls = jevCalls.Load()
 	e.budget.Settle(p, reserved, &actual, now)
 	e.persistSpend(now, actual.JudgeTokens)
 	return scores, anchorScored
